@@ -1,0 +1,40 @@
+name: Release APK
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Build debug APK
+        run: chmod +x gradlew && ./gradlew assembleDebug --stacktrace --no-daemon
+
+      - name: Rename APK
+        run: |
+          mkdir -p dist
+          APK=$(ls app/build/outputs/apk/debug/*.apk | head -1)
+          cp "$APK" "dist/wallpaperc-${GITHUB_REF_NAME}-debug.apk"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.apk
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
