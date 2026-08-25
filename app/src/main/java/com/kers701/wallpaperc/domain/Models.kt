@@ -86,7 +86,11 @@ data class AppSettings(
     /** 轮换模式下当前类别 */
     val lastCategory: String = "zr",
     /** 关键词轮询下标 */
-    val keywordIndex: Int = 0
+    val keywordIndex: Int = 0,
+
+    /** PIN 锁定：非空表示已设置 PIN（存 SHA-256 hex） */
+    val pinHash: String = "",
+    val pinEnabled: Boolean = false
 ) {
     fun nextApiKey(): String? {
         val keys = apiKeys.map { it.trim() }.filter { it.isNotEmpty() }

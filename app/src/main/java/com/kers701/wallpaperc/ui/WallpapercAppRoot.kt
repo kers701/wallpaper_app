@@ -7,12 +7,14 @@ import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarDefaults
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -28,38 +30,46 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
     val backStack by nav.currentBackStackEntryAsState()
     val route = backStack?.destination?.route ?: "home"
 
-    Scaffold(
-        bottomBar = {
-            NavigationBar {
-                NavigationBarItem(
-                    selected = route == "home",
-                    onClick = { nav.navigate("home") { launchSingleTop = true } },
-                    icon = { Icon(Icons.Default.Home, contentDescription = null) },
-                    label = { Text("首页") }
-                )
-                NavigationBarItem(
-                    selected = route == "settings",
-                    onClick = { nav.navigate("settings") { launchSingleTop = true } },
-                    icon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                    label = { Text("设置") }
-                )
-                NavigationBarItem(
-                    selected = route == "history",
-                    onClick = { nav.navigate("history") { launchSingleTop = true } },
-                    icon = { Icon(Icons.Default.List, contentDescription = null) },
-                    label = { Text("记录") }
-                )
+    WallpaperBackground(scrimAlpha = 0.52f) {
+        Scaffold(
+            containerColor = Color.Transparent,
+            contentColor = Color.White,
+            bottomBar = {
+                NavigationBar(
+                    containerColor = Color.Black.copy(alpha = 0.35f),
+                    contentColor = Color.White,
+                    windowInsets = NavigationBarDefaults.windowInsets
+                ) {
+                    NavigationBarItem(
+                        selected = route == "home",
+                        onClick = { nav.navigate("home") { launchSingleTop = true } },
+                        icon = { Icon(Icons.Default.Home, contentDescription = null) },
+                        label = { Text("首页") }
+                    )
+                    NavigationBarItem(
+                        selected = route == "settings",
+                        onClick = { nav.navigate("settings") { launchSingleTop = true } },
+                        icon = { Icon(Icons.Default.Settings, contentDescription = null) },
+                        label = { Text("设置") }
+                    )
+                    NavigationBarItem(
+                        selected = route == "history",
+                        onClick = { nav.navigate("history") { launchSingleTop = true } },
+                        icon = { Icon(Icons.Default.List, contentDescription = null) },
+                        label = { Text("记录") }
+                    )
+                }
             }
-        }
-    ) { padding ->
-        NavHost(
-            navController = nav,
-            startDestination = "home",
-            modifier = Modifier.padding(padding)
-        ) {
-            composable("home") { HomeScreen(vm) }
-            composable("settings") { SettingsScreen(vm) }
-            composable("history") { HistoryScreen(vm) }
+        ) { padding ->
+            NavHost(
+                navController = nav,
+                startDestination = "home",
+                modifier = Modifier.padding(padding)
+            ) {
+                composable("home") { HomeScreen(vm) }
+                composable("settings") { SettingsScreen(vm) }
+                composable("history") { HistoryScreen(vm) }
+            }
         }
     }
 }

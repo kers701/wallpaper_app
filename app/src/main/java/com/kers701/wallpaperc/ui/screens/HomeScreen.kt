@@ -34,9 +34,9 @@ fun HomeScreen(vm: MainViewModel) {
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text("Wallpaperc", style = MaterialTheme.typography.headlineMedium)
+        Text("化云烟", style = MaterialTheme.typography.headlineMedium)
         Text(
-            "自动从 Wallhaven 下载并更换壁纸",
+            "化云烟 · 自动更换壁纸",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

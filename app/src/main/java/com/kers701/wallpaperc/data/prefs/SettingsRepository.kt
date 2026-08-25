@@ -43,6 +43,8 @@ class SettingsRepository(private val context: Context) {
         val LOCAL_DIR = stringPreferencesKey("local_fallback_dir")
         val LAST_CAT = stringPreferencesKey("last_category")
         val KEYWORD_INDEX = intPreferencesKey("keyword_index")
+        val PIN_HASH = stringPreferencesKey("pin_hash")
+        val PIN_ENABLED = booleanPreferencesKey("pin_enabled")
         // 兼容旧版单 key
         val LEGACY_API_KEY = stringPreferencesKey("api_key")
         val LEGACY_FALLBACK = booleanPreferencesKey("fallback")
@@ -81,7 +83,9 @@ class SettingsRepository(private val context: Context) {
             forceLocalMode = p[Keys.FORCE_LOCAL] ?: false,
             localFallbackDir = p[Keys.LOCAL_DIR] ?: "",
             lastCategory = p[Keys.LAST_CAT] ?: "zr",
-            keywordIndex = p[Keys.KEYWORD_INDEX] ?: 0
+            keywordIndex = p[Keys.KEYWORD_INDEX] ?: 0,
+            pinHash = p[Keys.PIN_HASH] ?: "",
+            pinEnabled = p[Keys.PIN_ENABLED] ?: false
         )
     }
 
@@ -109,6 +113,8 @@ class SettingsRepository(private val context: Context) {
             p[Keys.LOCAL_DIR] = settings.localFallbackDir
             p[Keys.LAST_CAT] = settings.lastCategory
             p[Keys.KEYWORD_INDEX] = settings.keywordIndex
+            p[Keys.PIN_HASH] = settings.pinHash
+            p[Keys.PIN_ENABLED] = settings.pinEnabled
         }
     }
 

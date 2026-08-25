@@ -2,11 +2,13 @@ package com.kers701.wallpaperc.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenuItem
@@ -20,6 +22,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -28,6 +31,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.kers701.wallpaperc.data.prefs.SettingsRepository
 import com.kers701.wallpaperc.domain.CategoryMode
@@ -40,6 +45,10 @@ import com.kers701.wallpaperc.ui.MainViewModel
 @Composable
 fun SettingsScreen(vm: MainViewModel) {
     val settings by vm.settings.collectAsState()
+    val unlocked by vm.unlocked.collectAsState()
+    val pinMessage by vm.pinMessage.collectAsState()
+    val keysVisible = vm.keysVisible(settings)
+
     var interval by remember(settings.intervalMinutes) {
         mutableFloatStateOf(settings.intervalMinutes.toFloat())
     }
@@ -52,8 +61,11 @@ fun SettingsScreen(vm: MainViewModel) {
     var minW by remember(settings.minWidth) { mutableStateOf(settings.minWidth.toString()) }
     var minH by remember(settings.minHeight) { mutableStateOf(settings.minHeight.toString()) }
 
-    var apiKeysText by remember(settings.apiKeys) {
-        mutableStateOf(settings.apiKeys.joinToString("\n"))
+    var apiKeysText by remember(settings.apiKeys, keysVisible) {
+        mutableStateOf(
+            if (keysVisible) settings.apiKeys.joinToString("\n")
+            else ""
+        )
     }
     var keywordsText by remember(settings.keywords) {
         mutableStateOf(settings.keywords.joinToString("\n"))
@@ -78,6 +90,10 @@ fun SettingsScreen(vm: MainViewModel) {
     var localDir by remember(settings.localFallbackDir) {
         mutableStateOf(settings.localFallbackDir)
     }
+
+    var pinInput by remember { mutableStateOf("") }
+    var newPin by remember { mutableStateOf("") }
+    var confirmPin by remember { mutableStateOf("") }
 
     Column(
         modifier = Modifier
@@ -120,18 +136,114 @@ fun SettingsScreen(vm: MainViewModel) {
         RowSwitch("息屏时跳过", skipOff) { skipOff = it }
 
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
-        Text("API 密钥（可多个，每行一个）", style = MaterialTheme.typography.titleMedium)
-        OutlinedTextField(
-            value = apiKeysText,
-            onValueChange = { apiKeysText = it },
-            label = { Text("Wallhaven API Keys") },
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 100.dp),
-            minLines = 3,
-            maxLines = 8
+        Text("PIN 锁定", style = MaterialTheme.typography.titleMedium)
+        Text(
+            if (settings.pinEnabled) {
+                if (unlocked) "状态：已解锁（密钥可见）" else "状态：已锁定（密钥已隐藏）"
+            } else {
+                "状态：未启用 PIN"
+            },
+            style = MaterialTheme.typography.bodySmall
         )
-        Text("失败时会自动轮换到下一个密钥", style = MaterialTheme.typography.bodySmall)
+        if (pinMessage != null) {
+            Text(pinMessage!!, color = MaterialTheme.colorScheme.primary)
+        }
+
+        if (settings.pinEnabled && !unlocked) {
+            OutlinedTextField(
+                value = pinInput,
+                onValueChange = { pinInput = it.filter(Char::isDigit).take(8) },
+                label = { Text("输入 PIN 解锁") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword)
+            )
+            Button(
+                onClick = {
+                    vm.unlock(pinInput)
+                    pinInput = ""
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("解锁") }
+        } else {
+            if (settings.pinEnabled) {
+                OutlinedButton(
+                    onClick = { vm.lockNow() },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("立即锁定") }
+            }
+            OutlinedTextField(
+                value = newPin,
+                onValueChange = { newPin = it.filter(Char::isDigit).take(8) },
+                label = { Text(if (settings.pinEnabled) "新 PIN（4～8 位）" else "设置 PIN（4～8 位）") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword)
+            )
+            OutlinedTextField(
+                value = confirmPin,
+                onValueChange = { confirmPin = it.filter(Char::isDigit).take(8) },
+                label = { Text("确认 PIN") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword)
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = {
+                        vm.setPinWithConfirm(newPin, confirmPin)
+                        if (newPin.isNotEmpty() && newPin == confirmPin) {
+                            newPin = ""
+                            confirmPin = ""
+                        }
+                    },
+                    modifier = Modifier.weight(1f)
+                ) { Text(if (settings.pinEnabled) "修改 PIN" else "启用 PIN") }
+                if (settings.pinEnabled) {
+                    TextButton(
+                        onClick = { vm.setPin("", enable = false) },
+                        modifier = Modifier.weight(1f)
+                    ) { Text("关闭 PIN") }
+                }
+            }
+            Text("PIN 仅存哈希，进程重启后需重新解锁", style = MaterialTheme.typography.bodySmall)
+        }
+
+        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+        Text("API 密钥（可多个，每行一个）", style = MaterialTheme.typography.titleMedium)
+        if (keysVisible) {
+            OutlinedTextField(
+                value = apiKeysText,
+                onValueChange = { apiKeysText = it },
+                label = { Text("Wallhaven API Keys") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 100.dp),
+                minLines = 3,
+                maxLines = 8
+            )
+            Text("失败时会自动轮换到下一个密钥", style = MaterialTheme.typography.bodySmall)
+        } else {
+            OutlinedTextField(
+                value = "••••••••\n（已锁定，密钥不可见）",
+                onValueChange = {},
+                enabled = false,
+                label = { Text("Wallhaven API Keys") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 100.dp),
+                minLines = 3,
+                maxLines = 8
+            )
+            Text(
+                "已启用 PIN 且处于锁定状态，请先解锁后查看或修改密钥",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
 
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
         Text("关键词", style = MaterialTheme.typography.titleMedium)
@@ -199,6 +311,11 @@ fun SettingsScreen(vm: MainViewModel) {
 
         Button(
             onClick = {
+                val keys = if (keysVisible) {
+                    SettingsRepository.splitLines(apiKeysText)
+                } else {
+                    settings.apiKeys
+                }
                 vm.saveSettings(
                     settings.copy(
                         intervalMinutes = interval.toInt(),
@@ -210,7 +327,7 @@ fun SettingsScreen(vm: MainViewModel) {
                         skipWhenScreenOff = skipOff,
                         minWidth = minW.toIntOrNull() ?: settings.minWidth,
                         minHeight = minH.toIntOrNull() ?: settings.minHeight,
-                        apiKeys = SettingsRepository.splitLines(apiKeysText),
+                        apiKeys = keys,
                         keywords = SettingsRepository.splitLines(keywordsText),
                         keywordsRemoteUrl = keywordsUrl.trim(),
                         useKeywords = useKeywords,

@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Wallpaperc</string>
-    <string name="notification_channel_name">壁纸服务</string>
+    <string name="app_name">化云烟</string>
+    <string name="notification_channel_name">化云烟服务</string>
     <string name="notification_channel_desc">自动更换壁纸时显示</string>
-    <string name="notification_title">Wallpaperc 运行中</string>
+    <string name="notification_title">化云烟 运行中</string>
     <string name="notification_text">正在按设定间隔自动更换壁纸</string>
 </resources>
