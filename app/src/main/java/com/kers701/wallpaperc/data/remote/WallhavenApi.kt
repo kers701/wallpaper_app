@@ -76,7 +76,7 @@ class WallhavenApi(
 
     /**
      * 网络兜底：请求用户配置的 URL。
-     * - 若响应 Content-Type 为 image/* → 直接当图片地址用（返回合成 item，path 为该 url）
+     * - 若响应 Content-Type 为 image 类型 → 直接当图片地址用（返回合成 item，path 为该 url）
      * - 若为文本一行 URL
      * - 若为 JSON，尝试常见字段 path/url/image 等
      */
