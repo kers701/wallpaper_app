@@ -35,6 +35,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.kers701.wallpaperc.data.prefs.SettingsRepository
+import com.kers701.wallpaperc.domain.BgMode
 import com.kers701.wallpaperc.domain.CategoryMode
 import com.kers701.wallpaperc.domain.Purity
 import com.kers701.wallpaperc.domain.ResolutionMode
@@ -62,24 +63,22 @@ fun SettingsScreen(vm: MainViewModel) {
     var minH by remember(settings.minHeight) { mutableStateOf(settings.minHeight.toString()) }
 
     var apiKeysText by remember(settings.apiKeys, keysVisible) {
-        mutableStateOf(
-            if (keysVisible) settings.apiKeys.joinToString("\n")
-            else ""
-        )
+        mutableStateOf(if (keysVisible) settings.apiKeys.joinToString("\n") else "")
     }
-    var keywordsText by remember(settings.keywords) {
-        mutableStateOf(settings.keywords.joinToString("\n"))
+    var keywordsText by remember(settings.keywords, keysVisible) {
+        mutableStateOf(if (keysVisible) settings.keywords.joinToString("\n") else "")
     }
-    var keywordsUrl by remember(settings.keywordsRemoteUrl) {
-        mutableStateOf(settings.keywordsRemoteUrl)
+    var keywordsUrl by remember(settings.keywordsRemoteUrl, keysVisible) {
+        mutableStateOf(if (keysVisible) settings.keywordsRemoteUrl else "")
     }
     var useKeywords by remember(settings.useKeywords) { mutableStateOf(settings.useKeywords) }
+    var jumpMode by remember(settings.jumpModeEnabled) { mutableStateOf(settings.jumpModeEnabled) }
 
     var netFb by remember(settings.networkFallbackEnabled) {
         mutableStateOf(settings.networkFallbackEnabled)
     }
-    var fallbackApi by remember(settings.fallbackApiUrl) {
-        mutableStateOf(settings.fallbackApiUrl)
+    var fallbackApi by remember(settings.fallbackApiUrl, keysVisible) {
+        mutableStateOf(if (keysVisible) settings.fallbackApiUrl else "")
     }
     var localFb by remember(settings.localFallbackEnabled) {
         mutableStateOf(settings.localFallbackEnabled)
@@ -90,6 +89,10 @@ fun SettingsScreen(vm: MainViewModel) {
     var localDir by remember(settings.localFallbackDir) {
         mutableStateOf(settings.localFallbackDir)
     }
+
+    var bgApi by remember(settings.bgApiUrl) { mutableStateOf(settings.bgApiUrl) }
+    var bgLocal by remember(settings.bgLocalPath) { mutableStateOf(settings.bgLocalPath) }
+    var bgMode by remember(settings.bgMode) { mutableStateOf(settings.bgMode) }
 
     var pinInput by remember { mutableStateOf("") }
     var newPin by remember { mutableStateOf("") }
@@ -136,10 +139,34 @@ fun SettingsScreen(vm: MainViewModel) {
         RowSwitch("息屏时跳过", skipOff) { skipOff = it }
 
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
+        Text("软件背景", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "优先本地路径 → API 链接 → 系统壁纸；都为空则使用莫奈取色",
+            style = MaterialTheme.typography.bodySmall
+        )
+        EnumDropdown("背景模式", BgMode.entries, bgMode) { bgMode = it }
+        OutlinedTextField(
+            value = bgApi,
+            onValueChange = { bgApi = it },
+            label = { Text("背景 API 链接（打开自动获取）") },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("https://… 返回图片或 JSON") },
+            maxLines = 2
+        )
+        OutlinedTextField(
+            value = bgLocal,
+            onValueChange = { bgLocal = it },
+            label = { Text("背景本地路径") },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("/storage/emulated/0/Pictures/bg.jpg") },
+            singleLine = true
+        )
+
+        HorizontalDivider(Modifier.padding(vertical = 8.dp))
         Text("PIN 锁定", style = MaterialTheme.typography.titleMedium)
         Text(
             if (settings.pinEnabled) {
-                if (unlocked) "状态：已解锁（密钥可见）" else "状态：已锁定（密钥已隐藏）"
+                if (unlocked) "状态：已解锁（敏感项可见）" else "状态：已锁定（密钥/关键词/兜底 API 已隐藏）"
             } else {
                 "状态：未启用 PIN"
             },
@@ -219,81 +246,73 @@ fun SettingsScreen(vm: MainViewModel) {
                 value = apiKeysText,
                 onValueChange = { apiKeysText = it },
                 label = { Text("Wallhaven API Keys") },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 100.dp),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp),
                 minLines = 3,
                 maxLines = 8
             )
             Text("失败时会自动轮换到下一个密钥", style = MaterialTheme.typography.bodySmall)
         } else {
-            OutlinedTextField(
-                value = "••••••••\n（已锁定，密钥不可见）",
-                onValueChange = {},
-                enabled = false,
-                label = { Text("Wallhaven API Keys") },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 100.dp),
-                minLines = 3,
-                maxLines = 8
-            )
-            Text(
-                "已启用 PIN 且处于锁定状态，请先解锁后查看或修改密钥",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error
-            )
+            LockedField("Wallhaven API Keys")
         }
 
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
         Text("关键词", style = MaterialTheme.typography.titleMedium)
         RowSwitch("启用关键词搜索", useKeywords) { useKeywords = it }
-        OutlinedTextField(
-            value = keywordsText,
-            onValueChange = { keywordsText = it },
-            label = { Text("本地关键词（每行一个）") },
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 120.dp),
-            minLines = 4,
-            maxLines = 12
-        )
-        OutlinedTextField(
-            value = keywordsUrl,
-            onValueChange = { keywordsUrl = it },
-            label = { Text("远程关键词 txt 地址") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            placeholder = { Text("https://example.com/keywords.txt") }
-        )
-        OutlinedButton(
-            onClick = { vm.importKeywordsFromUrl(keywordsUrl, replace = true) },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("从远程导入并覆盖本地列表")
+        RowSwitch("跃迁模式（用上次成功标签覆盖跃迁列表）", jumpMode) { jumpMode = it }
+        if (settings.jumpKeywords.isNotEmpty()) {
+            Text(
+                "当前跃迁关键词 ${settings.jumpKeywords.size} 个：${settings.jumpKeywords.take(8).joinToString("、")}${if (settings.jumpKeywords.size > 8) "…" else ""}",
+                style = MaterialTheme.typography.bodySmall
+            )
         }
-        OutlinedButton(
-            onClick = { vm.importKeywordsFromUrl(keywordsUrl, replace = false) },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("从远程导入并合并到本地")
+        if (keysVisible) {
+            OutlinedTextField(
+                value = keywordsText,
+                onValueChange = { keywordsText = it },
+                label = { Text("本地关键词（每行一个）") },
+                modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp),
+                minLines = 4,
+                maxLines = 12
+            )
+            OutlinedTextField(
+                value = keywordsUrl,
+                onValueChange = { keywordsUrl = it },
+                label = { Text("远程关键词 txt 地址") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                placeholder = { Text("https://example.com/keywords.txt") }
+            )
+            OutlinedButton(
+                onClick = { vm.importKeywordsFromUrl(keywordsUrl, replace = true) },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("从远程导入并覆盖本地列表") }
+            OutlinedButton(
+                onClick = { vm.importKeywordsFromUrl(keywordsUrl, replace = false) },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("从远程导入并合并到本地") }
+        } else {
+            LockedField("本地关键词 / 远程地址")
         }
 
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
         Text("兜底策略", style = MaterialTheme.typography.titleMedium)
         RowSwitch("网络兜底（Wallhaven 失败 → 备用 API）", netFb) { netFb = it }
-        OutlinedTextField(
-            value = fallbackApi,
-            onValueChange = { fallbackApi = it },
-            label = { Text("兜底 API URL") },
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("https://… 支持 {width}{height}") },
-            maxLines = 3
-        )
-        Text(
-            "响应可以是：直接图片、一行图片 URL、或含 path/url/image 的 JSON",
-            style = MaterialTheme.typography.bodySmall
-        )
+        if (keysVisible) {
+            OutlinedTextField(
+                value = fallbackApi,
+                onValueChange = { fallbackApi = it },
+                label = { Text("兜底 API URL") },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("https://… 支持 {width}{height}") },
+                maxLines = 3
+            )
+            Text(
+                "响应可以是：直接图片、一行图片 URL、或含 path/url/image 的 JSON",
+                style = MaterialTheme.typography.bodySmall
+            )
+        } else {
+            LockedField("兜底 API URL")
+        }
 
         RowSwitch("本地兜底（无网/失败时从目录随机）", localFb) { localFb = it }
         RowSwitch("强制本地模式（不访问网络）", forceLocal) { forceLocal = it }
@@ -304,18 +323,14 @@ fun SettingsScreen(vm: MainViewModel) {
             modifier = Modifier.fillMaxWidth(),
             placeholder = { Text("/storage/emulated/0/Pictures/Wallpapers") }
         )
-        Text(
-            "当前：${vm.localFallbackInfo()}",
-            style = MaterialTheme.typography.bodySmall
-        )
+        Text("当前：${vm.localFallbackInfo()}", style = MaterialTheme.typography.bodySmall)
 
         Button(
             onClick = {
-                val keys = if (keysVisible) {
-                    SettingsRepository.splitLines(apiKeysText)
-                } else {
-                    settings.apiKeys
-                }
+                val keys = if (keysVisible) SettingsRepository.splitLines(apiKeysText) else settings.apiKeys
+                val kws = if (keysVisible) SettingsRepository.splitLines(keywordsText) else settings.keywords
+                val kwUrl = if (keysVisible) keywordsUrl.trim() else settings.keywordsRemoteUrl
+                val fbUrl = if (keysVisible) fallbackApi.trim() else settings.fallbackApiUrl
                 vm.saveSettings(
                     settings.copy(
                         intervalMinutes = interval.toInt(),
@@ -328,14 +343,18 @@ fun SettingsScreen(vm: MainViewModel) {
                         minWidth = minW.toIntOrNull() ?: settings.minWidth,
                         minHeight = minH.toIntOrNull() ?: settings.minHeight,
                         apiKeys = keys,
-                        keywords = SettingsRepository.splitLines(keywordsText),
-                        keywordsRemoteUrl = keywordsUrl.trim(),
+                        keywords = kws,
+                        keywordsRemoteUrl = kwUrl,
                         useKeywords = useKeywords,
+                        jumpModeEnabled = jumpMode,
                         networkFallbackEnabled = netFb,
-                        fallbackApiUrl = fallbackApi.trim(),
+                        fallbackApiUrl = fbUrl,
                         localFallbackEnabled = localFb,
                         forceLocalMode = forceLocal,
-                        localFallbackDir = localDir.trim()
+                        localFallbackDir = localDir.trim(),
+                        bgApiUrl = bgApi.trim(),
+                        bgLocalPath = bgLocal.trim(),
+                        bgMode = bgMode
                     )
                 )
             },
@@ -344,6 +363,24 @@ fun SettingsScreen(vm: MainViewModel) {
             Text("保存设置")
         }
     }
+}
+
+@Composable
+private fun LockedField(label: String) {
+    OutlinedTextField(
+        value = "••••••••\n（已锁定，不可见）",
+        onValueChange = {},
+        enabled = false,
+        label = { Text(label) },
+        modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp),
+        minLines = 2,
+        maxLines = 4
+    )
+    Text(
+        "已启用 PIN 且处于锁定状态，请先解锁后查看或修改",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.error
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -358,6 +395,7 @@ private fun <T> EnumDropdown(
             is CategoryMode -> it.label
             is WallpaperTarget -> it.label
             is ResolutionMode -> it.label
+            is BgMode -> it.label
             else -> it.toString()
         }
     },

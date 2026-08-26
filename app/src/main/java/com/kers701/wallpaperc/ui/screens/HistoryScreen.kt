@@ -46,13 +46,31 @@ fun HistoryScreen(vm: MainViewModel) {
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(12.dp)) {
                             Text("ID: ${item.id}", style = MaterialTheme.typography.titleSmall)
-                            Text("类别: ${item.category} · 纯度: ${item.purity}")
+                            Text("来源: ${item.source.ifBlank { "—" }} · 类别: ${item.category} · 纯度: ${item.purity}")
+                            val res = if (item.width > 0 && item.height > 0) {
+                                "${item.width}×${item.height}"
+                            } else {
+                                "分辨率未知"
+                            }
+                            val sizeStr = formatFileSize(item.fileSize)
+                            Text("分辨率: $res · 大小: $sizeStr")
                             Text(fmt.format(Date(item.setAt)), style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
             }
         }
+    }
+}
+
+private fun formatFileSize(bytes: Long): String {
+    if (bytes <= 0L) return "未知"
+    val kb = bytes / 1024.0
+    val mb = kb / 1024.0
+    return when {
+        mb >= 1 -> String.format(Locale.getDefault(), "%.2f MB", mb)
+        kb >= 1 -> String.format(Locale.getDefault(), "%.1f KB", kb)
+        else -> "$bytes B"
     }
 }
 

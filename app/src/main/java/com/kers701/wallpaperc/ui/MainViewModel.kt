@@ -55,7 +55,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _pinMessage = MutableStateFlow<String?>(null)
     val pinMessage: StateFlow<String?> = _pinMessage.asStateFlow()
 
-    /** 密钥是否应对用户可见：未启用 PIN，或已解锁 */
+    /** 敏感字段是否可见：密钥 / 关键词 / 兜底 API */
     fun keysVisible(s: AppSettings = settings.value): Boolean {
         if (!s.pinEnabled || s.pinHash.isBlank()) return true
         return _unlocked.value
@@ -63,14 +63,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun saveSettings(s: AppSettings) {
         viewModelScope.launch {
-            // 锁定状态下不允许改写 apiKeys（防止被清空）
+            // 锁定状态下不允许改写敏感字段
             val final = if (!keysVisible(s) && s.pinEnabled) {
-                s.copy(apiKeys = settings.value.apiKeys)
+                s.copy(
+                    apiKeys = settings.value.apiKeys,
+                    keywords = settings.value.keywords,
+                    keywordsRemoteUrl = settings.value.keywordsRemoteUrl,
+                    fallbackApiUrl = settings.value.fallbackApiUrl,
+                    jumpKeywords = settings.value.jumpKeywords
+                )
             } else s
             settingsRepo.save(final)
             applySchedule(final)
             _status.value =
-                "设置已保存（关键词 ${final.keywords.size} 个，密钥 ${final.apiKeys.size} 个）"
+                "设置已保存（关键词 ${final.keywords.size} 个，跃迁 ${final.jumpKeywords.size} 个，密钥 ${final.apiKeys.size} 个）"
         }
     }
 
@@ -88,9 +94,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _busy.value = true
             _status.value = "正在更换…"
-            when (val r = changer.changeOnce()) {
-                is ChangeResult.Success ->
-                    _status.value = "已设置 [${r.item.source}] ${r.item.id}"
+            when (val r = changer.changeOnce(forceIgnoreScreenOff = true)) {
+                is ChangeResult.Success -> {
+                    val res = if (r.item.width > 0) "${r.item.width}×${r.item.height}" else ""
+                    _status.value = "已设置 [${r.item.source}] ${r.item.id} $res"
+                }
                 is ChangeResult.Failure ->
                     _status.value = "失败：${r.message}"
             }
@@ -153,10 +161,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun lockNow() {
         _unlocked.value = false
         _pinMessage.value = "已锁定"
-        _status.value = "已锁定，API 密钥已隐藏"
+        _status.value = "已锁定，密钥/关键词/兜底 API 已隐藏"
     }
-
-    /** 设置或修改 PIN；empty pin + disable 可关闭 */
 
     fun setPinWithConfirm(newPin: String, confirmPin: String) {
         if (newPin != confirmPin) {
@@ -182,7 +188,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 _pinMessage.value = "PIN 已设置"
                 _status.value = "PIN 已启用"
             } else {
-                // 关闭 PIN 需先解锁，或未设置过
                 if (settings.value.pinEnabled && !_unlocked.value) {
                     _pinMessage.value = "请先解锁再关闭 PIN"
                     return@launch

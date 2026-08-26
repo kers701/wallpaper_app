@@ -12,6 +12,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -29,8 +30,9 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
     val nav = rememberNavController()
     val backStack by nav.currentBackStackEntryAsState()
     val route = backStack?.destination?.route ?: "home"
+    val settings by vm.settings.collectAsState()
 
-    WallpaperBackground(scrimAlpha = 0.52f) {
+    WallpaperBackground(settings = settings, scrimAlpha = 0.52f) {
         Scaffold(
             containerColor = Color.Transparent,
             contentColor = Color.White,

@@ -10,16 +10,30 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
-class BootReceiver : BroadcastReceiver() {
+/**
+ * 息屏休眠后亮屏时触发：若已超过间隔则立即换壁纸，并确保调度仍在。
+ */
+class ScreenOnReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
-        if (intent?.action != Intent.ACTION_BOOT_COMPLETED &&
-            intent?.action != Intent.ACTION_MY_PACKAGE_REPLACED
-        ) return
+        val action = intent?.action ?: return
+        if (action != Intent.ACTION_SCREEN_ON && action != Intent.ACTION_USER_PRESENT) return
+
         val pending = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val settings = SettingsRepository(context).settingsFlow.first()
                 if (!settings.enabled) return@launch
+
+                val intervalMs = settings.intervalMinutes.coerceIn(5, 180) * 60_000L
+                val due = settings.lastChangeAt <= 0L ||
+                    System.currentTimeMillis() - settings.lastChangeAt >= intervalMs
+
+                if (due) {
+                    // 亮屏后补一次更换（忽略息屏跳过）
+                    ChangeWallpaperWorker.enqueueOneShot(context, forceIgnoreScreenOff = true)
+                }
+
+                // 确保后台调度仍在（进程被杀后恢复）
                 if (settings.useForegroundService || settings.intervalMinutes < 15) {
                     WallpaperForegroundService.start(context)
                 } else {

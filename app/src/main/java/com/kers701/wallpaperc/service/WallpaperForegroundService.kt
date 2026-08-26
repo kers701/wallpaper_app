@@ -10,6 +10,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import com.kers701.wallpaperc.MainActivity
 import com.kers701.wallpaperc.R
@@ -32,8 +33,18 @@ class WallpaperForegroundService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var loopJob: Job? = null
+    private var wakeLock: PowerManager.WakeLock? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        wakeLock = pm.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "wallpaperc:fgs"
+        ).apply { setReferenceCounted(false) }
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
@@ -41,22 +52,30 @@ class WallpaperForegroundService : Service() {
                 stopSelf()
                 return START_NOT_STICKY
             }
-            else -> startLoop()
+            else -> {
+                // 始终确保前台通知与循环在跑（进程被杀后系统重启服务）
+                ensureForegroundAndLoop()
+            }
         }
         return START_STICKY
     }
 
-    private fun startLoop() {
+    private fun ensureForegroundAndLoop() {
         createChannel()
         val notification = buildNotification()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            // 部分机型限制 FGS：仍尝试循环
         }
 
         if (loopJob?.isActive == true) return
@@ -75,9 +94,29 @@ class WallpaperForegroundService : Service() {
                     stopSelf()
                     break
                 }
-                runCatching { changer.changeOnce() }
+                try {
+                    wakeLock?.acquire(3 * 60_000L)
+                    runCatching { changer.changeOnce() }
+                } finally {
+                    if (wakeLock?.isHeld == true) {
+                        runCatching { wakeLock?.release() }
+                    }
+                }
                 val minutes = settings.intervalMinutes.coerceIn(5, 180)
-                delay(minutes * 60_000L)
+                // 分段 delay，便于服务重启后更快响应
+                val totalMs = minutes * 60_000L
+                var waited = 0L
+                val step = 30_000L
+                while (isActive && waited < totalMs) {
+                    delay(minOf(step, totalMs - waited))
+                    waited += step
+                    // 若用户关闭了自动更换，提前退出
+                    val s = settingsRepo.settingsFlow.first()
+                    if (!s.enabled) {
+                        stopSelf()
+                        return@launch
+                    }
+                }
             }
         }
     }
@@ -113,11 +152,16 @@ class WallpaperForegroundService : Service() {
             .setContentIntent(open)
             .addAction(0, "停止", stop)
             .setOngoing(true)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .build()
     }
 
     override fun onDestroy() {
         loopJob?.cancel()
+        loopJob = null
+        if (wakeLock?.isHeld == true) {
+            runCatching { wakeLock?.release() }
+        }
         scope.cancel()
         super.onDestroy()
     }
@@ -129,17 +173,25 @@ class WallpaperForegroundService : Service() {
 
         fun start(context: Context) {
             val i = Intent(context, WallpaperForegroundService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(i)
-            } else {
-                context.startService(i)
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(i)
+                } else {
+                    context.startService(i)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
 
         fun stop(context: Context) {
-            context.startService(
-                Intent(context, WallpaperForegroundService::class.java).setAction(ACTION_STOP)
-            )
+            try {
+                context.startService(
+                    Intent(context, WallpaperForegroundService::class.java).setAction(ACTION_STOP)
+                )
+            } catch (_: Exception) {
+                context.stopService(Intent(context, WallpaperForegroundService::class.java))
+            }
         }
     }
 }

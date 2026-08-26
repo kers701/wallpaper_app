@@ -52,8 +52,16 @@ fun HomeScreen(vm: MainViewModel) {
                 Text("纯度：${settings.purity.label} · 类别：${settings.categoryMode.label}")
                 Text("目标：${settings.target.label}")
                 Text(
-                    "关键词：${if (settings.useKeywords && settings.keywords.isNotEmpty()) "${settings.keywords.size} 个" else "未启用"} · " +
-                        "密钥：${settings.apiKeys.size} 个"
+                    buildString {
+                        append("关键词：")
+                        if (!settings.useKeywords) append("未启用")
+                        else if (settings.jumpModeEnabled && settings.jumpKeywords.isNotEmpty())
+                            append("跃迁 ${settings.jumpKeywords.size} 个")
+                        else if (settings.keywords.isNotEmpty())
+                            append("${settings.keywords.size} 个")
+                        else append("空")
+                        append(" · 密钥：${settings.apiKeys.size} 个")
+                    }
                 )
                 Text(
                     buildString {

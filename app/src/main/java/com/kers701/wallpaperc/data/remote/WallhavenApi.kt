@@ -61,7 +61,7 @@ class WallhavenApi(
 
         val request = Request.Builder()
             .url(urlBuilder.build())
-            .header("User-Agent", "Wallpaperc/1.1 (Android)")
+            .header("User-Agent", "Wallpaperc/1.2 (Android)")
             .get()
             .build()
 
@@ -89,7 +89,7 @@ class WallhavenApi(
                 .replace("{h}", height.toString())
             val request = Request.Builder()
                 .url(url)
-                .header("User-Agent", "Wallpaperc/1.1 (Android)")
+                .header("User-Agent", "Wallpaperc/1.2 (Android)")
                 .get()
                 .build()
             client.newCall(request).execute().use { response ->
@@ -176,6 +176,15 @@ class WallhavenApi(
         for (i in 0 until data.length()) {
             val o = data.getJSONObject(i)
             val thumbs = o.optJSONObject("thumbs")
+            val tags = mutableListOf<String>()
+            val tagsArr = o.optJSONArray("tags")
+            if (tagsArr != null) {
+                for (t in 0 until tagsArr.length()) {
+                    val tagObj = tagsArr.optJSONObject(t) ?: continue
+                    val name = tagObj.optString("name").trim()
+                    if (name.isNotEmpty()) tags += name
+                }
+            }
             list += WallpaperItem(
                 id = o.getString("id"),
                 pathUrl = o.getString("path"),
@@ -184,17 +193,39 @@ class WallhavenApi(
                 height = o.optInt("dimension_y"),
                 purity = o.optString("purity"),
                 category = categoryCode,
-                source = "wallhaven"
+                source = "wallhaven",
+                tags = tags
             )
         }
         return list
+    }
+
+    /** 解析背景 API：返回图片 URL */
+    suspend fun fetchBackgroundImageUrl(templateUrl: String): String = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url(templateUrl.trim())
+            .header("User-Agent", "Wallpaperc/1.2 (Android)")
+            .get()
+            .build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw IllegalStateException("背景 API HTTP ${response.code}")
+            }
+            val type = response.header("Content-Type").orEmpty()
+            if (type.startsWith("image/")) {
+                return@use templateUrl.trim()
+            }
+            val body = response.body?.string().orEmpty()
+            parseFallbackBody(body)
+                ?: throw IllegalStateException("背景 API 无法解析图片地址")
+        }
     }
 
     suspend fun downloadToFile(url: String, dest: java.io.File): Boolean =
         withContext(Dispatchers.IO) {
             val request = Request.Builder()
                 .url(url)
-                .header("User-Agent", "Wallpaperc/1.1 (Android)")
+                .header("User-Agent", "Wallpaperc/1.2 (Android)")
                 .get()
                 .build()
             client.newCall(request).execute().use { response ->
@@ -210,7 +241,7 @@ class WallhavenApi(
     suspend fun fetchRemoteKeywordList(url: String): List<String> = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url(url)
-            .header("User-Agent", "Wallpaperc/1.1 (Android)")
+            .header("User-Agent", "Wallpaperc/1.2 (Android)")
             .get()
             .build()
         client.newCall(request).execute().use { response ->

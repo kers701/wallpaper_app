@@ -40,6 +40,19 @@ enum class Purity(val code: String, val label: String) {
     }
 }
 
+/** 软件背景来源 */
+enum class BgMode(val code: String, val label: String) {
+    Auto("auto", "系统壁纸/莫奈"),
+    Api("api", "API 链接"),
+    Local("local", "本地路径"),
+    Monet("monet", "莫奈取色");
+
+    companion object {
+        fun fromCode(code: String): BgMode =
+            entries.find { it.code == code } ?: Auto
+    }
+}
+
 data class AppSettings(
     val enabled: Boolean = false,
     val intervalMinutes: Int = 10,
@@ -64,6 +77,13 @@ data class AppSettings(
     /** 是否优先使用关键词搜索（有词则 q=随机选一词） */
     val useKeywords: Boolean = true,
 
+    /** 跃迁模式：用上次 Wallhaven 成功壁纸的标签覆盖跃迁关键词列表 */
+    val jumpModeEnabled: Boolean = false,
+    /** 跃迁关键词列表（与正常关键词分离，每次覆盖写入） */
+    val jumpKeywords: List<String> = emptyList(),
+    /** 跃迁关键词轮询下标 */
+    val jumpKeywordIndex: Int = 0,
+
     /** 网络兜底：Wallhaven 失败时走备用 API */
     val networkFallbackEnabled: Boolean = true,
     /**
@@ -83,10 +103,19 @@ data class AppSettings(
      */
     val localFallbackDir: String = "",
 
+    /** 软件背景：API 链接（打开时自动拉取） */
+    val bgApiUrl: String = "",
+    /** 软件背景：本地图片路径 */
+    val bgLocalPath: String = "",
+    /** 背景模式偏好（空路径+空 API 时走莫奈） */
+    val bgMode: BgMode = BgMode.Auto,
+
     /** 轮换模式下当前类别 */
     val lastCategory: String = "zr",
     /** 关键词轮询下标 */
     val keywordIndex: Int = 0,
+    /** 上次成功更换时间戳，用于息屏恢复判断 */
+    val lastChangeAt: Long = 0L,
 
     /** PIN 锁定：非空表示已设置 PIN（存 SHA-256 hex） */
     val pinHash: String = "",
@@ -96,6 +125,17 @@ data class AppSettings(
         val keys = apiKeys.map { it.trim() }.filter { it.isNotEmpty() }
         if (keys.isEmpty()) return null
         return keys[apiKeyIndex.mod(keys.size)]
+    }
+
+    /** 当前应使用的搜索关键词列表 */
+    fun activeKeywords(): List<String> {
+        if (!useKeywords) return emptyList()
+        if (jumpModeEnabled && jumpKeywords.isNotEmpty()) return jumpKeywords
+        return keywords
+    }
+
+    fun activeKeywordIndex(): Int {
+        return if (jumpModeEnabled && jumpKeywords.isNotEmpty()) jumpKeywordIndex else keywordIndex
     }
 }
 
@@ -107,7 +147,11 @@ data class WallpaperItem(
     val height: Int,
     val purity: String,
     val category: String,
-    val source: String = "wallhaven"
+    val source: String = "wallhaven",
+    /** Wallhaven 标签名，用于跃迁模式 */
+    val tags: List<String> = emptyList(),
+    /** 文件字节大小（下载后填充） */
+    val fileSize: Long = 0L
 )
 
 sealed class ChangeResult {
