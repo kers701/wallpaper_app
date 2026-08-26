@@ -26,11 +26,13 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.kers701.wallpaperc.ui.LocalCardAlpha
 import com.kers701.wallpaperc.ui.LocalUiTextColor
+import com.kers701.wallpaperc.data.wallpaper.SystemWallpaperSetter
 import com.kers701.wallpaperc.ui.MainViewModel
 import kotlinx.coroutines.delay
 
@@ -59,6 +61,12 @@ fun HomeScreen(vm: MainViewModel) {
     val networkProbe by vm.networkProbe.collectAsState()
     val probing by vm.probing.collectAsState()
     val textColor = LocalUiTextColor.current
+    val context = LocalContext.current
+    val deviceRes = remember {
+        val (w, h) = SystemWallpaperSetter(context).screenSize()
+        "${w}×${h}"
+    }
+    val jumpZh by vm.jumpKeywordsZh.collectAsState()
 
     var remainMin by remember { mutableIntStateOf(settings.minutesUntilNext()) }
     LaunchedEffect(settings.enabled, settings.lastChangeAt, settings.intervalMinutes) {
@@ -115,12 +123,19 @@ fun HomeScreen(vm: MainViewModel) {
                     },
                     color = textColor
                 )
-                val orient = when {
-                    settings.filterLandscape && !settings.filterPortrait -> "仅竖屏"
-                    settings.filterPortrait && !settings.filterLandscape -> "仅横屏"
-                    else -> "横竖不限"
-                }
-                Text("分辨率：${settings.resolutionMode.label} · 方向：$orient", color = textColor, style = MaterialTheme.typography.bodySmall)
+                val orient = settings.orientationFilter.label
+                Text(
+                    buildString {
+                        append("分辨率：${settings.resolutionMode.label}")
+                        if (settings.resolutionMode == com.kers701.wallpaperc.domain.ResolutionMode.Device) {
+                            append("（设备 $deviceRes）")
+                        }
+                        append(" · 方向：$orient")
+                    },
+                    color = textColor,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Text("铺满：${settings.fitMode.label}" + if (settings.isolateHomeLock) " · 桌面锁屏隔离" else "", color = textColor, style = MaterialTheme.typography.bodySmall)
             }
         }
 
@@ -137,10 +152,20 @@ fun HomeScreen(vm: MainViewModel) {
                     color = textColor.copy(alpha = 0.85f)
                 )
                 if (settings.jumpKeywords.isNotEmpty()) {
-                    Text(settings.jumpKeywords.joinToString("、"), color = textColor)
+                    val shown = settings.jumpKeywords.joinToString("、") { w ->
+                        val zh = jumpZh[w]
+                        if (zh.isNullOrBlank()) w else "$w($zh)"
+                    }
+                    Text(shown, color = textColor)
                     val list = settings.jumpKeywords
                     val idx = settings.jumpKeywordIndex.mod(list.size)
-                    Text("下次将用：${list[idx]}", color = textColor, style = MaterialTheme.typography.bodySmall)
+                    val next = list[idx]
+                    val nextZh = jumpZh[next]
+                    Text(
+                        "下次将用：" + if (nextZh.isNullOrBlank()) next else "$next（$nextZh）",
+                        color = textColor,
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
             }
         }

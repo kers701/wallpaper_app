@@ -37,6 +37,45 @@ enum class Purity(val code: String, val label: String) {
     }
 }
 
+/** 方向过滤：无 / 过滤横屏(只要竖屏) / 过滤竖屏(只要横屏) */
+enum class OrientationFilter(val code: String, val label: String) {
+    None("none", "无过滤"),
+    NoLandscape("no_land", "横屏过滤（仅竖屏）"),
+    NoPortrait("no_port", "竖屏过滤（仅横屏）");
+
+    companion object {
+        fun fromCode(code: String): OrientationFilter =
+            entries.find { it.code == code } ?: None
+    }
+}
+
+/** 壁纸铺满方式（对齐 Windows 桌面选项） */
+enum class WallpaperFitMode(val code: String, val label: String) {
+    /** 等比放大至铺满屏幕，多出的边缘不显示（Windows「填充」） */
+    Fill("fill", "填充"),
+    /** 完整显示，可能留边 */
+    Fit("fit", "适应"),
+    /** 拉伸到屏幕尺寸（可能变形） */
+    Stretch("stretch", "拉伸");
+
+    companion object {
+        fun fromCode(code: String): WallpaperFitMode =
+            entries.find { it.code == code } ?: Fill
+    }
+}
+
+enum class TranslateProvider(val code: String, val label: String) {
+    Off("off", "关闭翻译"),
+    Google("google", "谷歌翻译"),
+    Microsoft("microsoft", "微软翻译"),
+    Tencent("tencent", "腾讯翻译");
+
+    companion object {
+        fun fromCode(code: String): TranslateProvider =
+            entries.find { it.code == code } ?: Off
+    }
+}
+
 enum class BgMode(val code: String, val label: String) {
     Auto("auto", "系统壁纸/莫奈"),
     Api("api", "API 链接"),
@@ -76,14 +115,20 @@ data class AppSettings(
     val useForegroundService: Boolean = false,
     val skipWhenScreenOff: Boolean = false,
 
-    /** 开启后过滤掉横屏图，只保留竖屏 */
-    val filterLandscape: Boolean = false,
-    /** 开启后过滤掉竖屏图，只保留横屏 */
-    val filterPortrait: Boolean = false,
-    /** 设置壁纸时按屏幕尺寸中心裁切填充 */
-    val cropFill: Boolean = true,
-    /** 桌面/锁屏隔离：各下不同图分别设置 */
+    /** 方向过滤（三选一） */
+    val orientationFilter: OrientationFilter = OrientationFilter.None,
+    /** 壁纸铺满方式 */
+    val fitMode: WallpaperFitMode = WallpaperFitMode.Fill,
+    /** 桌面/锁屏隔离：先下一张设桌面，再下一张设锁屏 */
     val isolateHomeLock: Boolean = false,
+    /** 本地动态/视频壁纸 */
+    val liveWallpaperEnabled: Boolean = false,
+
+    /** 翻译（仅展示/日志，不改搜索词） */
+    val translateProvider: TranslateProvider = TranslateProvider.Off,
+    val translateApiKey: String = "",
+    val translateSecret: String = "",
+    val translateRegion: String = "global",
 
     /** UI 遮罩透明度 0.15～0.85 */
     val uiScrimAlpha: Float = 0.52f,
@@ -140,6 +185,10 @@ data class AppSettings(
     fun activeKeywordIndex(): Int {
         return if (jumpModeEnabled && jumpKeywords.isNotEmpty()) jumpKeywordIndex else keywordIndex
     }
+
+    val filterLandscape: Boolean get() = orientationFilter == OrientationFilter.NoLandscape
+    val filterPortrait: Boolean get() = orientationFilter == OrientationFilter.NoPortrait
+    val cropFill: Boolean get() = fitMode == WallpaperFitMode.Fill
 
     /** 距下次更换剩余分钟；未开启或未换过返回 -1 */
     fun minutesUntilNext(): Int {

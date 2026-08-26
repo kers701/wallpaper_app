@@ -50,10 +50,9 @@ class WallhavenApi(
                 "${w}x${h}"
             }
         }
-        // 横屏过滤=只要竖屏；竖屏过滤=只要横屏；都开则不限（互相抵消）
-        val ratios: String? = when {
-            settings.filterLandscape && !settings.filterPortrait -> "portrait"
-            settings.filterPortrait && !settings.filterLandscape -> "landscape"
+        val ratios: String? = when (settings.orientationFilter) {
+            com.kers701.wallpaperc.domain.OrientationFilter.NoLandscape -> "portrait"
+            com.kers701.wallpaperc.domain.OrientationFilter.NoPortrait -> "landscape"
             else -> null
         }
 

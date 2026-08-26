@@ -40,6 +40,9 @@ import com.kers701.wallpaperc.domain.CategoryMode
 import com.kers701.wallpaperc.domain.Purity
 import com.kers701.wallpaperc.domain.ResolutionMode
 import com.kers701.wallpaperc.domain.UiTextColor
+import com.kers701.wallpaperc.domain.TranslateProvider
+import com.kers701.wallpaperc.domain.WallpaperFitMode
+import com.kers701.wallpaperc.domain.OrientationFilter
 import com.kers701.wallpaperc.domain.WallpaperTarget
 import com.kers701.wallpaperc.ui.LocalUiTextColor
 import com.kers701.wallpaperc.ui.MainViewModel
@@ -61,10 +64,18 @@ fun SettingsScreen(vm: MainViewModel) {
     var resMode by remember(settings.resolutionMode) { mutableStateOf(settings.resolutionMode) }
     var fgs by remember(settings.useForegroundService) { mutableStateOf(settings.useForegroundService) }
     var skipOff by remember(settings.skipWhenScreenOff) { mutableStateOf(settings.skipWhenScreenOff) }
-    var filterLand by remember(settings.filterLandscape) { mutableStateOf(settings.filterLandscape) }
-    var filterPort by remember(settings.filterPortrait) { mutableStateOf(settings.filterPortrait) }
-    var cropFill by remember(settings.cropFill) { mutableStateOf(settings.cropFill) }
+    var orientFilter by remember(settings.orientationFilter) { mutableStateOf(settings.orientationFilter) }
+    var fitMode by remember(settings.fitMode) { mutableStateOf(settings.fitMode) }
     var isolate by remember(settings.isolateHomeLock) { mutableStateOf(settings.isolateHomeLock) }
+    var liveWp by remember(settings.liveWallpaperEnabled) { mutableStateOf(settings.liveWallpaperEnabled) }
+    var transProv by remember(settings.translateProvider) { mutableStateOf(settings.translateProvider) }
+    var transKey by remember(settings.translateApiKey, keysVisible) {
+        mutableStateOf(if (keysVisible) settings.translateApiKey else "")
+    }
+    var transSecret by remember(settings.translateSecret, keysVisible) {
+        mutableStateOf(if (keysVisible) settings.translateSecret else "")
+    }
+    var transRegion by remember(settings.translateRegion) { mutableStateOf(settings.translateRegion) }
     var scrim by remember(settings.uiScrimAlpha) { mutableFloatStateOf(settings.uiScrimAlpha) }
     var cardA by remember(settings.uiCardAlpha) { mutableFloatStateOf(settings.uiCardAlpha) }
     var textColorOpt by remember(settings.uiTextColor) { mutableStateOf(settings.uiTextColor) }
@@ -146,10 +157,12 @@ fun SettingsScreen(vm: MainViewModel) {
 
         RowSwitch("强制前台服务", fgs) { fgs = it }
         RowSwitch("息屏时跳过", skipOff) { skipOff = it }
-        RowSwitch("横屏过滤（只保留竖屏）", filterLand) { filterLand = it }
-        RowSwitch("竖屏过滤（只保留横屏）", filterPort) { filterPort = it }
-        RowSwitch("壁纸裁切填充", cropFill) { cropFill = it }
-        RowSwitch("桌面锁屏隔离（各下一张）", isolate) { isolate = it }
+        EnumDropdown("方向过滤", OrientationFilter.entries, orientFilter) { orientFilter = it }
+        EnumDropdown("壁纸铺满方式", WallpaperFitMode.entries, fitMode) { fitMode = it }
+        Text("填充=等比铺满（Windows 填充）；适应=完整显示；拉伸=强制铺满", style = MaterialTheme.typography.bodySmall)
+        RowSwitch("桌面锁屏隔离（先桌面再锁屏，两次下载）", isolate) { isolate = it }
+        RowSwitch("动态视频壁纸（本地 live_wallpaper 目录）", liveWp) { liveWp = it }
+        Text("开启后：把 mp4 放入 App 私有 live_wallpaper/，再在系统「动态壁纸」中选择本应用", style = MaterialTheme.typography.bodySmall)
 
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
         Text("界面外观", style = MaterialTheme.typography.titleMedium)
@@ -158,6 +171,40 @@ fun SettingsScreen(vm: MainViewModel) {
         Text("卡片透明度：${"%.0f".format(cardA * 100)}%（越高越实）", style = MaterialTheme.typography.bodySmall)
         Slider(value = cardA, onValueChange = { cardA = it }, valueRange = 0.05f..0.65f)
         EnumDropdown("文字颜色", UiTextColor.entries, textColorOpt) { textColorOpt = it }
+
+        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+        Text("关键词翻译（仅展示/日志）", style = MaterialTheme.typography.titleMedium)
+        EnumDropdown("翻译引擎", TranslateProvider.entries, transProv) { transProv = it }
+        if (keysVisible) {
+            OutlinedTextField(
+                value = transKey,
+                onValueChange = { transKey = it },
+                label = { Text("API Key / SecretId") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+            if (transProv == TranslateProvider.Tencent) {
+                OutlinedTextField(
+                    value = transSecret,
+                    onValueChange = { transSecret = it },
+                    label = { Text("腾讯 SecretKey") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+            }
+            if (transProv == TranslateProvider.Microsoft) {
+                OutlinedTextField(
+                    value = transRegion,
+                    onValueChange = { transRegion = it },
+                    label = { Text("微软 Region（如 global / eastasia）") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+            }
+        } else {
+            LockedField("翻译 API 密钥")
+        }
+        Text("翻译结果只显示在首页跃迁列表与状态，不改变实际搜索词", style = MaterialTheme.typography.bodySmall)
 
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
         Text("软件背景", style = MaterialTheme.typography.titleMedium)
@@ -383,10 +430,14 @@ fun SettingsScreen(vm: MainViewModel) {
                         resolutionMode = resMode,
                         useForegroundService = fgs,
                         skipWhenScreenOff = skipOff,
-                        filterLandscape = filterLand,
-                        filterPortrait = filterPort,
-                        cropFill = cropFill,
+                        orientationFilter = orientFilter,
+                        fitMode = fitMode,
                         isolateHomeLock = isolate,
+                        liveWallpaperEnabled = liveWp,
+                        translateProvider = transProv,
+                        translateApiKey = if (keysVisible) transKey.trim() else settings.translateApiKey,
+                        translateSecret = if (keysVisible) transSecret.trim() else settings.translateSecret,
+                        translateRegion = transRegion.trim().ifBlank { "global" },
                         uiScrimAlpha = scrim,
                         uiCardAlpha = cardA,
                         uiTextColor = textColorOpt,
@@ -447,6 +498,9 @@ private fun <T> EnumDropdown(
             is ResolutionMode -> it.label
             is BgMode -> it.label
             is UiTextColor -> it.label
+            is OrientationFilter -> it.label
+            is WallpaperFitMode -> it.label
+            is TranslateProvider -> it.label
             else -> it.toString()
         }
     },

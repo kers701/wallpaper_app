@@ -10,6 +10,7 @@ import com.kers701.wallpaperc.data.remote.WallhavenApi
 import com.kers701.wallpaperc.data.wallpaper.SystemWallpaperSetter
 import com.kers701.wallpaperc.domain.AppSettings
 import com.kers701.wallpaperc.domain.ChangeResult
+import com.kers701.wallpaperc.data.translate.KeywordTranslator
 import com.kers701.wallpaperc.domain.WallpaperChanger
 import com.kers701.wallpaperc.service.WallpaperForegroundService
 import com.kers701.wallpaperc.util.PinSecurity
@@ -27,6 +28,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val dao = WallpaperDatabase.get(app).dao()
     private val api = WallhavenApi()
     private val localStore = LocalFallbackStore(app)
+    private val translator = KeywordTranslator()
     private val changer = WallpaperChanger(
         context = app,
         settingsRepo = settingsRepo,
@@ -38,6 +40,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     val settings: StateFlow<AppSettings> = settingsRepo.settingsFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AppSettings())
+
+    init {
+        viewModelScope.launch {
+            settingsRepo.settingsFlow.collect { s ->
+                refreshJumpTranslation(s)
+            }
+        }
+    }
+
+    private suspend fun refreshJumpTranslation(s: AppSettings) {
+        if (s.jumpKeywords.isEmpty() || s.translateProvider.name == "Off") {
+            _jumpKeywordsZh.value = emptyMap()
+            return
+        }
+        _jumpKeywordsZh.value = translator.translateList(s.jumpKeywords, s)
+    }
 
     val recent = dao.recent(30)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -53,6 +71,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _probing = MutableStateFlow(false)
     val probing: StateFlow<Boolean> = _probing.asStateFlow()
+
+    private val _jumpKeywordsZh = MutableStateFlow<Map<String, String>>(emptyMap())
+    val jumpKeywordsZh: StateFlow<Map<String, String>> = _jumpKeywordsZh.asStateFlow()
 
     /** 会话内是否已解锁（进程重启后需重新输入 PIN） */
     private val _unlocked = MutableStateFlow(false)

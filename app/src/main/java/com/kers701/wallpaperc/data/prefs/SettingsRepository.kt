@@ -14,6 +14,9 @@ import com.kers701.wallpaperc.domain.AppSettings
 import com.kers701.wallpaperc.domain.BgMode
 import com.kers701.wallpaperc.domain.CategoryMode
 import com.kers701.wallpaperc.domain.Purity
+import com.kers701.wallpaperc.domain.TranslateProvider
+import com.kers701.wallpaperc.domain.WallpaperFitMode
+import com.kers701.wallpaperc.domain.OrientationFilter
 import com.kers701.wallpaperc.domain.ResolutionMode
 import com.kers701.wallpaperc.domain.UiTextColor
 import com.kers701.wallpaperc.domain.WallpaperTarget
@@ -35,10 +38,14 @@ class SettingsRepository(private val context: Context) {
         val MIN_H = intPreferencesKey("min_height")
         val FGS = booleanPreferencesKey("use_fgs")
         val SKIP_OFF = booleanPreferencesKey("skip_screen_off")
-        val FILTER_LAND = booleanPreferencesKey("filter_landscape")
-        val FILTER_PORT = booleanPreferencesKey("filter_portrait")
-        val CROP_FILL = booleanPreferencesKey("crop_fill")
+        val ORIENT_FILTER = stringPreferencesKey("orientation_filter")
+        val FIT_MODE = stringPreferencesKey("fit_mode")
         val ISOLATE_HL = booleanPreferencesKey("isolate_home_lock")
+        val LIVE_WP = booleanPreferencesKey("live_wallpaper")
+        val TRANS_PROVIDER = stringPreferencesKey("translate_provider")
+        val TRANS_KEY = stringPreferencesKey("translate_api_key")
+        val TRANS_SECRET = stringPreferencesKey("translate_secret")
+        val TRANS_REGION = stringPreferencesKey("translate_region")
         val UI_SCRIM = floatPreferencesKey("ui_scrim_alpha")
         val UI_CARD = floatPreferencesKey("ui_card_alpha")
         val UI_TEXT = stringPreferencesKey("ui_text_color")
@@ -84,10 +91,14 @@ class SettingsRepository(private val context: Context) {
             minHeight = p[Keys.MIN_H] ?: 1920,
             useForegroundService = p[Keys.FGS] ?: false,
             skipWhenScreenOff = p[Keys.SKIP_OFF] ?: false,
-            filterLandscape = p[Keys.FILTER_LAND] ?: false,
-            filterPortrait = p[Keys.FILTER_PORT] ?: false,
-            cropFill = p[Keys.CROP_FILL] ?: true,
+            orientationFilter = OrientationFilter.fromCode(p[Keys.ORIENT_FILTER] ?: "none"),
+            fitMode = WallpaperFitMode.fromCode(p[Keys.FIT_MODE] ?: "fill"),
             isolateHomeLock = p[Keys.ISOLATE_HL] ?: false,
+            liveWallpaperEnabled = p[Keys.LIVE_WP] ?: false,
+            translateProvider = TranslateProvider.fromCode(p[Keys.TRANS_PROVIDER] ?: "off"),
+            translateApiKey = p[Keys.TRANS_KEY] ?: "",
+            translateSecret = p[Keys.TRANS_SECRET] ?: "",
+            translateRegion = p[Keys.TRANS_REGION] ?: "global",
             uiScrimAlpha = (p[Keys.UI_SCRIM] ?: 0.52f).coerceIn(0.15f, 0.85f),
             uiCardAlpha = (p[Keys.UI_CARD] ?: 0.28f).coerceIn(0f, 0.7f),
             uiTextColor = UiTextColor.fromCode(p[Keys.UI_TEXT] ?: "white"),
@@ -127,10 +138,14 @@ class SettingsRepository(private val context: Context) {
             p[Keys.MIN_H] = settings.minHeight
             p[Keys.FGS] = settings.useForegroundService
             p[Keys.SKIP_OFF] = settings.skipWhenScreenOff
-            p[Keys.FILTER_LAND] = settings.filterLandscape
-            p[Keys.FILTER_PORT] = settings.filterPortrait
-            p[Keys.CROP_FILL] = settings.cropFill
+            p[Keys.ORIENT_FILTER] = settings.orientationFilter.code
+            p[Keys.FIT_MODE] = settings.fitMode.code
             p[Keys.ISOLATE_HL] = settings.isolateHomeLock
+            p[Keys.LIVE_WP] = settings.liveWallpaperEnabled
+            p[Keys.TRANS_PROVIDER] = settings.translateProvider.code
+            p[Keys.TRANS_KEY] = settings.translateApiKey
+            p[Keys.TRANS_SECRET] = settings.translateSecret
+            p[Keys.TRANS_REGION] = settings.translateRegion
             p[Keys.UI_SCRIM] = settings.uiScrimAlpha.coerceIn(0.15f, 0.85f)
             p[Keys.UI_CARD] = settings.uiCardAlpha.coerceIn(0f, 0.7f)
             p[Keys.UI_TEXT] = settings.uiTextColor.code
