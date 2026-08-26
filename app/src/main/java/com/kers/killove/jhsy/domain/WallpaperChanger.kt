@@ -344,6 +344,7 @@ class WallpaperChanger(
             settingsRepo.setLastCategory(category)
         }
 
+        // 跃迁：用本图标签覆盖跃迁列表，但排除「本次搜索用过的关键词」，避免原地打转
         if (fromWallhaven && item.source == "wallhaven") {
             var tags = item.tags
             if (tags.isEmpty()) {
@@ -351,8 +352,11 @@ class WallpaperChanger(
                     api.fetchWallpaperTags(item.id, settings.nextApiKey())
                 }.getOrDefault(emptyList())
             }
-            val cleaned = tags.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
-            if (cleaned.isNotEmpty()) settingsRepo.setJumpKeywords(cleaned)
+            val cleaned = filterJumpTags(tags, usedKeyword)
+            if (cleaned.isNotEmpty()) {
+                settingsRepo.setJumpKeywords(cleaned)
+            }
+            // 若过滤后为空：不覆盖旧跃迁列表，避免被清空后无法继续跃迁
         }
 
         // 非隔离路径才在这里 +1；隔离在外层 +2
@@ -369,7 +373,27 @@ class WallpaperChanger(
         )
     }
 
-    /** offset=0 当前词，offset=1 下一个词（隔离第二张） */
+
+    /**
+     * 跃迁标签清洗：去空、去重，并忽略与本次搜索词相同的标签（大小写不敏感）。
+     * 多词搜索（如 "red car"）时，整句与分词都会排除。
+     */
+    private fun filterJumpTags(tags: List<String>, usedKeyword: String?): List<String> {
+        val exclude = mutableSetOf<String>()
+        val raw = usedKeyword?.trim().orEmpty()
+        if (raw.isNotEmpty()) {
+            exclude += raw.lowercase()
+            raw.split(Regex("\\s+")).map { it.trim().lowercase() }.filter { it.isNotEmpty() }
+                .forEach { exclude += it }
+        }
+        return tags.asSequence()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .filter { it.lowercase() !in exclude }
+            .distinct()
+            .toList()
+    }
+
     private fun pickKeyword(settings: AppSettings, offset: Int): String? {
         if (!settings.useKeywords) return null
         val list = settings.activeKeywords()
