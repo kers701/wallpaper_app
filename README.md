@@ -10,9 +10,7 @@
 | 包名 | `com.kers.killove.jhsy` |
 | 正式版 | **v1.01**（versionCode `101`） |
 | 最低系统 | Android 8.0（API 26） |
-| 目标 SDK | 35 |
-
----
+| 目标 SDK | 35 
 
 ## 功能概览
 
