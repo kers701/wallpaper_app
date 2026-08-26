@@ -24,6 +24,8 @@ class WallpaperChanger(
     private val dao: WallpaperDao,
     private val localStore: LocalFallbackStore = LocalFallbackStore(context)
 ) {
+    private val pageCache by lazy { PageCacheStore.from(context) }
+
     companion object {
         private const val CACHE_LIMIT_BYTES = 10L * 1024 * 1024 * 1024 // 10GB
         private const val HISTORY_KEEP = 77
