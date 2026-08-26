@@ -13,13 +13,8 @@ android {
         applicationId = "com.kers.killove.jhsy"
         minSdk = 26
         targetSdk = 35
-<<<<<<< HEAD
         versionCode = 200
         versionName = "2.0.0"
-=======
-        versionCode = 106
-        versionName = "1.06"
->>>>>>> origin/main
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

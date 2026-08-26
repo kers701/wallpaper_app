@@ -11,10 +11,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-<<<<<<< HEAD
 import androidx.compose.material3.Checkbox
-=======
->>>>>>> origin/main
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -28,10 +25,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-<<<<<<< HEAD
 import androidx.compose.runtime.LaunchedEffect
-=======
->>>>>>> origin/main
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -39,10 +33,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-<<<<<<< HEAD
 import androidx.compose.ui.Alignment
-=======
->>>>>>> origin/main
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -541,7 +532,6 @@ fun SettingsScreen(vm: MainViewModel) {
         )
         Text("当前：${vm.localFallbackInfo()}", style = MaterialTheme.typography.bodySmall)
 
-<<<<<<< HEAD
 
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
         Text("应用黑名单", style = MaterialTheme.typography.titleMedium)
@@ -581,8 +571,6 @@ fun SettingsScreen(vm: MainViewModel) {
             Text("仅显示前 80 个应用，可用搜索后续版本完善", style = MaterialTheme.typography.bodySmall)
         }
 
-=======
->>>>>>> origin/main
         Button(
             onClick = {
                 val keys = if (keysVisible) SettingsRepository.splitLines(apiKeysText) else settings.apiKeys

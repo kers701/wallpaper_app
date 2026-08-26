@@ -169,7 +169,6 @@ data class AppSettings(
     val lastChangeAt: Long = 0L,
 
     val pinHash: String = "",
-<<<<<<< HEAD
     val pinEnabled: Boolean = false,
 
     /** 前台黑名单包名：这些应用在前台时休眠不换壁纸 */
@@ -178,9 +177,6 @@ data class AppSettings(
     val overviewMinimalMode: Boolean = false,
     /** 累计成功更换次数 */
     val changeCount: Long = 0L
-=======
-    val pinEnabled: Boolean = false
->>>>>>> origin/main
 ) {
     fun nextApiKey(): String? {
         val keys = apiKeys.map { it.trim() }.filter { it.isNotEmpty() }
@@ -215,15 +211,12 @@ data class AppSettings(
         if (remain <= 0) return 0
         return ((remain + 59_999) / 60_000).toInt()
     }
-<<<<<<< HEAD
 
     /** 下次更换时间戳；无效返回 0 */
     fun nextChangeAt(): Long {
         if (!enabled || lastChangeAt <= 0L) return 0L
         return lastChangeAt + intervalMinutes.coerceIn(5, 180) * 60_000L
     }
-=======
->>>>>>> origin/main
 }
 
 data class WallpaperItem(

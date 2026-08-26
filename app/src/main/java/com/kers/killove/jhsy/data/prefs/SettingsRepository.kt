@@ -73,12 +73,9 @@ class SettingsRepository(private val context: Context) {
         val LAST_CHANGE_AT = longPreferencesKey("last_change_at")
         val PIN_HASH = stringPreferencesKey("pin_hash")
         val PIN_ENABLED = booleanPreferencesKey("pin_enabled")
-<<<<<<< HEAD
         val BLACKLIST = stringPreferencesKey("blacklist_packages")
         val OVERVIEW_MINIMAL = booleanPreferencesKey("overview_minimal")
         val CHANGE_COUNT = longPreferencesKey("change_count")
-=======
->>>>>>> origin/main
         val LEGACY_API_KEY = stringPreferencesKey("api_key")
         val LEGACY_FALLBACK = booleanPreferencesKey("fallback")
     }
@@ -133,14 +130,10 @@ class SettingsRepository(private val context: Context) {
             keywordIndex = p[Keys.KEYWORD_INDEX] ?: 0,
             lastChangeAt = p[Keys.LAST_CHANGE_AT] ?: 0L,
             pinHash = p[Keys.PIN_HASH] ?: "",
-<<<<<<< HEAD
             pinEnabled = p[Keys.PIN_ENABLED] ?: false,
             blacklistPackages = splitLines(p[Keys.BLACKLIST] ?: ""),
             overviewMinimalMode = p[Keys.OVERVIEW_MINIMAL] ?: false,
             changeCount = p[Keys.CHANGE_COUNT] ?: 0L
-=======
-            pinEnabled = p[Keys.PIN_ENABLED] ?: false
->>>>>>> origin/main
         )
     }
 
@@ -190,12 +183,9 @@ class SettingsRepository(private val context: Context) {
             p[Keys.LAST_CHANGE_AT] = settings.lastChangeAt
             p[Keys.PIN_HASH] = settings.pinHash
             p[Keys.PIN_ENABLED] = settings.pinEnabled
-<<<<<<< HEAD
             p[Keys.BLACKLIST] = settings.blacklistPackages.joinToString("\n")
             p[Keys.OVERVIEW_MINIMAL] = settings.overviewMinimalMode
             p[Keys.CHANGE_COUNT] = settings.changeCount
-=======
->>>>>>> origin/main
         }
         ProcessBridgePrefs.sync(context, settings)
     }
@@ -227,15 +217,12 @@ class SettingsRepository(private val context: Context) {
         context.dataStore.edit { it[Keys.LAST_CHANGE_AT] = ts }
     }
 
-<<<<<<< HEAD
     suspend fun incrementChangeCount() {
         context.dataStore.edit { p ->
             p[Keys.CHANGE_COUNT] = (p[Keys.CHANGE_COUNT] ?: 0L) + 1L
         }
     }
 
-=======
->>>>>>> origin/main
     companion object {
         fun splitLines(raw: String): List<String> =
             raw.split('\n', ',', ';')
