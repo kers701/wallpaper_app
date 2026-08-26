@@ -12,18 +12,44 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.kers701.wallpaperc.ui.LocalCardAlpha
+import com.kers701.wallpaperc.ui.LocalUiTextColor
 import com.kers701.wallpaperc.ui.MainViewModel
+import kotlinx.coroutines.delay
+
+@Composable
+fun GlassCard(
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    val alpha = LocalCardAlpha.current
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = Color.Black.copy(alpha = alpha),
+            contentColor = LocalUiTextColor.current
+        )
+    ) {
+        content()
+    }
+}
 
 @Composable
 fun HomeScreen(vm: MainViewModel) {
@@ -32,6 +58,15 @@ fun HomeScreen(vm: MainViewModel) {
     val busy by vm.busy.collectAsState()
     val networkProbe by vm.networkProbe.collectAsState()
     val probing by vm.probing.collectAsState()
+    val textColor = LocalUiTextColor.current
+
+    var remainMin by remember { mutableIntStateOf(settings.minutesUntilNext()) }
+    LaunchedEffect(settings.enabled, settings.lastChangeAt, settings.intervalMinutes) {
+        while (true) {
+            remainMin = settings.minutesUntilNext()
+            delay(15_000)
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -40,23 +75,33 @@ fun HomeScreen(vm: MainViewModel) {
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text("化云烟", style = MaterialTheme.typography.headlineMedium)
+        Text("化云烟", style = MaterialTheme.typography.headlineMedium, color = textColor)
         Text(
             "化云烟 · 自动更换壁纸",
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = textColor.copy(alpha = 0.8f)
         )
 
-        Card(modifier = Modifier.fillMaxWidth()) {
+        GlassCard {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 RowSwitch(
                     title = "自动更换",
                     checked = settings.enabled,
                     onChecked = { vm.setEnabled(it) }
                 )
-                Text("间隔：${settings.intervalMinutes} 分钟")
-                Text("纯度：${settings.purity.label} · 类别：${settings.categoryMode.label}")
-                Text("目标：${settings.target.label}")
+                Text("间隔：${settings.intervalMinutes} 分钟", color = textColor)
+                Text(
+                    when {
+                        !settings.enabled -> "距下次更换：未开启"
+                        remainMin < 0 -> "距下次更换：等待首次更换"
+                        remainMin == 0 -> "距下次更换：即将更换 / 已到期"
+                        else -> "距下次更换还有 $remainMin 分钟"
+                    },
+                    color = textColor,
+                    style = MaterialTheme.typography.titleSmall
+                )
+                Text("纯度：${settings.purity.label} · 类别：${settings.categoryMode.label}", color = textColor)
+                Text("目标：${settings.target.label}" + if (settings.isolateHomeLock) " · 桌面锁屏隔离" else "", color = textColor)
                 Text(
                     buildString {
                         append("关键词：")
@@ -67,79 +112,44 @@ fun HomeScreen(vm: MainViewModel) {
                             append("${settings.keywords.size} 个")
                         else append("空")
                         append(" · 密钥：${settings.apiKeys.size} 个")
-                    }
-                )
-                Text(
-                    buildString {
-                        append("兜底：")
-                        if (settings.forceLocalMode) append("强制本地")
-                        else {
-                            if (settings.networkFallbackEnabled) append("网络")
-                            if (settings.localFallbackEnabled) {
-                                if (settings.networkFallbackEnabled) append("+")
-                                append("本地")
-                            }
-                            if (!settings.networkFallbackEnabled && !settings.localFallbackEnabled) {
-                                append("关闭")
-                            }
-                        }
                     },
-                    style = MaterialTheme.typography.bodySmall
+                    color = textColor
                 )
-                if (settings.intervalMinutes < 15 || settings.useForegroundService) {
-                    Text(
-                        "当前使用前台服务（短间隔）",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
+                val orient = when {
+                    settings.filterLandscape && !settings.filterPortrait -> "仅竖屏"
+                    settings.filterPortrait && !settings.filterLandscape -> "仅横屏"
+                    else -> "横竖不限"
                 }
+                Text("分辨率：${settings.resolutionMode.label} · 方向：$orient", color = textColor, style = MaterialTheme.typography.bodySmall)
             }
         }
 
-        Card(modifier = Modifier.fillMaxWidth()) {
+        GlassCard {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("跃迁关键词", style = MaterialTheme.typography.titleMedium)
+                Text("跃迁关键词", style = MaterialTheme.typography.titleMedium, color = textColor)
                 Text(
                     when {
-                        !settings.jumpModeEnabled -> "跃迁模式：关闭（使用普通关键词列表）"
-                        settings.jumpKeywords.isEmpty() -> "跃迁模式：开启 · 列表为空（下次 Wallhaven 成功后会自动写入标签）"
-                        else -> "跃迁模式：开启 · 共 ${settings.jumpKeywords.size} 个（覆盖写入，非追加）"
+                        !settings.jumpModeEnabled -> "跃迁模式：关闭"
+                        settings.jumpKeywords.isEmpty() -> "跃迁模式：开启 · 列表为空"
+                        else -> "跃迁模式：开启 · 共 ${settings.jumpKeywords.size} 个"
                     },
-                    style = MaterialTheme.typography.bodySmall
+                    style = MaterialTheme.typography.bodySmall,
+                    color = textColor.copy(alpha = 0.85f)
                 )
                 if (settings.jumpKeywords.isNotEmpty()) {
-                    Text(
-                        settings.jumpKeywords.joinToString("、"),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+                    Text(settings.jumpKeywords.joinToString("、"), color = textColor)
                     val list = settings.jumpKeywords
                     val idx = settings.jumpKeywordIndex.mod(list.size)
-                    Text(
-                        "下次将用：${list[idx]}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                } else if (settings.useKeywords && settings.keywords.isNotEmpty() && !settings.jumpModeEnabled) {
-                    val list = settings.keywords
-                    val idx = settings.keywordIndex.mod(list.size)
-                    Text(
-                        "普通关键词 ${list.size} 个 · 下次将用：${list[idx]}",
-                        style = MaterialTheme.typography.bodySmall
-                    )
+                    Text("下次将用：${list[idx]}", color = textColor, style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
 
-        Card(modifier = Modifier.fillMaxWidth()) {
+        GlassCard {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("网络检测", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    networkProbe,
-                    style = MaterialTheme.typography.bodySmall
-                )
-                if (probing) {
-                    CircularProgressIndicator()
-                }
+                Text("网络检测", style = MaterialTheme.typography.titleMedium, color = textColor)
+                Text(networkProbe, style = MaterialTheme.typography.bodySmall, color = textColor.copy(alpha = 0.9f))
+                if (probing) CircularProgressIndicator(color = textColor)
                 OutlinedButton(
                     onClick = { vm.testNetwork() },
                     enabled = !probing && !busy,
@@ -150,15 +160,15 @@ fun HomeScreen(vm: MainViewModel) {
             }
         }
 
-        Card(modifier = Modifier.fillMaxWidth()) {
+        GlassCard {
             Column(Modifier.padding(16.dp)) {
-                Text("状态", style = MaterialTheme.typography.titleMedium)
+                Text("状态", style = MaterialTheme.typography.titleMedium, color = textColor)
                 Spacer(Modifier.height(8.dp))
                 if (busy) {
-                    CircularProgressIndicator()
+                    CircularProgressIndicator(color = textColor)
                     Spacer(Modifier.height(8.dp))
                 }
-                Text(status)
+                Text(status, color = textColor)
             }
         }
 
@@ -174,12 +184,13 @@ fun HomeScreen(vm: MainViewModel) {
 
 @Composable
 fun RowSwitch(title: String, checked: Boolean, onChecked: (Boolean) -> Unit) {
+    val textColor = LocalUiTextColor.current
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+        Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f), color = textColor)
         Switch(checked = checked, onCheckedChange = onChecked)
     }
 }

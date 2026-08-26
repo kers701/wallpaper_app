@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -14,6 +15,7 @@ import com.kers701.wallpaperc.domain.BgMode
 import com.kers701.wallpaperc.domain.CategoryMode
 import com.kers701.wallpaperc.domain.Purity
 import com.kers701.wallpaperc.domain.ResolutionMode
+import com.kers701.wallpaperc.domain.UiTextColor
 import com.kers701.wallpaperc.domain.WallpaperTarget
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -33,6 +35,13 @@ class SettingsRepository(private val context: Context) {
         val MIN_H = intPreferencesKey("min_height")
         val FGS = booleanPreferencesKey("use_fgs")
         val SKIP_OFF = booleanPreferencesKey("skip_screen_off")
+        val FILTER_LAND = booleanPreferencesKey("filter_landscape")
+        val FILTER_PORT = booleanPreferencesKey("filter_portrait")
+        val CROP_FILL = booleanPreferencesKey("crop_fill")
+        val ISOLATE_HL = booleanPreferencesKey("isolate_home_lock")
+        val UI_SCRIM = floatPreferencesKey("ui_scrim_alpha")
+        val UI_CARD = floatPreferencesKey("ui_card_alpha")
+        val UI_TEXT = stringPreferencesKey("ui_text_color")
         val API_KEYS = stringPreferencesKey("api_keys")
         val API_KEY_INDEX = intPreferencesKey("api_key_index")
         val KEYWORDS = stringPreferencesKey("keywords")
@@ -59,11 +68,7 @@ class SettingsRepository(private val context: Context) {
     }
 
     val settingsFlow: Flow<AppSettings> = context.dataStore.data.map { p ->
-        val keysRaw = p[Keys.API_KEYS]
-            ?: p[Keys.LEGACY_API_KEY]
-            ?: ""
-        val keywordsRaw = p[Keys.KEYWORDS] ?: ""
-        val jumpKwRaw = p[Keys.JUMP_KEYWORDS] ?: ""
+        val keysRaw = p[Keys.API_KEYS] ?: p[Keys.LEGACY_API_KEY] ?: ""
         AppSettings(
             enabled = p[Keys.ENABLED] ?: false,
             intervalMinutes = p[Keys.INTERVAL] ?: 10,
@@ -79,17 +84,22 @@ class SettingsRepository(private val context: Context) {
             minHeight = p[Keys.MIN_H] ?: 1920,
             useForegroundService = p[Keys.FGS] ?: false,
             skipWhenScreenOff = p[Keys.SKIP_OFF] ?: false,
+            filterLandscape = p[Keys.FILTER_LAND] ?: false,
+            filterPortrait = p[Keys.FILTER_PORT] ?: false,
+            cropFill = p[Keys.CROP_FILL] ?: true,
+            isolateHomeLock = p[Keys.ISOLATE_HL] ?: false,
+            uiScrimAlpha = (p[Keys.UI_SCRIM] ?: 0.52f).coerceIn(0.15f, 0.85f),
+            uiCardAlpha = (p[Keys.UI_CARD] ?: 0.28f).coerceIn(0f, 0.7f),
+            uiTextColor = UiTextColor.fromCode(p[Keys.UI_TEXT] ?: "white"),
             apiKeys = splitLines(keysRaw),
             apiKeyIndex = p[Keys.API_KEY_INDEX] ?: 0,
-            keywords = splitLines(keywordsRaw),
+            keywords = splitLines(p[Keys.KEYWORDS] ?: ""),
             keywordsRemoteUrl = p[Keys.KEYWORDS_URL] ?: "",
             useKeywords = p[Keys.USE_KEYWORDS] ?: true,
             jumpModeEnabled = p[Keys.JUMP_MODE] ?: false,
-            jumpKeywords = splitLines(jumpKwRaw),
+            jumpKeywords = splitLines(p[Keys.JUMP_KEYWORDS] ?: ""),
             jumpKeywordIndex = p[Keys.JUMP_KEYWORD_INDEX] ?: 0,
-            networkFallbackEnabled = p[Keys.NET_FALLBACK]
-                ?: p[Keys.LEGACY_FALLBACK]
-                ?: true,
+            networkFallbackEnabled = p[Keys.NET_FALLBACK] ?: p[Keys.LEGACY_FALLBACK] ?: true,
             fallbackApiUrl = p[Keys.FALLBACK_API] ?: "",
             localFallbackEnabled = p[Keys.LOCAL_FALLBACK] ?: true,
             forceLocalMode = p[Keys.FORCE_LOCAL] ?: false,
@@ -117,6 +127,13 @@ class SettingsRepository(private val context: Context) {
             p[Keys.MIN_H] = settings.minHeight
             p[Keys.FGS] = settings.useForegroundService
             p[Keys.SKIP_OFF] = settings.skipWhenScreenOff
+            p[Keys.FILTER_LAND] = settings.filterLandscape
+            p[Keys.FILTER_PORT] = settings.filterPortrait
+            p[Keys.CROP_FILL] = settings.cropFill
+            p[Keys.ISOLATE_HL] = settings.isolateHomeLock
+            p[Keys.UI_SCRIM] = settings.uiScrimAlpha.coerceIn(0.15f, 0.85f)
+            p[Keys.UI_CARD] = settings.uiCardAlpha.coerceIn(0f, 0.7f)
+            p[Keys.UI_TEXT] = settings.uiTextColor.code
             p[Keys.API_KEYS] = settings.apiKeys.joinToString("\n")
             p[Keys.API_KEY_INDEX] = settings.apiKeyIndex
             p[Keys.KEYWORDS] = settings.keywords.joinToString("\n")
@@ -141,10 +158,6 @@ class SettingsRepository(private val context: Context) {
         }
     }
 
-    suspend fun setEnabled(enabled: Boolean) {
-        context.dataStore.edit { it[Keys.ENABLED] = enabled }
-    }
-
     suspend fun setLastCategory(code: String) {
         context.dataStore.edit { it[Keys.LAST_CAT] = code }
     }
@@ -166,12 +179,6 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setApiKeyIndex(index: Int) {
         context.dataStore.edit { it[Keys.API_KEY_INDEX] = index }
-    }
-
-    suspend fun setKeywords(list: List<String>) {
-        context.dataStore.edit {
-            it[Keys.KEYWORDS] = list.joinToString("\n")
-        }
     }
 
     suspend fun setLastChangeAt(ts: Long) {

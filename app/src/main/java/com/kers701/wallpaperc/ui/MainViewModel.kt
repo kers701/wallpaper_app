@@ -106,7 +106,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     val extra = if (r.item.source == "local" && r.item.category.startsWith("local←")) {
                         " · 原因：${r.item.category.removePrefix("local←")}"
                     } else ""
-                    _status.value = "已设置 [${r.item.source}] ${r.item.id} $res$extra"
+                    val d = if (r.detail.isNotBlank()) " · ${r.detail}" else ""
+                    _status.value = "已设置 [${r.item.source}] ${r.item.id} $res$extra$d"
                 }
                 is ChangeResult.Failure ->
                     _status.value = "失败：${r.message}"
@@ -245,27 +246,30 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 "Wallhaven：失败 ${wh.latencyMs} ms · ${wh.detail}"
             }
 
-            // 兜底 API
-            val fb = s.fallbackApiUrl.trim()
-            if (fb.isBlank()) {
-                lines += "兜底 API：未配置"
+            // 兜底 API（支持多行多个）
+            val fbList = s.fallbackApiUrls()
+            if (fbList.isEmpty()) {
+                lines += "兜底 API：未配置有效 URL"
             } else {
-                val url = fb
-                    .replace("{width}", s.minWidth.toString())
-                    .replace("{height}", s.minHeight.toString())
-                    .replace("{w}", s.minWidth.toString())
-                    .replace("{h}", s.minHeight.toString())
-                val r = api.probeUrl("兜底 API", url)
-                lines += if (r.ok) {
-                    "兜底 API：${r.latencyMs} ms · ${r.detail}"
-                } else {
-                    "兜底 API：失败 ${r.latencyMs} ms · ${r.detail}"
+                lines += "兜底 API：共 ${fbList.size} 个"
+                for ((i, raw) in fbList.withIndex()) {
+                    val url = raw
+                        .replace("{width}", s.minWidth.toString())
+                        .replace("{height}", s.minHeight.toString())
+                        .replace("{w}", s.minWidth.toString())
+                        .replace("{h}", s.minHeight.toString())
+                    val r = api.probeUrl("兜底#${i + 1}", url)
+                    lines += if (r.ok) {
+                        "  #${i + 1}：${r.latencyMs} ms · ${r.detail}"
+                    } else {
+                        "  #${i + 1}：失败 ${r.latencyMs} ms · ${r.detail}"
+                    }
                 }
             }
 
-            // 背景 API（若与兜底不同）
+            // 背景 API（若与任一兜底不同）
             val bg = s.bgApiUrl.trim()
-            if (bg.isNotBlank() && bg != fb) {
+            if (bg.isNotBlank() && bg !in fbList) {
                 val r = api.probeUrl("背景 API", bg)
                 lines += if (r.ok) {
                     "背景 API：${r.latencyMs} ms · ${r.detail}"

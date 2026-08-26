@@ -39,7 +39,9 @@ import com.kers701.wallpaperc.domain.BgMode
 import com.kers701.wallpaperc.domain.CategoryMode
 import com.kers701.wallpaperc.domain.Purity
 import com.kers701.wallpaperc.domain.ResolutionMode
+import com.kers701.wallpaperc.domain.UiTextColor
 import com.kers701.wallpaperc.domain.WallpaperTarget
+import com.kers701.wallpaperc.ui.LocalUiTextColor
 import com.kers701.wallpaperc.ui.MainViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -59,6 +61,13 @@ fun SettingsScreen(vm: MainViewModel) {
     var resMode by remember(settings.resolutionMode) { mutableStateOf(settings.resolutionMode) }
     var fgs by remember(settings.useForegroundService) { mutableStateOf(settings.useForegroundService) }
     var skipOff by remember(settings.skipWhenScreenOff) { mutableStateOf(settings.skipWhenScreenOff) }
+    var filterLand by remember(settings.filterLandscape) { mutableStateOf(settings.filterLandscape) }
+    var filterPort by remember(settings.filterPortrait) { mutableStateOf(settings.filterPortrait) }
+    var cropFill by remember(settings.cropFill) { mutableStateOf(settings.cropFill) }
+    var isolate by remember(settings.isolateHomeLock) { mutableStateOf(settings.isolateHomeLock) }
+    var scrim by remember(settings.uiScrimAlpha) { mutableFloatStateOf(settings.uiScrimAlpha) }
+    var cardA by remember(settings.uiCardAlpha) { mutableFloatStateOf(settings.uiCardAlpha) }
+    var textColorOpt by remember(settings.uiTextColor) { mutableStateOf(settings.uiTextColor) }
     var minW by remember(settings.minWidth) { mutableStateOf(settings.minWidth.toString()) }
     var minH by remember(settings.minHeight) { mutableStateOf(settings.minHeight.toString()) }
 
@@ -137,6 +146,18 @@ fun SettingsScreen(vm: MainViewModel) {
 
         RowSwitch("强制前台服务", fgs) { fgs = it }
         RowSwitch("息屏时跳过", skipOff) { skipOff = it }
+        RowSwitch("横屏过滤（只保留竖屏）", filterLand) { filterLand = it }
+        RowSwitch("竖屏过滤（只保留横屏）", filterPort) { filterPort = it }
+        RowSwitch("壁纸裁切填充", cropFill) { cropFill = it }
+        RowSwitch("桌面锁屏隔离（各下一张）", isolate) { isolate = it }
+
+        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+        Text("界面外观", style = MaterialTheme.typography.titleMedium)
+        Text("主题遮罩透明度：${"%.0f".format(scrim * 100)}%", style = MaterialTheme.typography.bodySmall)
+        Slider(value = scrim, onValueChange = { scrim = it }, valueRange = 0.15f..0.85f)
+        Text("卡片透明度：${"%.0f".format(cardA * 100)}%（越高越实）", style = MaterialTheme.typography.bodySmall)
+        Slider(value = cardA, onValueChange = { cardA = it }, valueRange = 0.05f..0.65f)
+        EnumDropdown("文字颜色", UiTextColor.entries, textColorOpt) { textColorOpt = it }
 
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
         Text("软件背景", style = MaterialTheme.typography.titleMedium)
@@ -322,13 +343,14 @@ fun SettingsScreen(vm: MainViewModel) {
             OutlinedTextField(
                 value = fallbackApi,
                 onValueChange = { fallbackApi = it },
-                label = { Text("兜底 API URL") },
+                label = { Text("兜底 API（每行一个，失败自动试下一个）") },
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("https://… 支持 {width}{height}") },
-                maxLines = 3
+                placeholder = { Text("https://… 支持 {width}{height}，多行多个") },
+                minLines = 2,
+                maxLines = 6
             )
             Text(
-                "响应可以是：直接图片、一行图片 URL、或含 path/url/image 的 JSON",
+                "每行一个 URL；响应可为直接图片、一行图片 URL、或含 path/url/image 的 JSON",
                 style = MaterialTheme.typography.bodySmall
             )
         } else {
@@ -361,6 +383,13 @@ fun SettingsScreen(vm: MainViewModel) {
                         resolutionMode = resMode,
                         useForegroundService = fgs,
                         skipWhenScreenOff = skipOff,
+                        filterLandscape = filterLand,
+                        filterPortrait = filterPort,
+                        cropFill = cropFill,
+                        isolateHomeLock = isolate,
+                        uiScrimAlpha = scrim,
+                        uiCardAlpha = cardA,
+                        uiTextColor = textColorOpt,
                         minWidth = minW.toIntOrNull() ?: settings.minWidth,
                         minHeight = minH.toIntOrNull() ?: settings.minHeight,
                         apiKeys = keys,
@@ -417,6 +446,7 @@ private fun <T> EnumDropdown(
             is WallpaperTarget -> it.label
             is ResolutionMode -> it.label
             is BgMode -> it.label
+            is UiTextColor -> it.label
             else -> it.toString()
         }
     },

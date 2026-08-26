@@ -30,8 +30,44 @@ class WallpaperChanger(
             return applyLocalFallback(settings, reason = "强制本地模式")
         }
 
+        // 桌面/锁屏隔离：各取一张
+        if (settings.isolateHomeLock &&
+            settings.target == WallpaperTarget.Both &&
+            BuildN()
+        ) {
+            val home = changeForTarget(settings, WallpaperTarget.Home)
+            if (home is ChangeResult.Failure) return home
+            val lock = changeForTarget(settings, WallpaperTarget.Lock)
+            return when {
+                lock is ChangeResult.Success && home is ChangeResult.Success ->
+                    ChangeResult.Success(
+                        lock.item,
+                        lock.localPath,
+                        detail = "桌面[${(home as ChangeResult.Success).item.id}] + 锁屏[${lock.item.id}]"
+                    )
+                lock is ChangeResult.Failure ->
+                    ChangeResult.Success(
+                        (home as ChangeResult.Success).item,
+                        home.localPath,
+                        detail = "桌面已设，锁屏失败：${lock.message}"
+                    )
+                else -> home
+            }
+        }
+
+        return changeForTarget(settings, settings.target)
+    }
+
+    private fun BuildN(): Boolean =
+        android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N
+
+    private suspend fun changeForTarget(
+        settings: AppSettings,
+        target: WallpaperTarget
+    ): ChangeResult {
         val category = api.nextCategory(settings)
         val keyword = pickKeyword(settings)
+        val (dw, dh) = setter.screenSize()
 
         var candidates: List<WallpaperItem> = emptyList()
         var lastError: String? = null
@@ -41,9 +77,11 @@ class WallpaperChanger(
 
         wallhavenTried = true
         try {
-            candidates = api.search(settings, category, keyword)
+            candidates = api.search(settings, category, keyword, page = 1, deviceWidth = dw, deviceHeight = dh)
+            candidates = filterOrientation(candidates, settings)
             if (candidates.isEmpty()) {
-                candidates = api.search(settings, category, keyword, page = 2)
+                candidates = api.search(settings, category, keyword, page = 2, deviceWidth = dw, deviceHeight = dh)
+                candidates = filterOrientation(candidates, settings)
             }
             fromWallhaven = candidates.isNotEmpty()
             if (candidates.isEmpty()) {
@@ -58,7 +96,8 @@ class WallpaperChanger(
                 settingsRepo.setApiKeyIndex(next)
                 try {
                     val retrySettings = settings.copy(apiKeyIndex = next)
-                    candidates = api.search(retrySettings, category, keyword)
+                    candidates = api.search(retrySettings, category, keyword, page = 1, deviceWidth = dw, deviceHeight = dh)
+                    candidates = filterOrientation(candidates, settings)
                     fromWallhaven = candidates.isNotEmpty()
                     if (fromWallhaven) {
                         lastError = null
@@ -74,71 +113,68 @@ class WallpaperChanger(
 
         if (candidates.isNotEmpty()) {
             val item = candidates.firstOrNull { !dao.exists(it.id) } ?: candidates.first()
-            when (val r = downloadAndSet(
-                item, settings, category,
-                fromWallhaven = fromWallhaven,
-                usedKeyword = keyword
-            )) {
+            when (val r = downloadAndSet(item, settings, category, fromWallhaven, keyword, target)) {
                 is ChangeResult.Success -> return r
-                is ChangeResult.Failure -> {
-                    lastError = "Wallhaven 下载失败: ${r.message}"
-                }
+                is ChangeResult.Failure -> lastError = "Wallhaven 下载失败: ${r.message}"
             }
         }
 
-        if (settings.networkFallbackEnabled && settings.fallbackApiUrl.isNotBlank()) {
-            try {
-                val fb = api.fetchFallbackApi(
-                    settings.fallbackApiUrl,
-                    settings.minWidth,
-                    settings.minHeight
-                )
-                when (val r = downloadAndSet(
-                    fb, settings, category,
-                    fromWallhaven = false,
-                    usedKeyword = null
-                )) {
-                    is ChangeResult.Success -> return r
-                    is ChangeResult.Failure -> {
-                        lastError = "兜底 API 失败: ${r.message}" +
-                            (lastError?.let { "（此前：$it）" } ?: "")
+        val fallbackUrls = settings.fallbackApiUrls()
+        if (settings.networkFallbackEnabled && fallbackUrls.isNotEmpty()) {
+            val errors = mutableListOf<String>()
+            for ((i, url) in fallbackUrls.withIndex()) {
+                try {
+                    val fb = api.fetchFallbackApi(url, settings.minWidth.coerceAtLeast(dw), settings.minHeight.coerceAtLeast(dh))
+                    when (val r = downloadAndSet(fb, settings, category, false, null, target)) {
+                        is ChangeResult.Success -> return r
+                        is ChangeResult.Failure -> errors += "#${i + 1} ${r.message}"
                     }
+                } catch (e: Exception) {
+                    errors += "#${i + 1} ${e.message ?: e.javaClass.simpleName}"
                 }
-            } catch (e: Exception) {
-                val msg = e.message ?: e.javaClass.simpleName
-                lastError = "兜底 API 失败: $msg" +
-                    (lastError?.let { "（此前：$it）" } ?: "")
             }
+            lastError = "兜底 API 全部失败(${fallbackUrls.size}): ${errors.joinToString("；")}" +
+                (lastError?.let { "（此前：$it）" } ?: "")
         } else if (!settings.networkFallbackEnabled) {
             if (wallhavenTried && !fromWallhaven) {
-                lastError = if (wallhavenHttpError) {
-                    lastError ?: "Wallhaven 连接失败"
-                } else {
-                    "Wallhaven 没找到符合要求的壁纸"
-                }
+                lastError = if (wallhavenHttpError) lastError ?: "Wallhaven 连接失败"
+                else "Wallhaven 没找到符合要求的壁纸"
             }
-        } else if (settings.fallbackApiUrl.isBlank()) {
-            lastError = (lastError ?: "Wallhaven 未成功") + "（未配置兜底 API URL）"
+        } else if (fallbackUrls.isEmpty()) {
+            lastError = (lastError ?: "Wallhaven 未成功") + "（未配置有效兜底 API URL）"
         }
 
         if (settings.localFallbackEnabled) {
-            return applyLocalFallback(
-                settings,
-                reason = lastError ?: "上游均未成功"
-            )
+            return applyLocalFallback(settings, lastError ?: "上游均未成功", target)
         }
-
         return ChangeResult.Failure(
-            lastError
-                ?: if (!settings.networkFallbackEnabled) {
-                    "Wallhaven 没找到符合要求的壁纸"
-                } else {
-                    "未找到符合条件的壁纸"
-                }
+            lastError ?: "未找到符合条件的壁纸"
         )
     }
 
-    private suspend fun applyLocalFallback(settings: AppSettings, reason: String): ChangeResult {
+    /** 客户端再过滤一次，防止 API ratios 未严格生效 */
+    private fun filterOrientation(
+        list: List<WallpaperItem>,
+        settings: AppSettings
+    ): List<WallpaperItem> {
+        if (!settings.filterLandscape && !settings.filterPortrait) return list
+        return list.filter { item ->
+            if (item.width <= 0 || item.height <= 0) return@filter true
+            val isLand = item.width > item.height
+            val isPort = item.height >= item.width
+            when {
+                settings.filterLandscape && !settings.filterPortrait -> isPort
+                settings.filterPortrait && !settings.filterLandscape -> isLand
+                else -> true
+            }
+        }
+    }
+
+    private suspend fun applyLocalFallback(
+        settings: AppSettings,
+        reason: String,
+        target: WallpaperTarget = settings.target
+    ): ChangeResult {
         if (!settings.localFallbackEnabled && !settings.forceLocalMode) {
             return ChangeResult.Failure(reason)
         }
@@ -147,17 +183,14 @@ class WallpaperChanger(
                 "本地无可用图片。请将 jpg/png 放入：${localStore.resolveDir(settings).absolutePath}（原因：$reason）"
             )
         val file = File(item.pathUrl)
-        if (!file.exists()) {
-            return ChangeResult.Failure("本地文件不存在: ${file.path}")
-        }
-        val setOk = setter.setFromFile(file, settings.target)
-        if (!setOk) {
+        if (!file.exists()) return ChangeResult.Failure("本地文件不存在: ${file.path}")
+        if (!setter.setFromFile(file, target, settings.cropFill)) {
             return ChangeResult.Failure("系统设置壁纸失败")
         }
         val size = file.length()
         dao.insert(
             WallpaperEntity(
-                id = item.id,
+                id = item.id + "_" + target.name,
                 path = file.absolutePath,
                 category = item.category,
                 purity = item.purity,
@@ -173,7 +206,8 @@ class WallpaperChanger(
         settingsRepo.setLastChangeAt(System.currentTimeMillis())
         return ChangeResult.Success(
             item.copy(fileSize = size, category = "local←$reason"),
-            file.absolutePath
+            file.absolutePath,
+            detail = target.label
         )
     }
 
@@ -182,10 +216,11 @@ class WallpaperChanger(
         settings: AppSettings,
         category: String,
         fromWallhaven: Boolean,
-        usedKeyword: String?
+        usedKeyword: String?,
+        target: WallpaperTarget
     ): ChangeResult {
         val dir = File(context.filesDir, "wallpapers").apply { mkdirs() }
-        val dest = File(dir, "${item.id.replace(Regex("[^a-zA-Z0-9._-]"), "_")}.jpg")
+        val dest = File(dir, "${item.id.replace(Regex("[^a-zA-Z0-9._-]"), "_")}_${target.name}.jpg")
 
         val ok = if (item.source == "local") {
             true
@@ -206,8 +241,7 @@ class WallpaperChanger(
             return ChangeResult.Failure("下载失败 (${item.source})")
         }
 
-        val setOk = setter.setFromFile(finalFile, settings.target)
-        if (!setOk) {
+        if (!setter.setFromFile(finalFile, target, settings.cropFill)) {
             return ChangeResult.Failure("系统设置壁纸失败（部分机型锁屏需额外权限）")
         }
 
@@ -215,7 +249,7 @@ class WallpaperChanger(
         val kwRecord = if (item.source == "wallhaven") (usedKeyword ?: "") else ""
         dao.insert(
             WallpaperEntity(
-                id = item.id,
+                id = item.id + if (settings.isolateHomeLock) "_${target.name}" else "",
                 path = finalFile.absolutePath,
                 category = item.category,
                 purity = item.purity,
@@ -233,7 +267,6 @@ class WallpaperChanger(
             settingsRepo.setLastCategory(category)
         }
 
-        // 跃迁：Wallhaven 成功时用标签覆盖跃迁列表（搜索常无 tags，需详情补拉）
         if (fromWallhaven && item.source == "wallhaven") {
             var tags = item.tags
             if (tags.isEmpty()) {
@@ -242,9 +275,7 @@ class WallpaperChanger(
                 }.getOrDefault(emptyList())
             }
             val cleaned = tags.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
-            if (cleaned.isNotEmpty()) {
-                settingsRepo.setJumpKeywords(cleaned)
-            }
+            if (cleaned.isNotEmpty()) settingsRepo.setJumpKeywords(cleaned)
         }
 
         val active = settings.activeKeywords()
@@ -256,13 +287,12 @@ class WallpaperChanger(
             }
         }
 
-        if (item.source != "local") {
-            trimCache(dir, keep = 30)
-        }
+        if (item.source != "local") trimCache(dir, keep = 40)
         settingsRepo.setLastChangeAt(System.currentTimeMillis())
         return ChangeResult.Success(
-            item.copy(fileSize = fileSize, tags = if (item.tags.isNotEmpty()) item.tags else emptyList()),
-            finalFile.absolutePath
+            item.copy(fileSize = fileSize),
+            finalFile.absolutePath,
+            detail = target.label + if (kwRecord.isNotBlank()) " · 词:$kwRecord" else ""
         )
     }
 
@@ -270,8 +300,7 @@ class WallpaperChanger(
         if (!settings.useKeywords) return null
         val list = settings.activeKeywords()
         if (list.isEmpty()) return null
-        val idx = settings.activeKeywordIndex().mod(list.size)
-        return list[idx]
+        return list[settings.activeKeywordIndex().mod(list.size)]
     }
 
     private fun isScreenOff(): Boolean {

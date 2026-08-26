@@ -23,9 +23,6 @@ enum class ResolutionMode(val code: String, val label: String) {
     Custom("zdy", "自定义")
 }
 
-/**
- * Wallhaven purity 三位：SFW / Sketchy / NSFW
- */
 enum class Purity(val code: String, val label: String) {
     R8("100", "R8 仅 SFW"),
     R13("110", "R13 SFW+Sketchy"),
@@ -40,7 +37,6 @@ enum class Purity(val code: String, val label: String) {
     }
 }
 
-/** 软件背景来源 */
 enum class BgMode(val code: String, val label: String) {
     Auto("auto", "系统壁纸/莫奈"),
     Api("api", "API 链接"),
@@ -50,6 +46,21 @@ enum class BgMode(val code: String, val label: String) {
     companion object {
         fun fromCode(code: String): BgMode =
             entries.find { it.code == code } ?: Auto
+    }
+}
+
+/** 文字颜色预设 */
+enum class UiTextColor(val code: String, val label: String, val argb: Long) {
+    White("white", "白色", 0xFFFFFFFF),
+    SoftWhite("soft", "柔白", 0xFFE8E8E8),
+    LightGray("gray", "浅灰", 0xFFB0B0B0),
+    Warm("warm", "暖米", 0xFFFFF3E0),
+    Cyan("cyan", "浅青", 0xFFB2EBF2),
+    Pink("pink", "浅粉", 0xFFF8BBD0);
+
+    companion object {
+        fun fromCode(code: String): UiTextColor =
+            entries.find { it.code == code } ?: White
     }
 }
 
@@ -65,59 +76,47 @@ data class AppSettings(
     val useForegroundService: Boolean = false,
     val skipWhenScreenOff: Boolean = false,
 
-    /** 多个 Wallhaven API Key，换行或逗号分隔存储 */
+    /** 开启后过滤掉横屏图，只保留竖屏 */
+    val filterLandscape: Boolean = false,
+    /** 开启后过滤掉竖屏图，只保留横屏 */
+    val filterPortrait: Boolean = false,
+    /** 设置壁纸时按屏幕尺寸中心裁切填充 */
+    val cropFill: Boolean = true,
+    /** 桌面/锁屏隔离：各下不同图分别设置 */
+    val isolateHomeLock: Boolean = false,
+
+    /** UI 遮罩透明度 0.15～0.85 */
+    val uiScrimAlpha: Float = 0.52f,
+    /** 卡片半透明程度 0～0.7（越高越不透明） */
+    val uiCardAlpha: Float = 0.28f,
+    val uiTextColor: UiTextColor = UiTextColor.White,
+
     val apiKeys: List<String> = emptyList(),
-    /** 轮换到第几个 key */
     val apiKeyIndex: Int = 0,
 
-    /** 本地关键词，每行一个 */
     val keywords: List<String> = emptyList(),
-    /** 远程关键词 txt 地址（可选） */
     val keywordsRemoteUrl: String = "",
-    /** 是否优先使用关键词搜索（有词则 q=随机选一词） */
     val useKeywords: Boolean = true,
 
-    /** 跃迁模式：用上次 Wallhaven 成功壁纸的标签覆盖跃迁关键词列表 */
     val jumpModeEnabled: Boolean = false,
-    /** 跃迁关键词列表（与正常关键词分离，每次覆盖写入） */
     val jumpKeywords: List<String> = emptyList(),
-    /** 跃迁关键词轮询下标 */
     val jumpKeywordIndex: Int = 0,
 
-    /** 网络兜底：Wallhaven 失败时走备用 API */
     val networkFallbackEnabled: Boolean = true,
-    /**
-     * 兜底 API 模板，支持占位：
-     * {width} {height}
-     * 响应可为：纯图片 URL 一行、或 JSON（自动尝试常见字段）
-     */
     val fallbackApiUrl: String = "",
 
-    /** 本地兜底：无网或强制本地时从目录随机选图 */
     val localFallbackEnabled: Boolean = true,
-    /** 强制只从本地目录轮换（不访问网络） */
     val forceLocalMode: Boolean = false,
-    /**
-     * 本地兜底目录。空则使用 App 私有目录 local_fallback/
-     * 可填绝对路径（需存储权限，如 /storage/emulated/0/Pictures/Wallpapers）
-     */
     val localFallbackDir: String = "",
 
-    /** 软件背景：API 链接（打开时自动拉取） */
     val bgApiUrl: String = "",
-    /** 软件背景：本地图片路径 */
     val bgLocalPath: String = "",
-    /** 背景模式偏好（空路径+空 API 时走莫奈） */
     val bgMode: BgMode = BgMode.Auto,
 
-    /** 轮换模式下当前类别 */
     val lastCategory: String = "zr",
-    /** 关键词轮询下标 */
     val keywordIndex: Int = 0,
-    /** 上次成功更换时间戳，用于息屏恢复判断 */
     val lastChangeAt: Long = 0L,
 
-    /** PIN 锁定：非空表示已设置 PIN（存 SHA-256 hex） */
     val pinHash: String = "",
     val pinEnabled: Boolean = false
 ) {
@@ -127,7 +126,11 @@ data class AppSettings(
         return keys[apiKeyIndex.mod(keys.size)]
     }
 
-    /** 当前应使用的搜索关键词列表 */
+    fun fallbackApiUrls(): List<String> =
+        fallbackApiUrl.split('\n', ',', ';')
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && !it.startsWith("#") && (it.startsWith("http://") || it.startsWith("https://")) }
+
     fun activeKeywords(): List<String> {
         if (!useKeywords) return emptyList()
         if (jumpModeEnabled && jumpKeywords.isNotEmpty()) return jumpKeywords
@@ -136,6 +139,15 @@ data class AppSettings(
 
     fun activeKeywordIndex(): Int {
         return if (jumpModeEnabled && jumpKeywords.isNotEmpty()) jumpKeywordIndex else keywordIndex
+    }
+
+    /** 距下次更换剩余分钟；未开启或未换过返回 -1 */
+    fun minutesUntilNext(): Int {
+        if (!enabled || lastChangeAt <= 0L) return -1
+        val intervalMs = intervalMinutes.coerceIn(5, 180) * 60_000L
+        val remain = lastChangeAt + intervalMs - System.currentTimeMillis()
+        if (remain <= 0) return 0
+        return ((remain + 59_999) / 60_000).toInt()
     }
 }
 
@@ -148,18 +160,12 @@ data class WallpaperItem(
     val purity: String,
     val category: String,
     val source: String = "wallhaven",
-    /** Wallhaven 标签名，用于跃迁模式 */
     val tags: List<String> = emptyList(),
-    /** 文件字节大小（下载后填充） */
     val fileSize: Long = 0L,
-    /**
-     * 兜底 API 若直接返回图片二进制，可预取到内存，避免二次请求失败。
-     * 注意：不要序列化到数据库。
-     */
     val prefetchedBytes: ByteArray? = null
 )
 
 sealed class ChangeResult {
-    data class Success(val item: WallpaperItem, val localPath: String) : ChangeResult()
+    data class Success(val item: WallpaperItem, val localPath: String, val detail: String = "") : ChangeResult()
     data class Failure(val message: String) : ChangeResult()
 }

@@ -30,19 +30,31 @@ class WallhavenApi(
         settings: AppSettings,
         categoryCode: String,
         keyword: String? = null,
-        page: Int = 1
+        page: Int = 1,
+        deviceWidth: Int = 1080,
+        deviceHeight: Int = 1920
     ): List<WallpaperItem> = withContext(Dispatchers.IO) {
         val categories = when (categoryCode) {
             "dm" -> "010"
             "zr" -> "001"
             else -> "111"
         }
-        val (atleast, ratios) = when (settings.resolutionMode) {
-            com.kers701.wallpaperc.domain.ResolutionMode.Min15k ->
-                "1500x1500" to null
+        // 设备自适应：用设备分辨率作 atleast；自定义/1.5k 同理
+        val atleast: String? = when (settings.resolutionMode) {
+            com.kers701.wallpaperc.domain.ResolutionMode.Min15k -> "1500x1500"
             com.kers701.wallpaperc.domain.ResolutionMode.Custom ->
-                "${settings.minWidth}x${settings.minHeight}" to null
-            else -> null to "portrait"
+                "${settings.minWidth}x${settings.minHeight}"
+            com.kers701.wallpaperc.domain.ResolutionMode.Device -> {
+                val w = deviceWidth.coerceAtLeast(720)
+                val h = deviceHeight.coerceAtLeast(720)
+                "${w}x${h}"
+            }
+        }
+        // 横屏过滤=只要竖屏；竖屏过滤=只要横屏；都开则不限（互相抵消）
+        val ratios: String? = when {
+            settings.filterLandscape && !settings.filterPortrait -> "portrait"
+            settings.filterPortrait && !settings.filterLandscape -> "landscape"
+            else -> null
         }
 
         val urlBuilder = "https://wallhaven.cc/api/v1/search".toHttpUrl().newBuilder()
