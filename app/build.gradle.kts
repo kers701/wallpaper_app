@@ -6,15 +6,15 @@ plugins {
 }
 
 android {
-    namespace = "com.kers701.wallpaperc"
+    namespace = "com.kers.killove.jhsy"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.kers701.wallpaperc"
+        applicationId = "com.kers.killove.jhsy"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "1.3.1"
+        versionCode = 200
+        versionName = "2.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
