@@ -56,6 +56,7 @@ class WallpaperForegroundService : Service() {
                 stopSelf()
                 return START_NOT_STICKY
             }
+<<<<<<< HEAD
             ACTION_CHANGE_NOW -> {
                 ensureForegroundAndLoop()
                 scope.launch {
@@ -78,6 +79,8 @@ class WallpaperForegroundService : Service() {
                     }
                 }
             }
+=======
+>>>>>>> origin/main
             else -> ensureForegroundAndLoop()
         }
         return START_STICKY
@@ -167,7 +170,10 @@ class WallpaperForegroundService : Service() {
                 if (due && changer != null) {
                     acquireWake()
                     try {
+<<<<<<< HEAD
                         // changeOnce 内已含黑名单判断
+=======
+>>>>>>> origin/main
                         changer.changeOnce(forceIgnoreScreenOff = false)
                         ProcessBridgePrefs.setLastChangeAt(this, System.currentTimeMillis())
                     } finally {
@@ -221,17 +227,23 @@ class WallpaperForegroundService : Service() {
             Intent(this, WallpaperForegroundService::class.java).setAction(ACTION_STOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+<<<<<<< HEAD
         val changeNow = PendingIntent.getService(
             this, 2,
             Intent(this, WallpaperForegroundService::class.java).setAction(ACTION_CHANGE_NOW),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+=======
+>>>>>>> origin/main
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.notification_title))
             .setContentText("后台更换服务运行中（独立进程）")
             .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(open)
+<<<<<<< HEAD
             .addAction(0, "立即更换", changeNow)
+=======
+>>>>>>> origin/main
             .addAction(0, "停止", stop)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -257,7 +269,10 @@ class WallpaperForegroundService : Service() {
         private const val CHANNEL_ID = "jhsy_service"
         private const val NOTIFICATION_ID = 1001
         const val ACTION_STOP = "com.kers.killove.jhsy.STOP"
+<<<<<<< HEAD
         const val ACTION_CHANGE_NOW = "com.kers.killove.jhsy.CHANGE_NOW"
+=======
+>>>>>>> origin/main
 
         fun start(context: Context) {
             val i = Intent(context, WallpaperForegroundService::class.java)

@@ -4,16 +4,15 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    <!-- soft circle backdrop -->
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M30,28h48a4,4 0,0 1,4 4v44a4,4 0,0 1,-4 4H30a4,4 0,0 1,-4 -4V32a4,4 0,0 1,4 -4z" />
+        android:fillColor="#1A1A2E"
+        android:pathData="M54,54m-40,0a40,40 0,1 1,80 0a40,40 0,1 1,-80 0" />
+    <!-- artistic capital K -->
     <path
-        android:fillColor="#5B8DEF"
-        android:pathData="M34,36h40v28H34z" />
+        android:fillColor="#E8E8F0"
+        android:pathData="M36,28 L36,80 L44,80 L44,56 L62,80 L74,80 L52,52 L72,28 L60,28 L44,48 L44,28 Z" />
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M42,48m-6,0a6,6 0,1 1,12 0a6,6 0,1 1,-12 0" />
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M34,64l12,-14 8,10 6,-8 14,12z" />
+        android:fillColor="#8AB4F8"
+        android:pathData="M36,28 L36,34 L44,34 L44,28 Z" />
 </vector>

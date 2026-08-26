@@ -13,5 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "wallpaperc"
+rootProject.name = "jhsy"
 include(":app")

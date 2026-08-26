@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">化云烟</string>
-    <string name="notification_channel_name">化云烟服务</string>
+    <string name="app_name">镜花水月</string>
+    <string name="notification_channel_name">镜花水月服务</string>
     <string name="notification_channel_desc">自动更换壁纸时显示</string>
-    <string name="notification_title">化云烟 运行中</string>
+    <string name="notification_title">镜花水月 运行中</string>
     <string name="notification_text">正在按设定间隔自动更换壁纸</string>
+    <string name="a11y_keep_alive_desc">镜花水月超级服务保活：不读取界面内容，仅用于维持后台换壁纸进程。</string>
 </resources>

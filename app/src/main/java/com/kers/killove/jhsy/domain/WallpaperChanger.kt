@@ -13,7 +13,10 @@ import com.kers.killove.jhsy.data.prefs.SettingsRepository
 import com.kers.killove.jhsy.data.remote.WallhavenApi
 import com.kers.killove.jhsy.data.local.PageCacheStore
 import com.kers.killove.jhsy.data.wallpaper.SystemWallpaperSetter
+<<<<<<< HEAD
 import com.kers.killove.jhsy.util.ForegroundAppHelper
+=======
+>>>>>>> origin/main
 import kotlinx.coroutines.flow.first
 import java.io.File
 
@@ -46,6 +49,7 @@ class WallpaperChanger(
             )
         }
 
+<<<<<<< HEAD
 
         // 前台黑名单应用：休眠不换
         if (!forceIgnoreScreenOff && settings.blacklistPackages.isNotEmpty()) {
@@ -55,6 +59,8 @@ class WallpaperChanger(
             }
         }
 
+=======
+>>>>>>> origin/main
         maybeClearCacheIfHuge()
 
         if (settings.forceLocalMode) {
@@ -292,7 +298,10 @@ class WallpaperChanger(
         )
         dao.trimToKeep(HISTORY_KEEP)
         settingsRepo.setLastChangeAt(System.currentTimeMillis())
+<<<<<<< HEAD
         settingsRepo.incrementChangeCount()
+=======
+>>>>>>> origin/main
         return ChangeResult.Success(
             item.copy(fileSize = size, category = "local←$reason"),
             file.absolutePath,
@@ -377,7 +386,10 @@ class WallpaperChanger(
 
         if (item.source != "local") trimCache(dir, keep = 40)
         settingsRepo.setLastChangeAt(System.currentTimeMillis())
+<<<<<<< HEAD
         settingsRepo.incrementChangeCount()
+=======
+>>>>>>> origin/main
         return ChangeResult.Success(
             item.copy(fileSize = fileSize),
             finalFile.absolutePath,

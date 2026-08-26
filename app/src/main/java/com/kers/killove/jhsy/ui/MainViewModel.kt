@@ -21,9 +21,12 @@ import android.content.Context
 import com.kers.killove.jhsy.util.ProcessBridgePrefs
 import com.kers.killove.jhsy.util.PinSecurity
 import com.kers.killove.jhsy.worker.ChangeWallpaperWorker
+<<<<<<< HEAD
 import com.kers.killove.jhsy.util.ForegroundAppHelper
 import android.app.ActivityManager
 import java.io.File
+=======
+>>>>>>> origin/main
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -91,6 +94,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _pinMessage = MutableStateFlow<String?>(null)
     val pinMessage: StateFlow<String?> = _pinMessage.asStateFlow()
 
+<<<<<<< HEAD
     enum class ServiceStatus { Running, Stopped, Abnormal }
 
     private val _serviceStatus = MutableStateFlow(ServiceStatus.Stopped)
@@ -102,6 +106,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _launcherApps = MutableStateFlow<List<com.kers.killove.jhsy.util.LauncherAppInfo>>(emptyList())
     val launcherApps: StateFlow<List<com.kers.killove.jhsy.util.LauncherAppInfo>> = _launcherApps.asStateFlow()
 
+=======
+>>>>>>> origin/main
     /** 敏感字段是否可见：密钥 / 关键词 / 兜底 API */
     fun keysVisible(s: AppSettings = settings.value): Boolean {
         if (!s.pinEnabled || s.pinHash.isBlank()) return true
@@ -375,6 +381,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+<<<<<<< HEAD
 
     fun setOverviewMinimal(enabled: Boolean) {
         viewModelScope.launch {
@@ -448,6 +455,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun hasUsageAccess(): Boolean = ForegroundAppHelper.hasUsageAccess(getApplication())
 
 
+=======
+>>>>>>> origin/main
     private fun applySchedule(s: AppSettings) {
         val ctx = getApplication<Application>()
         ProcessBridgePrefs.sync(ctx, s)
