@@ -1,4 +1,4 @@
-# 镜花水月（JHSY）
+# 镜花水月（Mirror Flowers and Water Moon）
 
 原生 Android 自动换壁纸应用。
 
