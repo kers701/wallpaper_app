@@ -8,11 +8,13 @@ on:
   workflow_dispatch:
 
 jobs:
-  # 是否按提交说明触发 release
   gate:
     runs-on: ubuntu-latest
     outputs:
       should_release: ${{ steps.check.outputs.should_release }}
+      create_github_release: ${{ steps.check.outputs.create_github_release }}
+      release_tag: ${{ steps.check.outputs.release_tag }}
+      is_prerelease: ${{ steps.check.outputs.is_prerelease }}
     steps:
       - name: Check commit message / event
         id: check
@@ -21,21 +23,26 @@ jobs:
           EVENT="${{ github.event_name }}"
           MSG="${{ github.event.head_commit.message }}"
           REF="${{ github.ref }}"
-          echo "event=$EVENT"
-          echo "ref=$REF"
-          echo "message<<EOF"
-          echo "$MSG"
-          echo "EOF"
+          SHA="${{ github.sha }}"
+          SHORT="${SHA:0:7}"
 
           SHOULD=false
+          CREATE_REL=false
+          TAG=""
+          PRE=false
+
           if [ "$EVENT" = "workflow_dispatch" ]; then
             SHOULD=true
+            # 手动触发：只打 APK 上传 Artifact，不自动建 Release（避免误发）
+            CREATE_REL=false
           elif [ "$EVENT" = "push" ] && [[ "$REF" == refs/tags/v* ]]; then
             SHOULD=true
+            CREATE_REL=true
+            TAG="${REF#refs/tags/}"
+            PRE=false
           elif [ "$EVENT" = "push" ]; then
-            # 关键字：发布 / release / re构建 / [re] / 正式版 等（不匹配普通英文单词里的 re）
-            # 用 bash 大小写不敏感匹配
             shopt -s nocasematch
+            # 是否执行 release 构建
             if [[ "$MSG" =~ 发布 ]] || \
                [[ "$MSG" =~ 正式 ]] || \
                [[ "$MSG" =~ release ]] || \
@@ -47,15 +54,37 @@ jobs:
                [[ "$MSG" =~ ^re/ ]]; then
               SHOULD=true
             fi
+            # 仅「发布」创建正式 GitHub Release
+            if [[ "$MSG" =~ 发布 ]]; then
+              CREATE_REL=true
+              PRE=false
+              # 从提交说明提取 vX.Y.Z，否则用日期+短 SHA
+              if [[ "$MSG" =~ (v?[0-9]+\.[0-9]+\.[0-9]+) ]]; then
+                VER="${BASH_REMATCH[1]}"
+                [[ "$VER" == v* ]] || VER="v$VER"
+                TAG="$VER"
+              else
+                TAG="v$(date -u +%Y%m%d)-$SHORT"
+              fi
+            fi
           fi
+
           echo "should_release=$SHOULD"
+          echo "create_github_release=$CREATE_REL"
+          echo "release_tag=$TAG"
+          echo "is_prerelease=$PRE"
           echo "should_release=$SHOULD" >> "$GITHUB_OUTPUT"
+          echo "create_github_release=$CREATE_REL" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "is_prerelease=$PRE" >> "$GITHUB_OUTPUT"
 
   release:
     needs: gate
     if: needs.gate.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -67,12 +96,8 @@ jobs:
           HAS_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS != '' }}
           HAS_KP: ${{ secrets.RELEASE_KEY_PASSWORD != '' }}
         run: |
-          echo "keystore_b64 set: $HAS_KS"
-          echo "store_password set: $HAS_SP"
-          echo "key_alias set: $HAS_ALIAS"
-          echo "key_password set: $HAS_KP"
           if [ "$HAS_KS" != "true" ] || [ "$HAS_SP" != "true" ] || [ "$HAS_ALIAS" != "true" ] || [ "$HAS_KP" != "true" ]; then
-            echo "::error::缺少 Release Secrets：RELEASE_KEYSTORE_BASE64 / RELEASE_STORE_PASSWORD / RELEASE_KEY_ALIAS / RELEASE_KEY_PASSWORD"
+            echo "::error::缺少 Release Secrets"
             exit 1
           fi
 
@@ -112,7 +137,7 @@ jobs:
       - name: Build release APK
         run: ./gradlew assembleRelease --stacktrace --no-daemon
 
-      - name: Upload release APK
+      - name: Upload release APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: jhsy-release-apk
@@ -120,12 +145,30 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-      - name: Create GitHub Release (tags only)
+      - name: Create GitHub Release (tag push)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: app/build/outputs/apk/release/*.apk
           generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create GitHub Release (commit message contains 发布)
+        if: needs.gate.outputs.create_github_release == 'true' && needs.gate.outputs.release_tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.gate.outputs.release_tag }}
+          name: ${{ needs.gate.outputs.release_tag }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: app/build/outputs/apk/release/*.apk
+          body: |
+            由提交自动发布（提交说明含「发布」）。
+
+            - Commit: ${{ github.sha }}
+            - Message: ${{ github.event.head_commit.message }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
