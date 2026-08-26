@@ -74,6 +74,8 @@ fun SettingsScreen(vm: MainViewModel) {
     var isolate by remember(settings.isolateHomeLock) { mutableStateOf(settings.isolateHomeLock) }
     var powerSave by remember(settings.powerSaveEnabled) { mutableStateOf(settings.powerSaveEnabled) }
     var superSvc by remember(settings.superServiceEnabled) { mutableStateOf(settings.superServiceEnabled) }
+    var restoreJson by remember { mutableStateOf("") }
+    var showRestoreField by remember { mutableStateOf(false) }
     var powerTh by remember(settings.powerSaveBatteryThreshold) { mutableIntStateOf(settings.powerSaveBatteryThreshold) }
     var transProv by remember(settings.translateProvider) { mutableStateOf(settings.translateProvider) }
     var transKey by remember(settings.translateApiKey, keysVisible) {
@@ -381,6 +383,42 @@ fun SettingsScreen(vm: MainViewModel) {
                 }
             }
             Text("PIN 仅存哈希，进程重启后需重新解锁", style = MaterialTheme.typography.bodySmall)
+        }
+
+        HorizontalDivider(modifier.padding(vertical = 8.dp))
+        Text("配置备份 / 恢复", style = MaterialTheme.typography.titleMedium)
+        if (keysVisible) {
+            Text("备份不含 PIN；恢复后保留本机 PIN 设置", style = MaterialTheme.typography.bodySmall)
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = { vm.backupConfig() },
+                    modifier = Modifier.weight(1f)
+                ) { Text("备份配置") }
+                OutlinedButton(
+                    onClick = { vm.restoreConfigFromFile() },
+                    modifier = Modifier.weight(1f)
+                ) { Text("从文件恢复") }
+            }
+            OutlinedButton(
+                onClick = { showRestoreField = !showRestoreField },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text(if (showRestoreField) "收起 JSON 粘贴" else "从剪贴板 JSON 恢复") }
+            if (showRestoreField) {
+                OutlinedTextField(
+                    value = restoreJson,
+                    onValueChange = { restoreJson = it },
+                    label = { Text("粘贴备份 JSON") },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp),
+                    minLines = 4,
+                    maxLines = 12
+                )
+                Button(
+                    onClick = { vm.restoreConfigFromJson(restoreJson) },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("确认恢复") }
+            }
+        } else {
+            LockedField("配置备份 / 恢复（请先解锁 PIN）")
         }
 
         HorizontalDivider(Modifier.padding(vertical = 8.dp))

@@ -14,6 +14,10 @@ import com.kers.killove.jhsy.data.translate.KeywordTranslator
 import com.kers.killove.jhsy.domain.WallpaperChanger
 import com.kers.killove.jhsy.service.WallpaperForegroundService
 import com.kers.killove.jhsy.util.SuperServiceController
+import com.kers.killove.jhsy.util.ConfigBackup
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import com.kers.killove.jhsy.util.ProcessBridgePrefs
 import com.kers.killove.jhsy.util.PinSecurity
 import com.kers.killove.jhsy.worker.ChangeWallpaperWorker
@@ -106,6 +110,57 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             applySchedule(final)
             _status.value =
                 "设置已保存（关键词 ${final.keywords.size} 个，跃迁 ${final.jumpKeywords.size} 个，密钥 ${final.apiKeys.size} 个）"
+        }
+    }
+
+
+    /** 备份配置到应用专属目录，并复制 JSON 到剪贴板。不含 PIN。 */
+    fun backupConfig() {
+        viewModelScope.launch {
+            try {
+                val s = settings.value
+                val file = ConfigBackup.writeToFile(getApplication(), s)
+                val json = ConfigBackup.toJson(s)
+                val cm = getApplication<Application>().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                cm.setPrimaryClip(ClipData.newPlainText("jhsy_config", json))
+                _status.value = "配置已备份（不含 PIN）\n${file.absolutePath}\n并已复制到剪贴板"
+            } catch (e: Exception) {
+                _status.value = "备份失败：${e.message}"
+            }
+        }
+    }
+
+    /** 从默认备份文件恢复；保留当前 PIN。 */
+    fun restoreConfigFromFile() {
+        viewModelScope.launch {
+            try {
+                val base = settings.value
+                val restored = ConfigBackup.readFromFile(getApplication(), base)
+                settingsRepo.save(restored)
+                applySchedule(restored)
+                _status.value = "配置已从备份恢复（PIN 未改动）"
+            } catch (e: Exception) {
+                _status.value = "恢复失败：${e.message}"
+            }
+        }
+    }
+
+    /** 从粘贴的 JSON 恢复；保留当前 PIN。 */
+    fun restoreConfigFromJson(json: String) {
+        if (json.isBlank()) {
+            _status.value = "请先粘贴备份 JSON"
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val base = settings.value
+                val restored = ConfigBackup.fromJson(json, base)
+                settingsRepo.save(restored)
+                applySchedule(restored)
+                _status.value = "配置已从 JSON 恢复（PIN 未改动）"
+            } catch (e: Exception) {
+                _status.value = "恢复失败：${e.message}"
+            }
         }
     }
 
