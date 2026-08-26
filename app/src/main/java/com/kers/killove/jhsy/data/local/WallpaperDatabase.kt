@@ -35,6 +35,18 @@ interface WallpaperDao {
     @Query("SELECT EXISTS(SELECT 1 FROM wallpaper_records WHERE id = :id)")
     suspend fun exists(id: String): Boolean
 
+    /** 同一 Wallhaven 图可能以 id / id_Home / id_Lock 入库 */
+    @Query("""
+        SELECT EXISTS(
+            SELECT 1 FROM wallpaper_records
+            WHERE id = :baseId
+               OR id LIKE :baseId || '_%'
+               OR (sourceUrl != '' AND sourceUrl = :url)
+            LIMIT 1
+        )
+    """)
+    suspend fun existsBaseOrUrl(baseId: String, url: String): Boolean
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(entity: WallpaperEntity)
 
@@ -51,9 +63,14 @@ interface WallpaperDao {
     suspend fun deleteAll()
 }
 
-@Database(entities = [WallpaperEntity::class], version = 3, exportSchema = false)
+@Database(
+    entities = [WallpaperEntity::class, SearchPageCacheEntity::class],
+    version = 4,
+    exportSchema = false
+)
 abstract class WallpaperDatabase : RoomDatabase() {
     abstract fun dao(): WallpaperDao
+    abstract fun pageCacheDao(): SearchPageCacheDao
 
     companion object {
         @Volatile private var instance: WallpaperDatabase? = null
@@ -73,6 +90,20 @@ abstract class WallpaperDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS search_page_cache (
+                        cacheKey TEXT NOT NULL PRIMARY KEY,
+                        lastPage INTEGER NOT NULL,
+                        updatedAt INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun get(context: Context): WallpaperDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -80,7 +111,7 @@ abstract class WallpaperDatabase : RoomDatabase() {
                     WallpaperDatabase::class.java,
                     "wallpaperc.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                     .fallbackToDestructiveMigration()
                     .build()
                     .also { instance = it }

@@ -11,6 +11,7 @@ import com.kers.killove.jhsy.data.local.WallpaperDao
 import com.kers.killove.jhsy.data.local.WallpaperEntity
 import com.kers.killove.jhsy.data.prefs.SettingsRepository
 import com.kers.killove.jhsy.data.remote.WallhavenApi
+import com.kers.killove.jhsy.data.local.PageCacheStore
 import com.kers.killove.jhsy.data.wallpaper.SystemWallpaperSetter
 import kotlinx.coroutines.flow.first
 import java.io.File
@@ -113,11 +114,15 @@ class WallpaperChanger(
 
         wallhavenTried = true
         try {
-            candidates = api.search(settings, category, keyword, 1, dw, dh)
-            candidates = filterOrientation(candidates, settings).filter { it.id !in excludeIds }
+            val pageResult = api.searchRandomCachedPage(
+                settings, category, keyword, dw, dh, pageCache
+            )
+            candidates = filterOrientation(pageResult.items, settings).filter { it.id !in excludeIds }
             if (candidates.isEmpty()) {
-                candidates = api.search(settings, category, keyword, 2, dw, dh)
-                candidates = filterOrientation(candidates, settings).filter { it.id !in excludeIds }
+                val retry = api.searchRandomCachedPage(
+                    settings, category, keyword, dw, dh, pageCache
+                )
+                candidates = filterOrientation(retry.items, settings).filter { it.id !in excludeIds }
             }
             fromWallhaven = candidates.isNotEmpty()
             if (candidates.isEmpty()) lastError = "Wallhaven 没找到符合要求的壁纸"
@@ -129,8 +134,10 @@ class WallpaperChanger(
                 val next = (settings.apiKeyIndex + 1) % keys.size
                 settingsRepo.setApiKeyIndex(next)
                 try {
-                    candidates = api.search(settings.copy(apiKeyIndex = next), category, keyword, 1, dw, dh)
-                    candidates = filterOrientation(candidates, settings).filter { it.id !in excludeIds }
+                    val pageResult = api.searchRandomCachedPage(
+                        settings.copy(apiKeyIndex = next), category, keyword, dw, dh, pageCache
+                    )
+                    candidates = filterOrientation(pageResult.items, settings).filter { it.id !in excludeIds }
                     fromWallhaven = candidates.isNotEmpty()
                     if (fromWallhaven) {
                         lastError = null
@@ -143,12 +150,27 @@ class WallpaperChanger(
         }
 
         if (candidates.isNotEmpty()) {
-            val item = candidates.firstOrNull { !dao.exists(it.id) && it.id !in excludeIds }
-                ?: candidates.firstOrNull { it.id !in excludeIds }
-                ?: candidates.first()
-            when (val r = downloadAndSet(item, settings, category, fromWallhaven, keyword, target, advanceKeyword)) {
-                is ChangeResult.Success -> return r
-                is ChangeResult.Failure -> lastError = "Wallhaven 下载失败: ${r.message}"
+            val item = pickCandidate(candidates, excludeIds)
+            if (item != null) {
+                when (val r = downloadAndSet(item, settings, category, fromWallhaven, keyword, target, advanceKeyword)) {
+                    is ChangeResult.Success -> return r
+                    is ChangeResult.Failure -> lastError = "Wallhaven 下载失败: ${r.message}"
+                }
+            }
+            // 本页都用过：再随机一页
+            try {
+                val more = filterOrientation(
+                    api.searchRandomCachedPage(settings, category, keyword, dw, dh, pageCache).items,
+                    settings
+                ).filter { it.id !in excludeIds }
+                val alt = pickCandidate(more, excludeIds)
+                if (alt != null) {
+                    when (val r = downloadAndSet(alt, settings, category, true, keyword, target, advanceKeyword)) {
+                        is ChangeResult.Success -> return r
+                        is ChangeResult.Failure -> lastError = "Wallhaven 下载失败: ${r.message}"
+                    }
+                }
+            } catch (_: Exception) {
             }
         }
 
@@ -182,6 +204,24 @@ class WallpaperChanger(
             return applyLocalFallback(settings, lastError ?: "上游均未成功", target, excludeIds)
         }
         return ChangeResult.Failure(lastError ?: "未找到符合条件的壁纸")
+    }
+
+    private suspend fun pickCandidate(
+        candidates: List<WallpaperItem>,
+        excludeIds: Set<String>
+    ): WallpaperItem? {
+        if (candidates.isEmpty()) return null
+        val pool = candidates.filter { it.id !in excludeIds }.ifEmpty { candidates }
+        val unseen = mutableListOf<WallpaperItem>()
+        val seen = mutableListOf<WallpaperItem>()
+        for (c in pool.shuffled()) {
+            val used = runCatching {
+                dao.existsBaseOrUrl(c.id, c.pathUrl)
+            }.getOrDefault(false)
+            if (used) seen += c else unseen += c
+        }
+        // 优先未用过；全用过则打乱已用过的再抽，避免永远 1～4 张死循环
+        return (unseen.ifEmpty { seen }).randomOrNull()
     }
 
     private fun filterOrientation(list: List<WallpaperItem>, settings: AppSettings): List<WallpaperItem> {

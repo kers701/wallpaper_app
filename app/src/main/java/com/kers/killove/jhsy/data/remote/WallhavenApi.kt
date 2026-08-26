@@ -1,6 +1,7 @@
 package com.kers.killove.jhsy.data.remote
 
 import com.kers.killove.jhsy.domain.AppSettings
+import com.kers.killove.jhsy.data.local.PageCacheStore
 import com.kers.killove.jhsy.domain.CategoryMode
 import com.kers.killove.jhsy.domain.WallpaperItem
 import kotlinx.coroutines.Dispatchers
@@ -11,6 +12,12 @@ import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
+
+data class SearchPageResult(
+    val items: List<com.kers.killove.jhsy.domain.WallpaperItem>,
+    val lastPage: Int,
+    val currentPage: Int
+)
 
 class WallhavenApi(
     private val client: OkHttpClient = defaultClient()
@@ -33,7 +40,7 @@ class WallhavenApi(
         page: Int = 1,
         deviceWidth: Int = 1080,
         deviceHeight: Int = 1920
-    ): List<WallpaperItem> = withContext(Dispatchers.IO) {
+    ): SearchPageResult = withContext(Dispatchers.IO) {
         val categories = when (categoryCode) {
             "dm" -> "010"
             "zr" -> "001"
@@ -56,10 +63,13 @@ class WallhavenApi(
             else -> null
         }
 
+        // 始终 random + 随机 seed，避免同关键词 relevance 永远返回同一批图
+        val seed = (1..Int.MAX_VALUE).random().toString()
         val urlBuilder = "https://wallhaven.cc/api/v1/search".toHttpUrl().newBuilder()
             .addQueryParameter("purity", settings.purity.code)
             .addQueryParameter("categories", categories)
-            .addQueryParameter("sorting", if (keyword.isNullOrBlank()) "random" else "relevance")
+            .addQueryParameter("sorting", "random")
+            .addQueryParameter("seed", seed)
             .addQueryParameter("page", page.toString())
         atleast?.let { urlBuilder.addQueryParameter("atleast", it) }
         ratios?.let { urlBuilder.addQueryParameter("ratios", it) }
@@ -83,6 +93,49 @@ class WallhavenApi(
             val body = response.body?.string() ?: throw IllegalStateException("空响应")
             parseSearch(body, categoryCode)
         }
+    }
+
+    /**
+     * 带页数缓存：首次抓第 1 页拿到 last_page 写入缓存；
+     * 之后在 1..lastPage 随机选页再抓（避免永远只刷第一页）。
+     */
+    suspend fun searchRandomCachedPage(
+        settings: AppSettings,
+        categoryCode: String,
+        keyword: String?,
+        deviceWidth: Int,
+        deviceHeight: Int,
+        pageCache: PageCacheStore
+    ): SearchPageResult {
+        val key = PageCacheStore.key(
+            keyword = keyword.orEmpty(),
+            category = categoryCode,
+            purity = settings.purity.code,
+            orientation = settings.orientationFilter.name,
+            resolution = settings.resolutionMode.name + "_${settings.minWidth}x${settings.minHeight}"
+        )
+        var lastPage = pageCache.getLastPage(key)
+        if (lastPage == null || lastPage < 1) {
+            val first = search(settings, categoryCode, keyword, 1, deviceWidth, deviceHeight)
+            lastPage = first.lastPage.coerceAtLeast(1)
+            pageCache.putLastPage(key, lastPage)
+            // 若只有 1 页直接返回；否则再随机一页增加多样性
+            if (lastPage <= 1) return first
+        }
+        // Wallhaven 匿名约 10 万结果上限 / 24 ≈ 4166 页；有 key 更高。做上限保护
+        val maxPage = lastPage.coerceIn(1, 5000)
+        val page = (1..maxPage).random()
+        val result = search(settings, categoryCode, keyword, page, deviceWidth, deviceHeight)
+        // 用最新 meta 刷新缓存；若随机页空了则回退第 1 页并缩小 last_page
+        if (result.lastPage > 0) {
+            pageCache.putLastPage(key, result.lastPage.coerceAtLeast(1))
+        }
+        if (result.items.isEmpty() && page != 1) {
+            val fallback = search(settings, categoryCode, keyword, 1, deviceWidth, deviceHeight)
+            if (fallback.lastPage > 0) pageCache.putLastPage(key, fallback.lastPage.coerceAtLeast(1))
+            return fallback
+        }
+        return result
     }
 
     /**
@@ -280,36 +333,51 @@ class WallhavenApi(
         return null
     }
 
-    private fun parseSearch(json: String, categoryCode: String): List<WallpaperItem> {
+    private fun parseSearch(json: String, categoryCode: String): SearchPageResult {
         val root = JSONObject(json)
-        val data = root.optJSONArray("data") ?: return emptyList()
-        val list = mutableListOf<WallpaperItem>()
+        val data = root.optJSONArray("data")
+        val meta = root.optJSONObject("meta")
+        val lastPage = meta?.optInt("last_page", 1)?.coerceAtLeast(1) ?: 1
+        val currentPage = meta?.optInt("current_page", 1)?.coerceAtLeast(1) ?: 1
+        if (data == null || data.length() == 0) {
+            return SearchPageResult(emptyList(), lastPage, currentPage)
+        }
+        val list = ArrayList<WallpaperItem>(data.length())
         for (i in 0 until data.length()) {
             val o = data.getJSONObject(i)
             val thumbs = o.optJSONObject("thumbs")
-            val tags = mutableListOf<String>()
             val tagsArr = o.optJSONArray("tags")
+            val tagNames = mutableListOf<String>()
             if (tagsArr != null) {
                 for (t in 0 until tagsArr.length()) {
                     val tagObj = tagsArr.optJSONObject(t) ?: continue
                     val name = tagObj.optString("name").trim()
-                    if (name.isNotEmpty()) tags += name
+                    if (name.isNotEmpty()) tagNames.add(name)
                 }
             }
-            list += WallpaperItem(
-                id = o.getString("id"),
-                pathUrl = o.getString("path"),
-                thumbsUrl = thumbs?.optString("small"),
-                width = o.optInt("dimension_x"),
-                height = o.optInt("dimension_y"),
-                purity = o.optString("purity"),
-                category = categoryCode,
-                source = "wallhaven",
-                tags = tags
+            val id = o.optString("id")
+            val path = o.optString("path")
+            if (id.isNullOrBlank() || path.isNullOrBlank()) continue
+            list.add(
+                WallpaperItem(
+                    id = id,
+                    pathUrl = path,
+                    thumbsUrl = thumbs?.optString("small").orEmpty().ifBlank {
+                        thumbs?.optString("original").orEmpty()
+                    },
+                    category = categoryCode,
+                    purity = o.optString("purity"),
+                    width = o.optInt("dimension_x", 0),
+                    height = o.optInt("dimension_y", 0),
+                    fileSize = o.optLong("file_size", 0L),
+                    source = "wallhaven",
+                    tags = tagNames
+                )
             )
         }
-        return list
+        return SearchPageResult(list, lastPage, currentPage)
     }
+
 
     /** 解析背景 API：返回图片 URL（若直接返回图则仍用原 URL） */
     suspend fun fetchBackgroundImageUrl(templateUrl: String): String = withContext(Dispatchers.IO) {
