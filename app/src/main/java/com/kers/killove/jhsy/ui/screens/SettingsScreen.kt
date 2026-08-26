@@ -385,7 +385,7 @@ fun SettingsScreen(vm: MainViewModel) {
             Text("PIN 仅存哈希，进程重启后需重新解锁", style = MaterialTheme.typography.bodySmall)
         }
 
-        HorizontalDivider(modifier.padding(vertical = 8.dp))
+        HorizontalDivider(Modifier.padding(vertical = 8.dp))
         Text("配置备份 / 恢复", style = MaterialTheme.typography.titleMedium)
         if (keysVisible) {
             Text("备份不含 PIN；恢复后保留本机 PIN 设置", style = MaterialTheme.typography.bodySmall)

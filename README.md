@@ -2,25 +2,37 @@
 
 原生 Android 自动换壁纸应用。
 
-从 **Wallhaven** 拉取壁纸，支持关键词 / 跃迁模式、多密钥轮换、网络与本地双兜底、桌面与锁屏隔离、省电休眠等。
+从 **Wallhaven** 拉取壁纸，支持关键词 / 跃迁模式、多密钥轮换、网络与本地双兜底、桌面与锁屏隔离、省电休眠、超级服务保活等。
 
 | 项目 | 值 |
 |------|-----|
 | 应用名 | 镜花水月 |
 | 包名 | `com.kers.killove.jhsy` |
-| 正式版 | **v1.01**（versionCode `101`） |
+| 当前版本 | **v1.06**（versionCode `106`） |
 | 最低系统 | Android 8.0（API 26） |
-| 目标 SDK | 35 
+| 目标 SDK | 35 |
+| 仓库 | https://github.com/kers701/wallpaper_app |
+
+> 与旧包名（如 `com.kers701.wallpaperc`）**不能覆盖安装**，数据不互通。
+
+---
 
 ## 功能概览
 
 ### 更换与调度
 
 - 立即更换 / 按间隔自动更换（5～180 分钟）
-- WorkManager 后台调度；可选强制前台服务
-- 息屏跳过；亮屏后可恢复判断
+- WorkManager 后台调度；可选**强制前台服务**（通知栏常驻）
+- 息屏跳过；亮屏后可恢复判断（`ScreenOnReceiver`）
 - **省电模式**：电量低于设定阈值（5～50%）时休眠；**充电时忽略**；电量恢复后继续
 - 开机广播恢复任务
+- 申请忽略电池优化、三星等机型自启动提示
+
+### 超级服务（独立进程保活）
+
+- 更换服务可运行在独立进程 `:svc`
+- 可选 Root / 无障碍保活
+- UI 被划掉后，服务进程仍可能继续（视系统与权限而定）
 
 ### 壁纸来源与兜底链
 
@@ -41,40 +53,55 @@
 
 ### 关键词与跃迁
 
-- 本地多行关键词；可选远程 txt 导入
-- **跃迁模式**：Wallhaven 成功后，用该图标签**覆盖**写入跃迁列表（与正常关键词分离）
+- 本地多行关键词；可选远程 txt 导入（覆盖 / 合并）
+- **跃迁模式**：Wallhaven **成功**后，用该图标签**覆盖**写入跃迁列表（与正常关键词分离）
 - 跃迁开启且列表非空时，搜索从跃迁列表取词；否则用正常列表
-- 首页展示跃迁列表与「下次将用」
-- **关键词翻译**（仅展示 / 日志，不改搜索词）：谷歌 / 微软 / 腾讯，可配 API 密钥
+- 首页可展示跃迁列表与「下次将用」
+- **关键词翻译**（仅展示 / 日志，**不改**实际搜索词）：谷歌 / 微软 / 腾讯，可配 API 密钥
 
 ### 桌面与锁屏
 
 - 目标：仅桌面 / 仅锁屏 / 桌面+锁屏
-- **桌面锁屏隔离**：开启后**下载两次、设置两次**（先桌面再锁屏）；可使用**不同关键词**
+- **桌面锁屏隔离**：开启后下载两次、设置两次（先桌面再锁屏）；可使用不同关键词逻辑
 - **铺满方式**（对齐 Windows）：填充 / 适应 / 拉伸
 
 ### 界面与安全
 
 - 半透明主题：遮罩透明度、卡片透明度可调
 - 文字颜色预设
-- 首页显示设备真实分辨率（设备自适应时）、距下次更换倒计时
-- 网络检测：本机网络 · Wallhaven · 各兜底 API 延迟
-- **PIN 锁定**：锁定后密钥、关键词、兜底 API、**翻译密钥**均不可见
+- 首页：设备分辨率、距下次更换倒计时、网络探测等
+- **PIN 锁定**：锁定后 **API 密钥、关键词、兜底 API、翻译密钥、配置备份** 等敏感项不可见
+- PIN 存哈希；进程重启后需重新解锁
+
+### 软件背景
+
+| 模式 | 说明 |
+|------|------|
+| Auto | 系统壁纸优先，失败则莫奈取色 |
+| Api | 打开时从 API 链接拉取背景图 |
+| Local | 使用本地图片路径 |
+| Monet | 莫奈取色 |
+
+优先级可在设置中按模式选择；本地路径 / API 链接可填。
 
 ### 缓存与记录
 
-- 更换记录保留最近 **77** 条（含分辨率、大小、关键词等）
-- 应用数据目录超过 **10GB** 时，主动清空 `wallpapers` 下载缓存
+- 更换记录保留最近约 **77** 条（含分辨率、文件大小、关键词等）
+- 应用数据目录过大时，可主动清理 `wallpapers` 下载缓存（见实现逻辑）
+
+### 配置备份
+
+- 导出 / 导入配置（备份不含 PIN；恢复后保留本机 PIN）
+- 支持文件恢复与粘贴 JSON 恢复
 
 ---
 
 ## 本地兜底目录
 
 - 默认：App 私有目录 `files/local_fallback/`（随应用卸载清除）
-- 可在设置中填写绝对路径，例如：`/storage/emulated/0/Pictures/Wallpapers`
-- 支持扩展名：`jpg` / `jpeg` / `png` / `webp` / `bmp`
-
-使用公共目录时需授予「读取照片」权限。
+- 可填写绝对路径，例如：`/storage/emulated/0/Pictures/Wallpapers`
+- 支持：`jpg` / `jpeg` / `png` / `webp` / `bmp`
+- 使用公共目录时需授予「读取照片」等权限
 
 ## 远程关键词 txt 格式
 
@@ -88,8 +115,6 @@ cyberpunk
 每行一个词，`#` 开头为注释。
 
 ## 兜底 API 示例
-
-设置中「兜底 API」可多行，例如：
 
 ```
 https://example.com/random?w={width}&h={height}
@@ -110,43 +135,52 @@ https://backup.example.com/pic
 
 ```bash
 ./gradlew assembleDebug
-# 输出 app/build/outputs/apk/debug/app-debug.apk
+# 输出：app/build/outputs/apk/debug/app-debug.apk
 
 ./gradlew assembleRelease
-# 需自行配置签名；输出 app/build/outputs/apk/release/
+# 需自行配置签名
 ```
 
 或 Android Studio：**Build → Build Bundle(s) / APK(s)**。
 
-> 包名已改为 `com.kers.killove.jhsy`，与旧版（如 `com.kers701.wallpaperc`）**不能覆盖安装**，数据不互通。
-
----
-
-## 版本
-
-| 版本 | 说明 |
-|------|------|
-| **1.01** | 正式版：镜花水月命名与新包名；省电模式；隔离双关键词；PIN 隐藏翻译密钥；10GB 清缓存；记录 77 条；撤销动态壁纸 |
-| 1.5.x | 方向三选一、Windows 风格填充、隔离两次设置、关键词翻译、设备分辨率展示等 |
-| 1.3.x～1.4.x | 多兜底 URL、跃迁列表可见、网络探测、主题透明度等 |
-| 1.1.0 | 关键词、多密钥、网络/本地兜底 |
-| 1.0.0-mvp | 首版 |
-
----
-
-## GitHub Actions
+### GitHub Actions
 
 | 工作流 | 触发 | 产物 |
 |--------|------|------|
-| `.github/workflows/build-apk.yml` | push / PR 到 main、或手动 Run | Artifacts 中的 debug APK |
-| `.github/workflows/release-apk.yml` | 推送标签 `v*`（如 `v1.01`） | GitHub Release 附件 |
+| `.github/workflows/build-apk.yml` | push / PR 到 main、手动 Run | Artifacts 中的 debug APK |
+| `.github/workflows/release-apk.yml` | 标签 `v*`（如 `v1.06`） | Release 附件 |
 
 ```bash
-git tag v1.01
-git push origin v1.01
+git tag v1.06
+git push origin v1.06
 ```
 
-当前 Actions 产物一般为 **debug 签名**包，便于自测；上架请配置 release 签名与 Secrets。
+当前 Actions 产物一般为 **debug 签名**包，便于自测。
+
+---
+
+## 源码结构（摘要）
+
+```
+app/src/main/java/com/kers/killove/jhsy/
+├── domain/       模型、更换闭环 WallpaperChanger
+├── data/         Wallhaven、Room、设置、翻译、本地兜底
+├── service/      前台服务、无障碍保活等
+├── worker/       WorkManager、开机/亮屏广播
+├── ui/           首页、设置、记录、壁纸背景
+└── util/         PIN、省电、备份、Root/超级服务等
+```
+
+---
+
+## 版本记录
+
+| 版本 | 说明 |
+|------|------|
+| **1.06** | 当前构建号；功能以本 README 与源码为准 |
+| 1.01+ | 镜花水月命名与新包名；省电；隔离；PIN；跃迁；多兜底；主题等 |
+| 1.1.x | 关键词、多密钥、网络/本地兜底 |
+| 1.0.0-mvp | 首版 |
 
 ---
 
