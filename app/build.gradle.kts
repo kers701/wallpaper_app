@@ -1,8 +1,23 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
+}
+
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+}
+
+fun propOrEnv(key: String, envKey: String): String? {
+    val fromFile = keystoreProperties.getProperty(key)?.takeIf { it.isNotBlank() }
+    if (fromFile != null) return fromFile
+    return System.getenv(envKey)?.takeIf { it.isNotBlank() }
 }
 
 android {
@@ -18,6 +33,21 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("release") {
+            val storePath = propOrEnv("storeFile", "RELEASE_STORE_FILE")
+            val storePass = propOrEnv("storePassword", "RELEASE_STORE_PASSWORD")
+            val alias = propOrEnv("keyAlias", "RELEASE_KEY_ALIAS")
+            val keyPass = propOrEnv("keyPassword", "RELEASE_KEY_PASSWORD")
+            if (storePath != null && storePass != null && alias != null && keyPass != null) {
+                storeFile = file(storePath)
+                storePassword = storePass
+                keyAlias = alias
+                keyPassword = keyPass
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -26,6 +56,14 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            val hasReleaseSigning =
+                propOrEnv("storeFile", "RELEASE_STORE_FILE") != null &&
+                    propOrEnv("storePassword", "RELEASE_STORE_PASSWORD") != null &&
+                    propOrEnv("keyAlias", "RELEASE_KEY_ALIAS") != null &&
+                    propOrEnv("keyPassword", "RELEASE_KEY_PASSWORD") != null
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
         debug {
             applicationIdSuffix = ".debug"
