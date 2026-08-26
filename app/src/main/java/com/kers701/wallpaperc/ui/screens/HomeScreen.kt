@@ -98,6 +98,40 @@ fun HomeScreen(vm: MainViewModel) {
 
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("跃迁关键词", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    when {
+                        !settings.jumpModeEnabled -> "跃迁模式：关闭（使用普通关键词列表）"
+                        settings.jumpKeywords.isEmpty() -> "跃迁模式：开启 · 列表为空（下次 Wallhaven 成功后会自动写入标签）"
+                        else -> "跃迁模式：开启 · 共 ${settings.jumpKeywords.size} 个（覆盖写入，非追加）"
+                    },
+                    style = MaterialTheme.typography.bodySmall
+                )
+                if (settings.jumpKeywords.isNotEmpty()) {
+                    Text(
+                        settings.jumpKeywords.joinToString("、"),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    val list = settings.jumpKeywords
+                    val idx = settings.jumpKeywordIndex.mod(list.size)
+                    Text(
+                        "下次将用：${list[idx]}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                } else if (settings.useKeywords && settings.keywords.isNotEmpty() && !settings.jumpModeEnabled) {
+                    val list = settings.keywords
+                    val idx = settings.keywordIndex.mod(list.size)
+                    Text(
+                        "普通关键词 ${list.size} 个 · 下次将用：${list[idx]}",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        }
+
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("网络检测", style = MaterialTheme.typography.titleMedium)
                 Text(
                     networkProbe,

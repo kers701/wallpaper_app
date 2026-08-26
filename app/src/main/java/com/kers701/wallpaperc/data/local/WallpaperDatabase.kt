@@ -25,7 +25,9 @@ data class WallpaperEntity(
     val width: Int = 0,
     val height: Int = 0,
     val fileSize: Long = 0L,
-    val source: String = ""
+    val source: String = "",
+    /** 本次搜索使用的关键词（Wallhaven 时有意义） */
+    val keyword: String = ""
 )
 
 @Dao
@@ -43,7 +45,7 @@ interface WallpaperDao {
     suspend fun count(): Int
 }
 
-@Database(entities = [WallpaperEntity::class], version = 2, exportSchema = false)
+@Database(entities = [WallpaperEntity::class], version = 3, exportSchema = false)
 abstract class WallpaperDatabase : RoomDatabase() {
     abstract fun dao(): WallpaperDao
 
@@ -59,6 +61,12 @@ abstract class WallpaperDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE wallpaper_records ADD COLUMN keyword TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun get(context: Context): WallpaperDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -66,7 +74,7 @@ abstract class WallpaperDatabase : RoomDatabase() {
                     WallpaperDatabase::class.java,
                     "wallpaperc.db"
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .fallbackToDestructiveMigration()
                     .build()
                     .also { instance = it }

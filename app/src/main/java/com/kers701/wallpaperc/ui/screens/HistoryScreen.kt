@@ -47,6 +47,12 @@ fun HistoryScreen(vm: MainViewModel) {
                         Column(Modifier.padding(12.dp)) {
                             Text("ID: ${item.id}", style = MaterialTheme.typography.titleSmall)
                             Text("来源: ${item.source.ifBlank { "—" }} · 类别: ${item.category} · 纯度: ${item.purity}")
+                            if (item.source == "wallhaven" || item.keyword.isNotBlank()) {
+                                Text(
+                                    "关键词: ${item.keyword.ifBlank { "（未使用关键词）" }}",
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
                             val res = if (item.width > 0 && item.height > 0) {
                                 "${item.width}×${item.height}"
                             } else {

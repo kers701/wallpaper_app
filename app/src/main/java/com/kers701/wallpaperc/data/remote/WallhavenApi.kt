@@ -357,6 +357,38 @@ class WallhavenApi(
         }
     }
 
+
+    /**
+     * 搜索接口往往不带 tags；详情接口补拉标签用于跃迁。
+     */
+    suspend fun fetchWallpaperTags(id: String, apiKey: String? = null): List<String> =
+        withContext(Dispatchers.IO) {
+            val builder = "https://wallhaven.cc/api/v1/w/$id".toHttpUrl().newBuilder()
+            if (!apiKey.isNullOrBlank()) builder.addQueryParameter("apikey", apiKey)
+            val request = Request.Builder()
+                .url(builder.build())
+                .header("User-Agent", "Wallpaperc/1.3 (Android)")
+                .get()
+                .build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext emptyList()
+                val body = response.body?.string().orEmpty()
+                try {
+                    val data = JSONObject(body).optJSONObject("data") ?: return@withContext emptyList()
+                    val tagsArr = data.optJSONArray("tags") ?: return@withContext emptyList()
+                    val out = mutableListOf<String>()
+                    for (i in 0 until tagsArr.length()) {
+                        val o = tagsArr.optJSONObject(i) ?: continue
+                        val name = o.optString("name").trim()
+                        if (name.isNotEmpty()) out += name
+                    }
+                    out
+                } catch (_: Exception) {
+                    emptyList()
+                }
+            }
+        }
+
     fun nextCategory(settings: AppSettings): String {
         return when (settings.categoryMode) {
             CategoryMode.Zr -> "zr"

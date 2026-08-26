@@ -1,8 +1,6 @@
 package com.kers701.wallpaperc.domain
 
 import android.content.Context
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
 import android.os.PowerManager
 import com.kers701.wallpaperc.data.local.LocalFallbackStore
 import com.kers701.wallpaperc.data.local.WallpaperDao
@@ -28,7 +26,6 @@ class WallpaperChanger(
             return ChangeResult.Failure("息屏已跳过本次更换")
         }
 
-        // 仅强制本地模式才跳过网络
         if (settings.forceLocalMode) {
             return applyLocalFallback(settings, reason = "强制本地模式")
         }
@@ -42,7 +39,6 @@ class WallpaperChanger(
         var wallhavenTried = false
         var wallhavenHttpError = false
 
-        // 始终尝试 Wallhaven（不再因系统“无网”标志直接跳过；背景 API 能通说明链路往往可用）
         wallhavenTried = true
         try {
             candidates = api.search(settings, category, keyword)
@@ -76,10 +72,13 @@ class WallpaperChanger(
             }
         }
 
-        // Wallhaven 有候选：尝试下载；失败继续网络兜底
         if (candidates.isNotEmpty()) {
             val item = candidates.firstOrNull { !dao.exists(it.id) } ?: candidates.first()
-            when (val r = downloadAndSet(item, settings, category, fromWallhaven = fromWallhaven)) {
+            when (val r = downloadAndSet(
+                item, settings, category,
+                fromWallhaven = fromWallhaven,
+                usedKeyword = keyword
+            )) {
                 is ChangeResult.Success -> return r
                 is ChangeResult.Failure -> {
                     lastError = "Wallhaven 下载失败: ${r.message}"
@@ -87,7 +86,6 @@ class WallpaperChanger(
             }
         }
 
-        // 网络兜底 API
         if (settings.networkFallbackEnabled && settings.fallbackApiUrl.isNotBlank()) {
             try {
                 val fb = api.fetchFallbackApi(
@@ -95,7 +93,11 @@ class WallpaperChanger(
                     settings.minWidth,
                     settings.minHeight
                 )
-                when (val r = downloadAndSet(fb, settings, category, fromWallhaven = false)) {
+                when (val r = downloadAndSet(
+                    fb, settings, category,
+                    fromWallhaven = false,
+                    usedKeyword = null
+                )) {
                     is ChangeResult.Success -> return r
                     is ChangeResult.Failure -> {
                         lastError = "兜底 API 失败: ${r.message}" +
@@ -103,13 +105,11 @@ class WallpaperChanger(
                     }
                 }
             } catch (e: Exception) {
-                // 用户关心的 404 等 HTTP 错误原样带出
                 val msg = e.message ?: e.javaClass.simpleName
                 lastError = "兜底 API 失败: $msg" +
                     (lastError?.let { "（此前：$it）" } ?: "")
             }
         } else if (!settings.networkFallbackEnabled) {
-            // 关闭网络兜底：明确提示 Wallhaven 侧原因
             if (wallhavenTried && !fromWallhaven) {
                 lastError = if (wallhavenHttpError) {
                     lastError ?: "Wallhaven 连接失败"
@@ -121,7 +121,6 @@ class WallpaperChanger(
             lastError = (lastError ?: "Wallhaven 未成功") + "（未配置兜底 API URL）"
         }
 
-        // 本地兜底
         if (settings.localFallbackEnabled) {
             return applyLocalFallback(
                 settings,
@@ -129,7 +128,6 @@ class WallpaperChanger(
             )
         }
 
-        // 关闭本地：把真实错误抛给 UI（兜底 404 / Wallhaven 无结果等）
         return ChangeResult.Failure(
             lastError
                 ?: if (!settings.networkFallbackEnabled) {
@@ -168,7 +166,8 @@ class WallpaperChanger(
                 width = item.width,
                 height = item.height,
                 fileSize = size,
-                source = "local"
+                source = "local",
+                keyword = ""
             )
         )
         settingsRepo.setLastChangeAt(System.currentTimeMillis())
@@ -182,7 +181,8 @@ class WallpaperChanger(
         item: WallpaperItem,
         settings: AppSettings,
         category: String,
-        fromWallhaven: Boolean
+        fromWallhaven: Boolean,
+        usedKeyword: String?
     ): ChangeResult {
         val dir = File(context.filesDir, "wallpapers").apply { mkdirs() }
         val dest = File(dir, "${item.id.replace(Regex("[^a-zA-Z0-9._-]"), "_")}.jpg")
@@ -212,6 +212,7 @@ class WallpaperChanger(
         }
 
         val fileSize = finalFile.length()
+        val kwRecord = if (item.source == "wallhaven") (usedKeyword ?: "") else ""
         dao.insert(
             WallpaperEntity(
                 id = item.id,
@@ -223,7 +224,8 @@ class WallpaperChanger(
                 width = item.width,
                 height = item.height,
                 fileSize = fileSize,
-                source = item.source
+                source = item.source,
+                keyword = kwRecord
             )
         )
 
@@ -231,11 +233,15 @@ class WallpaperChanger(
             settingsRepo.setLastCategory(category)
         }
 
-        if (fromWallhaven && item.source == "wallhaven" && item.tags.isNotEmpty()) {
-            val cleaned = item.tags
-                .map { it.trim() }
-                .filter { it.isNotEmpty() }
-                .distinct()
+        // 跃迁：Wallhaven 成功时用标签覆盖跃迁列表（搜索常无 tags，需详情补拉）
+        if (fromWallhaven && item.source == "wallhaven") {
+            var tags = item.tags
+            if (tags.isEmpty()) {
+                tags = runCatching {
+                    api.fetchWallpaperTags(item.id, settings.nextApiKey())
+                }.getOrDefault(emptyList())
+            }
+            val cleaned = tags.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
             if (cleaned.isNotEmpty()) {
                 settingsRepo.setJumpKeywords(cleaned)
             }
@@ -254,7 +260,10 @@ class WallpaperChanger(
             trimCache(dir, keep = 30)
         }
         settingsRepo.setLastChangeAt(System.currentTimeMillis())
-        return ChangeResult.Success(item.copy(fileSize = fileSize), finalFile.absolutePath)
+        return ChangeResult.Success(
+            item.copy(fileSize = fileSize, tags = if (item.tags.isNotEmpty()) item.tags else emptyList()),
+            finalFile.absolutePath
+        )
     }
 
     private fun pickKeyword(settings: AppSettings): String? {

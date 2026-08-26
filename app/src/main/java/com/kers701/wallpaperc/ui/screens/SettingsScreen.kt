@@ -259,10 +259,31 @@ fun SettingsScreen(vm: MainViewModel) {
         Text("关键词", style = MaterialTheme.typography.titleMedium)
         RowSwitch("启用关键词搜索", useKeywords) { useKeywords = it }
         RowSwitch("跃迁模式（用上次成功标签覆盖跃迁列表）", jumpMode) { jumpMode = it }
-        if (settings.jumpKeywords.isNotEmpty()) {
+        Text(
+            "Wallhaven 成功后会用该壁纸标签覆盖跃迁列表；开启且列表非空时优先用跃迁词搜索",
+            style = MaterialTheme.typography.bodySmall
+        )
+        if (settings.jumpKeywords.isEmpty()) {
             Text(
-                "当前跃迁关键词 ${settings.jumpKeywords.size} 个：${settings.jumpKeywords.take(8).joinToString("、")}${if (settings.jumpKeywords.size > 8) "…" else ""}",
+                "跃迁列表：空（尚未从 Wallhaven 成功写入）",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        } else {
+            Text(
+                "跃迁列表（${settings.jumpKeywords.size}）：",
                 style = MaterialTheme.typography.bodySmall
+            )
+            OutlinedTextField(
+                value = settings.jumpKeywords.joinToString("\n"),
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("跃迁关键词（只读，由系统覆盖写入）") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 80.dp),
+                minLines = 2,
+                maxLines = 10
             )
         }
         if (keysVisible) {
