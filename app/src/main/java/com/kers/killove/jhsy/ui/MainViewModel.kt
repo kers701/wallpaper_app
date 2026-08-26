@@ -148,16 +148,49 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun restoreConfigFromFile() {
         viewModelScope.launch {
             try {
+                val ctx = getApplication<Application>()
+                val file = ConfigBackup.defaultFile(ctx)
+                if (!file.exists()) {
+                    _status.value = "备份文件不存在\n${file.absolutePath}\n请先点「备份配置」或使用「从 JSON 恢复」"
+                    return@launch
+                }
                 val base = settings.value
-                val restored = ConfigBackup.readFromFile(getApplication(), base)
+                val restored = ConfigBackup.readFromFile(ctx, base, file)
                 settingsRepo.save(restored)
                 applySchedule(restored)
-                _status.value = "配置已从备份恢复（PIN 未改动）"
+                _status.value = "配置已从文件恢复（PIN 未改动）\n${file.absolutePath}"
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _status.value = "恢复失败：${e.message ?: e.javaClass.simpleName}"
+            }
+        }
+    }
+
+    /** 从任意路径/内容恢复（SAF 选文件后调用） */
+    fun restoreConfigFromPath(path: String) {
+        viewModelScope.launch {
+            try {
+                val f = File(path)
+                if (!f.exists() || !f.canRead()) {
+                    _status.value = "无法读取：$path"
+                    return@launch
+                }
+                val restored = ConfigBackup.fromJson(f.readText(Charsets.UTF_8), settings.value)
+                settingsRepo.save(restored)
+                applySchedule(restored)
+                _status.value = "已从所选文件恢复（PIN 未改动）"
             } catch (e: Exception) {
                 _status.value = "恢复失败：${e.message}"
             }
         }
     }
+
+    fun restoreConfigFromUriText(text: String) {
+        restoreConfigFromJson(text)
+    }
+
+    fun backupFilePath(): String = ConfigBackup.defaultFile(getApplication()).absolutePath
+
 
     /** 从粘贴的 JSON 恢复；保留当前 PIN。 */
     fun restoreConfigFromJson(json: String) {
@@ -407,22 +440,39 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshServiceStatus() {
         viewModelScope.launch {
             val ctx = getApplication<Application>()
-            val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-            val running = try {
-                @Suppress("DEPRECATION")
-                am.getRunningServices(50).any {
-                    it.service.className.contains("WallpaperForegroundService")
-                }
-            } catch (_: Exception) {
-                false
-            }
-            val enabled = settings.value.enabled || settings.value.superServiceEnabled
+            val s = settings.value
+            val enabled = s.enabled || s.superServiceEnabled
+            // :svc 独立进程：getRunningServices 在新系统上几乎永远看不到，改查进程名
+            val svcAlive = isSvcProcessAlive(ctx)
+            // 未开 FGS/超级服务时，仅靠 WorkManager 也算「调度正常」
+            val expectsDedicatedProcess = s.useForegroundService || s.superServiceEnabled
             _serviceStatus.value = when {
-                running && enabled -> ServiceStatus.Running
-                !enabled && !running -> ServiceStatus.Stopped
-                enabled && !running -> ServiceStatus.Abnormal
-                else -> ServiceStatus.Abnormal
+                !enabled -> ServiceStatus.Stopped
+                expectsDedicatedProcess && svcAlive -> ServiceStatus.Running
+                expectsDedicatedProcess && !svcAlive -> {
+                    // 尝试拉起后再判一次
+                    try { WallpaperForegroundService.start(ctx) } catch (_: Exception) {}
+                    if (isSvcProcessAlive(ctx)) ServiceStatus.Running
+                    else ServiceStatus.Abnormal
+                }
+                // 仅 Worker / 已开启自动：视为运行中（后台受限不标异常）
+                enabled -> ServiceStatus.Running
+                else -> ServiceStatus.Stopped
             }
+        }
+    }
+
+    private fun isSvcProcessAlive(ctx: Context): Boolean {
+        return try {
+            val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            val pkg = ctx.packageName
+            val names = setOf("$pkg:svc", pkg)
+            am.runningAppProcesses?.any { p ->
+                p.processName == "$pkg:svc" ||
+                    (p.processName.endsWith(":svc") && p.processName.startsWith(pkg.substringBefore(".debug")))
+            } == true
+        } catch (_: Exception) {
+            false
         }
     }
 

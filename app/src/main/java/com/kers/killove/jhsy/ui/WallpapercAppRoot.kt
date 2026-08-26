@@ -28,6 +28,7 @@ import androidx.navigation.compose.rememberNavController
 import com.kers.killove.jhsy.ui.screens.HistoryScreen
 import com.kers.killove.jhsy.ui.screens.HomeScreen
 import com.kers.killove.jhsy.ui.screens.OverviewScreen
+import com.kers.killove.jhsy.ui.screens.BlacklistScreen
 import com.kers.killove.jhsy.ui.screens.SettingsScreen
 
 val LocalUiTextColor = compositionLocalOf { Color.White }
@@ -102,8 +103,11 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
                 ) {
                     composable("overview") { OverviewScreen(vm) }
                     composable("home") { HomeScreen(vm) }
-                    composable("settings") { SettingsScreen(vm) }
+                    composable("settings") { SettingsScreen(vm, onOpenBlacklist = { nav.navigate("blacklist") }) }
                     composable("history") { HistoryScreen(vm) }
+                    composable("blacklist") {
+                        BlacklistScreen(vm, onBack = { nav.popBackStack() })
+                    }
                 }
             }
         }

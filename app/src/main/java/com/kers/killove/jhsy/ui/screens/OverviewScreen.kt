@@ -1,8 +1,10 @@
 package com.kers.killove.jhsy.ui.screens
 
 import android.app.WallpaperManager
+import android.graphics.BitmapFactory
 import android.graphics.drawable.BitmapDrawable
 import android.os.Build
+import android.os.ParcelFileDescriptor
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -26,6 +28,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -39,11 +42,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.kers.killove.jhsy.ui.LocalCardAlpha
 import com.kers.killove.jhsy.ui.LocalUiTextColor
 import com.kers.killove.jhsy.ui.MainViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -53,6 +62,7 @@ fun OverviewScreen(vm: MainViewModel) {
     val settings by vm.settings.collectAsState()
     val serviceState by vm.serviceStatus.collectAsState()
     val cacheBytes by vm.cacheBytes.collectAsState()
+    val recent by vm.recent.collectAsState()
     val textColor = LocalUiTextColor.current
     val cardAlpha = LocalCardAlpha.current
     val context = LocalContext.current
@@ -71,12 +81,30 @@ fun OverviewScreen(vm: MainViewModel) {
 
     var homeBmp by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
     var lockBmp by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+    var previewHint by remember { mutableStateOf("") }
 
-    LaunchedEffect(settings.lastChangeAt, serviceState) {
+    fun reload() {
         vm.refreshServiceStatus()
         vm.refreshCacheSize()
-        homeBmp = loadWallpaperPreview(context, home = true)
-        lockBmp = loadWallpaperPreview(context, home = false)
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val obs = LifecycleEventObserver { _, e ->
+            if (e == Lifecycle.Event.ON_RESUME) reload()
+        }
+        lifecycleOwner.lifecycle.addObserver(obs)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
+    }
+
+    LaunchedEffect(settings.lastChangeAt, settings.changeCount, recent.firstOrNull()?.path) {
+        reload()
+        val (h, l, hint) = withContext(Dispatchers.IO) {
+            loadWallPreviews(context, recent.firstOrNull()?.path)
+        }
+        homeBmp = h
+        lockBmp = l
+        previewHint = hint
     }
 
     val statusColor = when (serviceState) {
@@ -120,6 +148,9 @@ fun OverviewScreen(vm: MainViewModel) {
 
         OverviewCard(cardAlpha) {
             Text("壁纸预览", style = MaterialTheme.typography.titleSmall, color = textColor)
+            if (previewHint.isNotBlank()) {
+                Text(previewHint, style = MaterialTheme.typography.bodySmall, color = textColor.copy(alpha = 0.6f))
+            }
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 PreviewBox("桌面", homeBmp, Modifier.weight(1f))
@@ -202,56 +233,104 @@ private fun PreviewBox(title: String, bmp: androidx.compose.ui.graphics.ImageBit
     }
 }
 
-private fun loadWallpaperPreview(context: android.content.Context, home: Boolean): androidx.compose.ui.graphics.ImageBitmap? {
+/** 系统壁纸文件 → Drawable → 最近一次更换缓存图 */
+private fun loadWallPreviews(
+    context: android.content.Context,
+    lastLocalPath: String?
+): Triple<androidx.compose.ui.graphics.ImageBitmap?, androidx.compose.ui.graphics.ImageBitmap?, String> {
+    val home = loadSystemWallpaper(context, home = true)
+        ?: lastLocalPath?.let { decodeFileScaled(it) }
+    val lock = loadSystemWallpaper(context, home = false)
+        ?: home
+    val hint = when {
+        home != null && loadSystemWallpaper(context, true) != null -> ""
+        home != null -> "系统接口受限，显示最近一次更换缓存"
+        else -> "无法读取系统壁纸（权限或 ROM 限制）"
+    }
+    return Triple(home, lock, hint)
+}
+
+private fun loadSystemWallpaper(context: android.content.Context, home: Boolean): androidx.compose.ui.graphics.ImageBitmap? {
     return try {
         val wm = WallpaperManager.getInstance(context)
-        val drawable = if (home) {
+        val flag = if (home) WallpaperManager.FLAG_SYSTEM else WallpaperManager.FLAG_LOCK
+        // 优先 getWallpaperFile（比 getDrawable 更稳）
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            var pfd: ParcelFileDescriptor? = null
             try {
-                wm.drawable
-            } catch (_: SecurityException) {
-                wm.peekDrawable()
+                pfd = try {
+                    wm.getWallpaperFile(flag)
+                } catch (_: Exception) {
+                    if (home) null else try { wm.getWallpaperFile(WallpaperManager.FLAG_SYSTEM) } catch (_: Exception) { null }
+                }
+                if (pfd != null) {
+                    val bmp = BitmapFactory.decodeFileDescriptor(pfd.fileDescriptor) ?: return null
+                    return scaleToImageBitmap(bmp)
+                }
+            } finally {
+                try { pfd?.close() } catch (_: Exception) {}
             }
-        } else {
+        }
+        val drawable = try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                 try {
-                    wm.getDrawable(WallpaperManager.FLAG_LOCK)
+                    wm.getDrawable(flag)
                 } catch (_: Exception) {
-                    try {
-                        wm.drawable
-                    } catch (_: Exception) {
-                        null
-                    }
+                    if (home) wm.peekDrawable() else wm.getDrawable(WallpaperManager.FLAG_SYSTEM)
                 }
             } else {
-                try {
-                    wm.drawable
-                } catch (_: Exception) {
-                    null
-                }
+                @Suppress("DEPRECATION")
+                wm.drawable
             }
+        } catch (_: SecurityException) {
+            try { wm.peekDrawable() } catch (_: Exception) { null }
+        } catch (_: Exception) {
+            null
         } ?: return null
         val bmp = when (drawable) {
-            is BitmapDrawable -> drawable.bitmap
-            else -> drawable.toBitmap(
-                width = (drawable.intrinsicWidth.takeIf { it > 0 } ?: 540).coerceAtMost(720),
-                height = (drawable.intrinsicHeight.takeIf { it > 0 } ?: 960).coerceAtMost(1280)
-            )
-        }
-        // scale down for UI
-        val maxEdge = 480
-        val scaled = if (bmp.width > maxEdge || bmp.height > maxEdge) {
-            val scale = maxEdge.toFloat() / maxOf(bmp.width, bmp.height)
-            android.graphics.Bitmap.createScaledBitmap(
-                bmp,
-                (bmp.width * scale).toInt().coerceAtLeast(1),
-                (bmp.height * scale).toInt().coerceAtLeast(1),
-                true
-            )
-        } else bmp
-        scaled.asImageBitmap()
+            is BitmapDrawable -> drawable.bitmap?.takeIf { !it.isRecycled }
+            else -> try {
+                drawable.toBitmap(
+                    width = (drawable.intrinsicWidth.takeIf { it > 0 } ?: 540).coerceIn(64, 720),
+                    height = (drawable.intrinsicHeight.takeIf { it > 0 } ?: 960).coerceIn(64, 1280)
+                )
+            } catch (_: Exception) { null }
+        } ?: return null
+        scaleToImageBitmap(bmp)
     } catch (_: Exception) {
         null
     }
+}
+
+private fun decodeFileScaled(path: String): androidx.compose.ui.graphics.ImageBitmap? {
+    return try {
+        val f = File(path)
+        if (!f.exists() || f.length() < 32) return null
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(path, bounds)
+        var sample = 1
+        val maxSide = maxOf(bounds.outWidth, bounds.outHeight)
+        while (maxSide / sample > 480) sample *= 2
+        val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+        val bmp = BitmapFactory.decodeFile(path, opts) ?: return null
+        scaleToImageBitmap(bmp)
+    } catch (_: Exception) {
+        null
+    }
+}
+
+private fun scaleToImageBitmap(bmp: android.graphics.Bitmap): androidx.compose.ui.graphics.ImageBitmap {
+    val maxEdge = 480
+    val scaled = if (bmp.width > maxEdge || bmp.height > maxEdge) {
+        val scale = maxEdge.toFloat() / maxOf(bmp.width, bmp.height)
+        android.graphics.Bitmap.createScaledBitmap(
+            bmp,
+            (bmp.width * scale).toInt().coerceAtLeast(1),
+            (bmp.height * scale).toInt().coerceAtLeast(1),
+            true
+        )
+    } else bmp
+    return scaled.asImageBitmap()
 }
 
 private fun formatBytes(bytes: Long): String {

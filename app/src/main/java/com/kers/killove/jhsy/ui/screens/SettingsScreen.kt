@@ -56,7 +56,7 @@ import com.kers.killove.jhsy.ui.MainViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(vm: MainViewModel) {
+fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}) {
     val settings by vm.settings.collectAsState()
     val context = LocalContext.current
     val unlocked by vm.unlocked.collectAsState()
@@ -392,15 +392,23 @@ fun SettingsScreen(vm: MainViewModel) {
         Text("配置备份 / 恢复", style = MaterialTheme.typography.titleMedium)
         if (keysVisible) {
             Text("备份不含 PIN；恢复后保留本机 PIN 设置", style = MaterialTheme.typography.bodySmall)
+            Text(
+                "默认文件：${vm.backupFilePath()}",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Text(
+                "若无反应请先「备份配置」生成文件，或看顶部状态提示",
+                style = MaterialTheme.typography.bodySmall
+            )
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(
                     onClick = { vm.backupConfig() },
                     modifier = Modifier.weight(1f)
                 ) { Text("备份配置") }
                 OutlinedButton(
-                    onClick = { vm.restoreConfigFromFile() },
+                    onClick = { vm.restoreConfigFromFile() }, // 默认路径见状态栏
                     modifier = Modifier.weight(1f)
-                ) { Text("从文件恢复") }
+                ) { Text("从默认文件恢复") }
             }
             OutlinedButton(
                 onClick = { showRestoreField = !showRestoreField },
@@ -531,45 +539,18 @@ fun SettingsScreen(vm: MainViewModel) {
             placeholder = { Text("/storage/emulated/0/Pictures/Wallpapers") }
         )
         Text("当前：${vm.localFallbackInfo()}", style = MaterialTheme.typography.bodySmall)
-
-
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
         Text("应用黑名单", style = MaterialTheme.typography.titleMedium)
         Text(
-            "勾选的应用在前台时休眠不换壁纸（需授予「使用情况访问」权限）",
-            style = MaterialTheme.typography.bodySmall
-        )
-        val hasUsage = vm.hasUsageAccess()
-        Text(
-            if (hasUsage) "使用情况访问：已授权" else "使用情况访问：未授权（黑名单无法检测前台）",
+            "已选 ${settings.blacklistPackages.size} 个 · 前台休眠不换壁纸",
             style = MaterialTheme.typography.bodySmall
         )
         OutlinedButton(
-            onClick = { vm.openUsageAccessSettings() },
+            onClick = onOpenBlacklist,
             modifier = Modifier.fillMaxWidth()
-        ) { Text(if (hasUsage) "打开使用情况访问设置" else "前往授权使用情况访问") }
-        LaunchedEffect(Unit) { vm.loadLauncherApps() }
-        val apps by vm.launcherApps.collectAsState()
-        val black = settings.blacklistPackages.toSet()
-        Text("已选 ${black.size} 个 · 列表 ${apps.size} 个", style = MaterialTheme.typography.bodySmall)
-        apps.take(80).forEach { app ->
-            Row(
-                Modifier.fillMaxWidth(),
-                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
-            ) {
-                Checkbox(
-                    checked = app.packageName in black,
-                    onCheckedChange = { vm.toggleBlacklistPackage(app.packageName) }
-                )
-                Column(Modifier.weight(1f)) {
-                    Text(app.label, style = MaterialTheme.typography.bodyMedium)
-                    Text(app.packageName, style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        }
-        if (apps.size > 80) {
-            Text("仅显示前 80 个应用，可用搜索后续版本完善", style = MaterialTheme.typography.bodySmall)
-        }
+        ) { Text("管理黑名单…") }
+
+
 
         Button(
             onClick = {
