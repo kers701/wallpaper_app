@@ -61,7 +61,7 @@ class WallhavenApi(
 
         val request = Request.Builder()
             .url(urlBuilder.build())
-            .header("User-Agent", "Wallpaperc/1.2 (Android)")
+            .header("User-Agent", "Wallpaperc/1.3 (Android)")
             .get()
             .build()
 
@@ -76,9 +76,8 @@ class WallhavenApi(
 
     /**
      * 网络兜底：请求用户配置的 URL。
-     * - 若响应 Content-Type 为 image 类型 → 直接当图片地址用（返回合成 item，path 为该 url）
-     * - 若为文本一行 URL
-     * - 若为 JSON，尝试常见字段 path/url/image 等
+     * - 响应为图片（image/* 或魔数检测）→ 预取字节，避免二次下载失败
+     * - 文本一行 URL / JSON 常见字段 path/url/image 等
      */
     suspend fun fetchFallbackApi(templateUrl: String, width: Int, height: Int): WallpaperItem =
         withContext(Dispatchers.IO) {
@@ -89,17 +88,20 @@ class WallhavenApi(
                 .replace("{h}", height.toString())
             val request = Request.Builder()
                 .url(url)
-                .header("User-Agent", "Wallpaperc/1.2 (Android)")
+                .header("User-Agent", "Wallpaperc/1.3 (Android)")
                 .get()
                 .build()
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
                     throw IllegalStateException("兜底 API HTTP ${response.code}")
                 }
-                val type = response.header("Content-Type").orEmpty()
-                val body = response.body?.string().orEmpty()
-                if (type.startsWith("image/")) {
-                    // 响应本身是图：用请求 URL 作为下载地址
+                val type = response.header("Content-Type").orEmpty().lowercase()
+                val bytes = response.body?.bytes() ?: ByteArray(0)
+                if (bytes.isEmpty()) {
+                    throw IllegalStateException("兜底 API 空响应")
+                }
+                // 图片：Content-Type 或文件魔数
+                if (isImageContentType(type) || looksLikeImage(bytes)) {
                     return@use WallpaperItem(
                         id = "fb_${System.currentTimeMillis()}",
                         pathUrl = url,
@@ -108,11 +110,15 @@ class WallhavenApi(
                         height = height,
                         purity = "fallback",
                         category = "net_fb",
-                        source = "fallback_api"
+                        source = "fallback_api",
+                        prefetchedBytes = bytes
                     )
                 }
+                val body = bytes.toString(Charsets.UTF_8)
                 val imageUrl = parseFallbackBody(body)
-                    ?: throw IllegalStateException("兜底 API 无法解析图片地址")
+                    ?: throw IllegalStateException(
+                        "兜底 API 无法解析图片地址（Content-Type=$type，前缀=${body.take(80)}）"
+                    )
                 WallpaperItem(
                     id = "fb_${imageUrl.hashCode()}_${System.currentTimeMillis() % 100000}",
                     pathUrl = imageUrl,
@@ -125,6 +131,100 @@ class WallhavenApi(
                 )
             }
         }
+
+    private fun isImageContentType(type: String): Boolean {
+        if (type.startsWith("image/")) return true
+        // 部分图床返回 octet-stream
+        if (type.contains("octet-stream")) return true
+        return false
+    }
+
+    private fun looksLikeImage(bytes: ByteArray): Boolean {
+        if (bytes.size < 4) return false
+        // JPEG
+        if (bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte()) return true
+        // PNG
+        if (bytes[0] == 0x89.toByte() && bytes[1] == 0x50.toByte() &&
+            bytes[2] == 0x4E.toByte() && bytes[3] == 0x47.toByte()
+        ) return true
+        // GIF
+        if (bytes[0] == 'G'.code.toByte() && bytes[1] == 'I'.code.toByte() &&
+            bytes[2] == 'F'.code.toByte()
+        ) return true
+        // WEBP: RIFF....WEBP
+        if (bytes.size >= 12 &&
+            bytes[0] == 'R'.code.toByte() && bytes[1] == 'I'.code.toByte() &&
+            bytes[8] == 'W'.code.toByte() && bytes[9] == 'E'.code.toByte()
+        ) return true
+        return false
+    }
+
+    /**
+     * 连通性/延迟探测：返回毫秒；失败抛异常或返回负值由调用方处理。
+     */
+    data class ProbeResult(
+        val name: String,
+        val ok: Boolean,
+        val latencyMs: Long,
+        val detail: String
+    )
+
+    suspend fun probeUrl(name: String, url: String): ProbeResult = withContext(Dispatchers.IO) {
+        val start = System.nanoTime()
+        try {
+            val request = Request.Builder()
+                .url(url)
+                .header("User-Agent", "Wallpaperc/1.3 (Android)")
+                .get()
+                .build()
+            client.newCall(request).execute().use { response ->
+                val ms = (System.nanoTime() - start) / 1_000_000
+                val type = response.header("Content-Type").orEmpty()
+                // 读一点 body 确认链路完整
+                val peek = response.body?.bytes()?.size ?: 0
+                if (response.isSuccessful) {
+                    ProbeResult(name, true, ms, "HTTP ${response.code} · ${peek}B · $type")
+                } else {
+                    ProbeResult(name, false, ms, "HTTP ${response.code} · $type")
+                }
+            }
+        } catch (e: Exception) {
+            val ms = (System.nanoTime() - start) / 1_000_000
+            ProbeResult(name, false, ms, e.message ?: e.javaClass.simpleName)
+        }
+    }
+
+    suspend fun probeWallhaven(apiKey: String? = null): ProbeResult = withContext(Dispatchers.IO) {
+        val start = System.nanoTime()
+        try {
+            val builder = "https://wallhaven.cc/api/v1/search".toHttpUrl().newBuilder()
+                .addQueryParameter("q", "nature")
+                .addQueryParameter("page", "1")
+                .addQueryParameter("sorting", "random")
+            if (!apiKey.isNullOrBlank()) builder.addQueryParameter("apikey", apiKey)
+            val request = Request.Builder()
+                .url(builder.build())
+                .header("User-Agent", "Wallpaperc/1.3 (Android)")
+                .get()
+                .build()
+            client.newCall(request).execute().use { response ->
+                val ms = (System.nanoTime() - start) / 1_000_000
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    return@use ProbeResult("Wallhaven", false, ms, "HTTP ${response.code}")
+                }
+                val count = try {
+                    JSONObject(body).optJSONArray("data")?.length() ?: 0
+                } catch (_: Exception) {
+                    -1
+                }
+                ProbeResult("Wallhaven", true, ms, "HTTP ${response.code} · ${count} 条结果")
+            }
+        } catch (e: Exception) {
+            val ms = (System.nanoTime() - start) / 1_000_000
+            ProbeResult("Wallhaven", false, ms, e.message ?: e.javaClass.simpleName)
+        }
+    }
 
     private fun parseFallbackBody(body: String): String? {
         val trimmed = body.trim()
@@ -200,22 +300,23 @@ class WallhavenApi(
         return list
     }
 
-    /** 解析背景 API：返回图片 URL */
+    /** 解析背景 API：返回图片 URL（若直接返回图则仍用原 URL） */
     suspend fun fetchBackgroundImageUrl(templateUrl: String): String = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url(templateUrl.trim())
-            .header("User-Agent", "Wallpaperc/1.2 (Android)")
+            .header("User-Agent", "Wallpaperc/1.3 (Android)")
             .get()
             .build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
                 throw IllegalStateException("背景 API HTTP ${response.code}")
             }
-            val type = response.header("Content-Type").orEmpty()
-            if (type.startsWith("image/")) {
+            val type = response.header("Content-Type").orEmpty().lowercase()
+            val bytes = response.body?.bytes() ?: ByteArray(0)
+            if (isImageContentType(type) || looksLikeImage(bytes)) {
                 return@use templateUrl.trim()
             }
-            val body = response.body?.string().orEmpty()
+            val body = bytes.toString(Charsets.UTF_8)
             parseFallbackBody(body)
                 ?: throw IllegalStateException("背景 API 无法解析图片地址")
         }
@@ -225,7 +326,7 @@ class WallhavenApi(
         withContext(Dispatchers.IO) {
             val request = Request.Builder()
                 .url(url)
-                .header("User-Agent", "Wallpaperc/1.2 (Android)")
+                .header("User-Agent", "Wallpaperc/1.3 (Android)")
                 .get()
                 .build()
             client.newCall(request).execute().use { response ->
@@ -241,7 +342,7 @@ class WallhavenApi(
     suspend fun fetchRemoteKeywordList(url: String): List<String> = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url(url)
-            .header("User-Agent", "Wallpaperc/1.2 (Android)")
+            .header("User-Agent", "Wallpaperc/1.3 (Android)")
             .get()
             .build()
         client.newCall(request).execute().use { response ->

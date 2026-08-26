@@ -151,7 +151,12 @@ data class WallpaperItem(
     /** Wallhaven 标签名，用于跃迁模式 */
     val tags: List<String> = emptyList(),
     /** 文件字节大小（下载后填充） */
-    val fileSize: Long = 0L
+    val fileSize: Long = 0L,
+    /**
+     * 兜底 API 若直接返回图片二进制，可预取到内存，避免二次请求失败。
+     * 注意：不要序列化到数据库。
+     */
+    val prefetchedBytes: ByteArray? = null
 )
 
 sealed class ChangeResult {

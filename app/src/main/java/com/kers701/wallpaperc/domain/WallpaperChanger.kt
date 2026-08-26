@@ -28,12 +28,9 @@ class WallpaperChanger(
             return ChangeResult.Failure("息屏已跳过本次更换")
         }
 
-        // 强制本地 或 无网 → 本地兜底
-        if (settings.forceLocalMode || !isNetworkAvailable()) {
-            return applyLocalFallback(
-                settings,
-                reason = if (settings.forceLocalMode) "强制本地模式" else "无网络"
-            )
+        // 仅强制本地模式才跳过网络
+        if (settings.forceLocalMode) {
+            return applyLocalFallback(settings, reason = "强制本地模式")
         }
 
         val category = api.nextCategory(settings)
@@ -42,15 +39,23 @@ class WallpaperChanger(
         var candidates: List<WallpaperItem> = emptyList()
         var lastError: String? = null
         var fromWallhaven = false
+        var wallhavenTried = false
+        var wallhavenHttpError = false
 
+        // 始终尝试 Wallhaven（不再因系统“无网”标志直接跳过；背景 API 能通说明链路往往可用）
+        wallhavenTried = true
         try {
             candidates = api.search(settings, category, keyword)
             if (candidates.isEmpty()) {
                 candidates = api.search(settings, category, keyword, page = 2)
             }
             fromWallhaven = candidates.isNotEmpty()
+            if (candidates.isEmpty()) {
+                lastError = "Wallhaven 没找到符合要求的壁纸"
+            }
         } catch (e: Exception) {
-            lastError = e.message
+            wallhavenHttpError = true
+            lastError = "Wallhaven 连接失败: ${e.message}"
             val keys = settings.apiKeys.filter { it.isNotBlank() }
             if (keys.size > 1) {
                 val next = (settings.apiKeyIndex + 1) % keys.size
@@ -59,15 +64,27 @@ class WallpaperChanger(
                     val retrySettings = settings.copy(apiKeyIndex = next)
                     candidates = api.search(retrySettings, category, keyword)
                     fromWallhaven = candidates.isNotEmpty()
+                    if (fromWallhaven) {
+                        lastError = null
+                        wallhavenHttpError = false
+                    } else {
+                        lastError = "Wallhaven 没找到符合要求的壁纸"
+                    }
                 } catch (e2: Exception) {
-                    lastError = e2.message
+                    lastError = "Wallhaven 连接失败: ${e2.message}"
                 }
             }
         }
 
+        // Wallhaven 有候选：尝试下载；失败继续网络兜底
         if (candidates.isNotEmpty()) {
             val item = candidates.firstOrNull { !dao.exists(it.id) } ?: candidates.first()
-            return downloadAndSet(item, settings, category, fromWallhaven = fromWallhaven)
+            when (val r = downloadAndSet(item, settings, category, fromWallhaven = fromWallhaven)) {
+                is ChangeResult.Success -> return r
+                is ChangeResult.Failure -> {
+                    lastError = "Wallhaven 下载失败: ${r.message}"
+                }
+            }
         }
 
         // 网络兜底 API
@@ -78,23 +95,54 @@ class WallpaperChanger(
                     settings.minWidth,
                     settings.minHeight
                 )
-                return downloadAndSet(fb, settings, category, fromWallhaven = false)
+                when (val r = downloadAndSet(fb, settings, category, fromWallhaven = false)) {
+                    is ChangeResult.Success -> return r
+                    is ChangeResult.Failure -> {
+                        lastError = "兜底 API 失败: ${r.message}" +
+                            (lastError?.let { "（此前：$it）" } ?: "")
+                    }
+                }
             } catch (e: Exception) {
-                lastError = "网络兜底失败: ${e.message}"
+                // 用户关心的 404 等 HTTP 错误原样带出
+                val msg = e.message ?: e.javaClass.simpleName
+                lastError = "兜底 API 失败: $msg" +
+                    (lastError?.let { "（此前：$it）" } ?: "")
             }
+        } else if (!settings.networkFallbackEnabled) {
+            // 关闭网络兜底：明确提示 Wallhaven 侧原因
+            if (wallhavenTried && !fromWallhaven) {
+                lastError = if (wallhavenHttpError) {
+                    lastError ?: "Wallhaven 连接失败"
+                } else {
+                    "Wallhaven 没找到符合要求的壁纸"
+                }
+            }
+        } else if (settings.fallbackApiUrl.isBlank()) {
+            lastError = (lastError ?: "Wallhaven 未成功") + "（未配置兜底 API URL）"
         }
 
         // 本地兜底
         if (settings.localFallbackEnabled) {
-            return applyLocalFallback(settings, reason = lastError ?: "Wallhaven 无结果")
+            return applyLocalFallback(
+                settings,
+                reason = lastError ?: "上游均未成功"
+            )
         }
 
-        return ChangeResult.Failure(lastError ?: "未找到符合条件的壁纸")
+        // 关闭本地：把真实错误抛给 UI（兜底 404 / Wallhaven 无结果等）
+        return ChangeResult.Failure(
+            lastError
+                ?: if (!settings.networkFallbackEnabled) {
+                    "Wallhaven 没找到符合要求的壁纸"
+                } else {
+                    "未找到符合条件的壁纸"
+                }
+        )
     }
 
     private suspend fun applyLocalFallback(settings: AppSettings, reason: String): ChangeResult {
         if (!settings.localFallbackEnabled && !settings.forceLocalMode) {
-            return ChangeResult.Failure("本地兜底未开启（$reason）")
+            return ChangeResult.Failure(reason)
         }
         val item = localStore.pickRandom(settings)
             ?: return ChangeResult.Failure(
@@ -124,7 +172,10 @@ class WallpaperChanger(
             )
         )
         settingsRepo.setLastChangeAt(System.currentTimeMillis())
-        return ChangeResult.Success(item.copy(fileSize = size), file.absolutePath)
+        return ChangeResult.Success(
+            item.copy(fileSize = size, category = "local←$reason"),
+            file.absolutePath
+        )
     }
 
     private suspend fun downloadAndSet(
@@ -139,14 +190,20 @@ class WallpaperChanger(
         val ok = if (item.source == "local") {
             true
         } else {
-            api.downloadToFile(item.pathUrl, dest)
+            val prefetched = item.prefetchedBytes
+            if (prefetched != null && prefetched.isNotEmpty()) {
+                runCatching {
+                    dest.parentFile?.mkdirs()
+                    dest.writeBytes(prefetched)
+                    true
+                }.getOrDefault(false)
+            } else {
+                api.downloadToFile(item.pathUrl, dest)
+            }
         }
         val finalFile = if (item.source == "local") File(item.pathUrl) else dest
-        if (!ok || !finalFile.exists()) {
-            if (settings.localFallbackEnabled) {
-                return applyLocalFallback(settings, reason = "下载失败")
-            }
-            return ChangeResult.Failure("下载失败")
+        if (!ok || !finalFile.exists() || finalFile.length() == 0L) {
+            return ChangeResult.Failure("下载失败 (${item.source})")
         }
 
         val setOk = setter.setFromFile(finalFile, settings.target)
@@ -174,7 +231,6 @@ class WallpaperChanger(
             settingsRepo.setLastCategory(category)
         }
 
-        // 跃迁：仅 Wallhaven 成功且非兜底时，用标签覆盖跃迁列表
         if (fromWallhaven && item.source == "wallhaven" && item.tags.isNotEmpty()) {
             val cleaned = item.tags
                 .map { it.trim() }
@@ -185,7 +241,6 @@ class WallpaperChanger(
             }
         }
 
-        // 推进关键词下标
         val active = settings.activeKeywords()
         if (settings.useKeywords && active.isNotEmpty()) {
             if (settings.jumpModeEnabled && settings.jumpKeywords.isNotEmpty()) {
@@ -213,13 +268,6 @@ class WallpaperChanger(
     private fun isScreenOff(): Boolean {
         val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
         return !pm.isInteractive
-    }
-
-    private fun isNetworkAvailable(): Boolean {
-        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        val network = cm.activeNetwork ?: return false
-        val caps = cm.getNetworkCapabilities(network) ?: return false
-        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 
     private fun trimCache(dir: File, keep: Int) {

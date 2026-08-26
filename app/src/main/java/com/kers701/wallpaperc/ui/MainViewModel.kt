@@ -48,6 +48,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _busy = MutableStateFlow(false)
     val busy: StateFlow<Boolean> = _busy.asStateFlow()
 
+    private val _networkProbe = MutableStateFlow("点击下方按钮检测：本机网络 · Wallhaven · 兜底 API 延迟")
+    val networkProbe: StateFlow<String> = _networkProbe.asStateFlow()
+
+    private val _probing = MutableStateFlow(false)
+    val probing: StateFlow<Boolean> = _probing.asStateFlow()
+
     /** 会话内是否已解锁（进程重启后需重新输入 PIN） */
     private val _unlocked = MutableStateFlow(false)
     val unlocked: StateFlow<Boolean> = _unlocked.asStateFlow()
@@ -97,7 +103,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             when (val r = changer.changeOnce(forceIgnoreScreenOff = true)) {
                 is ChangeResult.Success -> {
                     val res = if (r.item.width > 0) "${r.item.width}×${r.item.height}" else ""
-                    _status.value = "已设置 [${r.item.source}] ${r.item.id} $res"
+                    val extra = if (r.item.source == "local" && r.item.category.startsWith("local←")) {
+                        " · 原因：${r.item.category.removePrefix("local←")}"
+                    } else ""
+                    _status.value = "已设置 [${r.item.source}] ${r.item.id} $res$extra"
                 }
                 is ChangeResult.Failure ->
                     _status.value = "失败：${r.message}"
@@ -198,6 +207,75 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 _pinMessage.value = "PIN 已关闭"
                 _status.value = "PIN 已关闭"
             }
+        }
+    }
+
+
+    fun testNetwork() {
+        if (_probing.value) return
+        viewModelScope.launch {
+            _probing.value = true
+            _networkProbe.value = "检测中…"
+            val s = settings.value
+            val lines = mutableListOf<String>()
+
+            // 本机网络
+            val cm = getApplication<Application>()
+                .getSystemService(android.content.Context.CONNECTIVITY_SERVICE)
+                as android.net.ConnectivityManager
+            val net = cm.activeNetwork
+            val caps = net?.let { cm.getNetworkCapabilities(it) }
+            val hasNet = caps?.hasCapability(
+                android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET
+            ) == true
+            val validated = caps?.hasCapability(
+                android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED
+            ) == true
+            lines += if (hasNet) {
+                "本机网络：已连接" + if (validated) "（已验证）" else "（未验证）"
+            } else {
+                "本机网络：不可用"
+            }
+
+            // Wallhaven
+            val wh = api.probeWallhaven(s.nextApiKey())
+            lines += if (wh.ok) {
+                "Wallhaven：${wh.latencyMs} ms · ${wh.detail}"
+            } else {
+                "Wallhaven：失败 ${wh.latencyMs} ms · ${wh.detail}"
+            }
+
+            // 兜底 API
+            val fb = s.fallbackApiUrl.trim()
+            if (fb.isBlank()) {
+                lines += "兜底 API：未配置"
+            } else {
+                val url = fb
+                    .replace("{width}", s.minWidth.toString())
+                    .replace("{height}", s.minHeight.toString())
+                    .replace("{w}", s.minWidth.toString())
+                    .replace("{h}", s.minHeight.toString())
+                val r = api.probeUrl("兜底 API", url)
+                lines += if (r.ok) {
+                    "兜底 API：${r.latencyMs} ms · ${r.detail}"
+                } else {
+                    "兜底 API：失败 ${r.latencyMs} ms · ${r.detail}"
+                }
+            }
+
+            // 背景 API（若与兜底不同）
+            val bg = s.bgApiUrl.trim()
+            if (bg.isNotBlank() && bg != fb) {
+                val r = api.probeUrl("背景 API", bg)
+                lines += if (r.ok) {
+                    "背景 API：${r.latencyMs} ms · ${r.detail}"
+                } else {
+                    "背景 API：失败 ${r.latencyMs} ms · ${r.detail}"
+                }
+            }
+
+            _networkProbe.value = lines.joinToString("\n")
+            _probing.value = false
         }
     }
 

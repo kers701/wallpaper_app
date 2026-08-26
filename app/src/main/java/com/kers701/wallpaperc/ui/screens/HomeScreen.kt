@@ -8,10 +8,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -27,10 +30,13 @@ fun HomeScreen(vm: MainViewModel) {
     val settings by vm.settings.collectAsState()
     val status by vm.status.collectAsState()
     val busy by vm.busy.collectAsState()
+    val networkProbe by vm.networkProbe.collectAsState()
+    val probing by vm.probing.collectAsState()
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
@@ -86,6 +92,26 @@ fun HomeScreen(vm: MainViewModel) {
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.primary
                     )
+                }
+            }
+        }
+
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("网络检测", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    networkProbe,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                if (probing) {
+                    CircularProgressIndicator()
+                }
+                OutlinedButton(
+                    onClick = { vm.testNetwork() },
+                    enabled = !probing && !busy,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(if (probing) "检测中…" else "测试网络延迟")
                 }
             }
         }
