@@ -59,19 +59,18 @@ import com.kers.killove.jhsy.ui.MainViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {
+fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}) {
     val createDocLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
     ) { uri ->
         if (uri != null) vm.backupConfigToUri(uri)
-        else { /* cancelled */ }
     }
     val openDocLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri ->
         if (uri != null) vm.restoreConfigFromUri(uri)
     }
-}) {
+
     val settings by vm.settings.collectAsState()
     val context = LocalContext.current
     val unlocked by vm.unlocked.collectAsState()
