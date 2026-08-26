@@ -5,13 +5,13 @@ on:
     branches: [main, master]
   pull_request:
     branches: [main, master]
-  workflow_dispatch:  # 允许在 Actions 页面手动点「Run workflow」
+  workflow_dispatch:
 
 jobs:
-  build:
+  debug:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-
+    # 普通推送始终打 debug；含发布关键字时也仍打 debug（便于对照）
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,11 +34,7 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: wallpaperc-debug-apk
+          name: jhsy-debug-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 30
-
-      - name: List outputs
-        if: always()
-        run: find app/build/outputs -type f -name "*.apk" 2>/dev/null || true

@@ -1,16 +1,61 @@
 name: Build Release APK
 
 on:
-  workflow_dispatch:
   push:
+    branches: [main, master]
     tags:
       - "v*"
+  workflow_dispatch:
 
 jobs:
+  # 是否按提交说明触发 release
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+    steps:
+      - name: Check commit message / event
+        id: check
+        run: |
+          set -e
+          EVENT="${{ github.event_name }}"
+          MSG="${{ github.event.head_commit.message }}"
+          REF="${{ github.ref }}"
+          echo "event=$EVENT"
+          echo "ref=$REF"
+          echo "message<<EOF"
+          echo "$MSG"
+          echo "EOF"
+
+          SHOULD=false
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            SHOULD=true
+          elif [ "$EVENT" = "push" ] && [[ "$REF" == refs/tags/v* ]]; then
+            SHOULD=true
+          elif [ "$EVENT" = "push" ]; then
+            # 关键字：发布 / release / re构建 / [re] / 正式版 等（不匹配普通英文单词里的 re）
+            # 用 bash 大小写不敏感匹配
+            shopt -s nocasematch
+            if [[ "$MSG" =~ 发布 ]] || \
+               [[ "$MSG" =~ 正式 ]] || \
+               [[ "$MSG" =~ release ]] || \
+               [[ "$MSG" =~ re构建 ]] || \
+               [[ "$MSG" =~ \[re\] ]] || \
+               [[ "$MSG" =~ ^re[[:space:]] ]] || \
+               [[ "$MSG" =~ [[:space:]]re[[:space:]] ]] || \
+               [[ "$MSG" =~ /re ]] || \
+               [[ "$MSG" =~ ^re/ ]]; then
+              SHOULD=true
+            fi
+          fi
+          echo "should_release=$SHOULD"
+          echo "should_release=$SHOULD" >> "$GITHUB_OUTPUT"
+
   release:
+    needs: gate
+    if: needs.gate.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -27,8 +72,7 @@ jobs:
           echo "key_alias set: $HAS_ALIAS"
           echo "key_password set: $HAS_KP"
           if [ "$HAS_KS" != "true" ] || [ "$HAS_SP" != "true" ] || [ "$HAS_ALIAS" != "true" ] || [ "$HAS_KP" != "true" ]; then
-            echo "::error::缺少 Release Secrets。请在仓库 Settings → Secrets 中配置："
-            echo "  RELEASE_KEYSTORE_BASE64 / RELEASE_STORE_PASSWORD / RELEASE_KEY_ALIAS / RELEASE_KEY_PASSWORD"
+            echo "::error::缺少 Release Secrets：RELEASE_KEYSTORE_BASE64 / RELEASE_STORE_PASSWORD / RELEASE_KEY_ALIAS / RELEASE_KEY_PASSWORD"
             exit 1
           fi
 
@@ -37,8 +81,6 @@ jobs:
           RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
         run: |
           echo "$RELEASE_KEYSTORE_BASE64" | base64 -d > "${GITHUB_WORKSPACE}/release.keystore"
-          ls -la "${GITHUB_WORKSPACE}/release.keystore"
-          # 基本校验：非空且像 DER
           test -s "${GITHUB_WORKSPACE}/release.keystore"
 
       - name: Write keystore.properties
@@ -53,7 +95,6 @@ jobs:
           keyAlias=${RELEASE_KEY_ALIAS}
           keyPassword=${RELEASE_KEY_PASSWORD}
           PROP
-          # 去掉可能的前导空格
           sed -i 's/^[[:space:]]*//' keystore.properties
 
       - name: Set up JDK 17
@@ -79,11 +120,15 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-      - name: List outputs
-        if: always()
-        run: find app/build/outputs -type f \( -name "*.apk" -o -name "*.aab" \) 2>/dev/null || true
+      - name: Create GitHub Release (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: app/build/outputs/apk/release/*.apk
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Cleanup keystore
         if: always()
-        run: |
-          rm -f "${GITHUB_WORKSPACE}/release.keystore" keystore.properties
+        run: rm -f "${GITHUB_WORKSPACE}/release.keystore" keystore.properties
