@@ -120,6 +120,7 @@ https://backup.example.com/pic
 
 或 Android Studio：**Build → Build Bundle(s) / APK(s)**。
 
+> 包名已改为 `com.kers.killove.jhsy`，与旧版（如 `com.kers701.wallpaperc`）**不能覆盖安装**，数据不互通。
 
 ---
 

@@ -42,7 +42,7 @@ class WallpaperForegroundService : Service() {
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = pm.newWakeLock(
             PowerManager.PARTIAL_WAKE_LOCK,
-            "wallpaperc:fgs"
+            "jhsy:fgs"
         ).apply { setReferenceCounted(false) }
     }
 
@@ -52,10 +52,7 @@ class WallpaperForegroundService : Service() {
                 stopSelf()
                 return START_NOT_STICKY
             }
-            else -> {
-                // 始终确保前台通知与循环在跑（进程被杀后系统重启服务）
-                ensureForegroundAndLoop()
-            }
+            else -> ensureForegroundAndLoop()
         }
         return START_STICKY
     }
@@ -75,55 +72,69 @@ class WallpaperForegroundService : Service() {
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            // 部分机型限制 FGS：仍尝试循环
+            try {
+                startForeground(NOTIFICATION_ID, notification)
+            } catch (_: Exception) {
+            }
         }
+        if (loopJob?.isActive != true) {
+            loopJob = scope.launch { runLoop() }
+        }
+    }
 
-        if (loopJob?.isActive == true) return
-        loopJob = scope.launch {
-            val settingsRepo = SettingsRepository(applicationContext)
-            val changer = WallpaperChanger(
-                context = applicationContext,
-                settingsRepo = settingsRepo,
-                api = WallhavenApi(),
-                setter = SystemWallpaperSetter(applicationContext),
-                dao = WallpaperDatabase.get(applicationContext).dao()
-            )
-            while (isActive) {
+    private suspend fun runLoop() {
+        val settingsRepo = SettingsRepository(applicationContext)
+        val dao = WallpaperDatabase.get(applicationContext).dao()
+        val changer = WallpaperChanger(
+            applicationContext,
+            settingsRepo,
+            WallhavenApi(),
+            SystemWallpaperSetter(applicationContext),
+            dao
+        )
+        while (scope.isActive) {
+            try {
                 val settings = settingsRepo.settingsFlow.first()
-                if (!settings.enabled) {
+                if (!settings.enabled || !settings.useForegroundService) {
                     stopSelf()
                     break
                 }
-                try {
-                    wakeLock?.acquire(3 * 60_000L)
-                    runCatching { changer.changeOnce() }
-                } finally {
-                    if (wakeLock?.isHeld == true) {
-                        runCatching { wakeLock?.release() }
+                val intervalMs = settings.intervalMinutes.coerceIn(5, 180) * 60_000L
+                val last = settings.lastChangeAt
+                val due = last <= 0L || System.currentTimeMillis() - last >= intervalMs
+                if (due) {
+                    acquireWake()
+                    try {
+                        changer.changeOnce(forceIgnoreScreenOff = false)
+                    } finally {
+                        releaseWake()
                     }
                 }
-                val minutes = settings.intervalMinutes.coerceIn(5, 180)
-                // 分段 delay，便于服务重启后更快响应
-                val totalMs = minutes * 60_000L
-                var waited = 0L
-                val step = 30_000L
-                while (isActive && waited < totalMs) {
-                    delay(minOf(step, totalMs - waited))
-                    waited += step
-                    // 若用户关闭了自动更换，提前退出
-                    val s = settingsRepo.settingsFlow.first()
-                    if (!s.enabled) {
-                        stopSelf()
-                        return@launch
-                    }
-                }
+                delay(60_000L)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                delay(60_000L)
             }
+        }
+    }
+
+    private fun acquireWake() {
+        try {
+            if (wakeLock?.isHeld != true) wakeLock?.acquire(3 * 60_000L)
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun releaseWake() {
+        try {
+            if (wakeLock?.isHeld == true) wakeLock?.release()
+        } catch (_: Exception) {
         }
     }
 
     private fun createChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val nm = getSystemService(NotificationManager::class.java)
+        val nm = getSystemService(NotificationManager::class.java) ?: return
         val channel = NotificationChannel(
             CHANNEL_ID,
             getString(R.string.notification_channel_name),
@@ -148,7 +159,7 @@ class WallpaperForegroundService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.notification_title))
             .setContentText(getString(R.string.notification_text))
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(open)
             .addAction(0, "停止", stop)
             .setOngoing(true)
@@ -159,15 +170,13 @@ class WallpaperForegroundService : Service() {
     override fun onDestroy() {
         loopJob?.cancel()
         loopJob = null
-        if (wakeLock?.isHeld == true) {
-            runCatching { wakeLock?.release() }
-        }
+        releaseWake()
         scope.cancel()
         super.onDestroy()
     }
 
     companion object {
-        private const val CHANNEL_ID = "wallpaperc_service"
+        private const val CHANNEL_ID = "jhsy_service"
         private const val NOTIFICATION_ID = 1001
         const val ACTION_STOP = "com.kers.killove.jhsy.STOP"
 
