@@ -76,7 +76,7 @@ class WallhavenApi(
 
     /**
      * 网络兜底：请求用户配置的 URL。
-     * - 响应为图片（image/* 或魔数检测）→ 预取字节，避免二次下载失败
+     * - 响应为图片（image 类型或魔数检测）则预取字节，避免二次下载失败
      * - 文本一行 URL / JSON 常见字段 path/url/image 等
      */
     suspend fun fetchFallbackApi(templateUrl: String, width: Int, height: Int): WallpaperItem =
