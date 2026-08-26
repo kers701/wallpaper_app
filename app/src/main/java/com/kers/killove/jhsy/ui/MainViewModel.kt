@@ -24,6 +24,10 @@ import com.kers.killove.jhsy.worker.ChangeWallpaperWorker
 import com.kers.killove.jhsy.util.ForegroundAppHelper
 import android.app.ActivityManager
 import java.io.File
+import android.content.SharedPreferences
+import android.net.Uri
+import java.io.BufferedReader
+import java.io.InputStreamReader
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -101,6 +105,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _launcherApps = MutableStateFlow<List<com.kers.killove.jhsy.util.LauncherAppInfo>>(emptyList())
     val launcherApps: StateFlow<List<com.kers.killove.jhsy.util.LauncherAppInfo>> = _launcherApps.asStateFlow()
+
+    private val prefs: SharedPreferences =
+        getApplication<Application>().getSharedPreferences("jhsy_meta", Context.MODE_PRIVATE)
+
+    private val _onboardingDone = MutableStateFlow(prefs.getBoolean("onboarding_done", false))
+    val onboardingDone: StateFlow<Boolean> = _onboardingDone.asStateFlow()
+
+    fun finishOnboarding() {
+        prefs.edit().putBoolean("onboarding_done", true).apply()
+        _onboardingDone.value = true
+    }
 
     /** 敏感字段是否可见：密钥 / 关键词 / 兜底 API */
     fun keysVisible(s: AppSettings = settings.value): Boolean {
@@ -190,6 +205,38 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun backupFilePath(): String = ConfigBackup.defaultFile(getApplication()).absolutePath
+
+    fun backupConfigToUri(uri: Uri) {
+        viewModelScope.launch {
+            try {
+                val json = ConfigBackup.toJson(settings.value)
+                getApplication<Application>().contentResolver.openOutputStream(uri)?.use { out ->
+                    out.write(json.toByteArray(Charsets.UTF_8))
+                } ?: throw IllegalStateException("无法写入所选位置")
+                // 同时写默认文件
+                ConfigBackup.writeToFile(getApplication(), settings.value)
+                _status.value = "已备份到所选公共位置（不含 PIN）"
+            } catch (e: Exception) {
+                _status.value = "备份失败：${e.message}"
+            }
+        }
+    }
+
+    fun restoreConfigFromUri(uri: Uri) {
+        viewModelScope.launch {
+            try {
+                val text = getApplication<Application>().contentResolver.openInputStream(uri)?.use { ins ->
+                    BufferedReader(InputStreamReader(ins, Charsets.UTF_8)).readText()
+                } ?: throw IllegalStateException("无法读取所选文件")
+                val restored = ConfigBackup.fromJson(text, settings.value)
+                settingsRepo.save(restored)
+                applySchedule(restored)
+                _status.value = "已从所选文件恢复（PIN 未改动）"
+            } catch (e: Exception) {
+                _status.value = "恢复失败：${e.message}"
+            }
+        }
+    }
 
 
     /** 从粘贴的 JSON 恢复；保留当前 PIN。 */

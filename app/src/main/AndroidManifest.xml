@@ -18,6 +18,11 @@
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28"
+        tools:ignore="ScopedStorage" />
+    <!-- 备份/恢复使用系统文件选择器(SAF) -->
 
     <application
         android:name=".WallpapercApp"

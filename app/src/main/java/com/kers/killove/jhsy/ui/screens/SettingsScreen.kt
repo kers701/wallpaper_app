@@ -1,3 +1,6 @@
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.contract.ActivityResultContracts.CreateDocument
 package com.kers.killove.jhsy.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
@@ -56,7 +59,19 @@ import com.kers.killove.jhsy.ui.MainViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}) {
+fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {
+    val createDocLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) vm.backupConfigToUri(uri)
+        else { /* cancelled */ }
+    }
+    val openDocLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) vm.restoreConfigFromUri(uri)
+    }
+}) {
     val settings by vm.settings.collectAsState()
     val context = LocalContext.current
     val unlocked by vm.unlocked.collectAsState()
@@ -404,12 +419,22 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}) {
                 OutlinedButton(
                     onClick = { vm.backupConfig() },
                     modifier = Modifier.weight(1f)
-                ) { Text("备份配置") }
+                ) { Text("备份到应用目录") }
                 OutlinedButton(
                     onClick = { vm.restoreConfigFromFile() }, // 默认路径见状态栏
                     modifier = Modifier.weight(1f)
                 ) { Text("从默认文件恢复") }
             }
+
+            OutlinedButton(
+                onClick = { createDocLauncher.launch("jhsy_config_backup.json") },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("备份到公共目录…") }
+            OutlinedButton(
+                onClick = { openDocLauncher.launch(arrayOf("application/json", "text/*", "*/*")) },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("从公共目录选择文件恢复…") }
+
             OutlinedButton(
                 onClick = { showRestoreField = !showRestoreField },
                 modifier = Modifier.fillMaxWidth()

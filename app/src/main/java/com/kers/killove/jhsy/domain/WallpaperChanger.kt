@@ -310,7 +310,12 @@ class WallpaperChanger(
         advanceKeyword: Boolean
     ): ChangeResult {
         val dir = File(context.filesDir, "wallpapers").apply { mkdirs() }
-        val dest = File(dir, "${item.id.replace(Regex("[^a-zA-Z0-9._-]"), "_")}_${target.name}.jpg")
+        val targetSuffix = when (target) {
+            WallpaperTarget.Home -> "home"
+            WallpaperTarget.Lock -> "lock"
+            WallpaperTarget.Both -> "both"
+        }
+        val dest = File(dir, "${item.id.replace(Regex("[^a-zA-Z0-9._-]"), "_")}_$targetSuffix.jpg")
 
         val ok = if (item.source == "local") true
         else {

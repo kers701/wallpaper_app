@@ -29,6 +29,7 @@ import com.kers.killove.jhsy.ui.screens.HistoryScreen
 import com.kers.killove.jhsy.ui.screens.HomeScreen
 import com.kers.killove.jhsy.ui.screens.OverviewScreen
 import com.kers.killove.jhsy.ui.screens.BlacklistScreen
+import com.kers.killove.jhsy.ui.screens.PermissionOnboardingScreen
 import com.kers.killove.jhsy.ui.screens.SettingsScreen
 
 val LocalUiTextColor = compositionLocalOf { Color.White }
@@ -36,6 +37,11 @@ val LocalCardAlpha = compositionLocalOf { 0.28f }
 
 @Composable
 fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
+    val onboardingDone by vm.onboardingDone.collectAsState()
+    if (!onboardingDone) {
+        PermissionOnboardingScreen(onFinished = { vm.finishOnboarding() })
+        return
+    }
     val nav = rememberNavController()
     val backStack by nav.currentBackStackEntryAsState()
     val route = backStack?.destination?.route ?: "overview"
