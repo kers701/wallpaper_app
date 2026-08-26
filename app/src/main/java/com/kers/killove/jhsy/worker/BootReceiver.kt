@@ -20,11 +20,8 @@ class BootReceiver : BroadcastReceiver() {
             try {
                 val settings = SettingsRepository(context).settingsFlow.first()
                 if (!settings.enabled) return@launch
-                if (settings.useForegroundService || settings.intervalMinutes < 15) {
-                    WallpaperForegroundService.start(context)
-                } else {
-                    ChangeWallpaperWorker.enqueue(context, settings.intervalMinutes)
-                }
+                WallpaperForegroundService.start(context)
+                ChangeWallpaperWorker.enqueue(context, settings.intervalMinutes)
             } finally {
                 pending.finish()
             }

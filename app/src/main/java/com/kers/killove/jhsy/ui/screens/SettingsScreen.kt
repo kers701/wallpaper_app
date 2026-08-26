@@ -46,12 +46,16 @@ import com.kers.killove.jhsy.domain.WallpaperFitMode
 import com.kers.killove.jhsy.domain.OrientationFilter
 import com.kers.killove.jhsy.domain.WallpaperTarget
 import com.kers.killove.jhsy.ui.LocalUiTextColor
+import com.kers.killove.jhsy.util.BatteryHelper
+import com.kers.killove.jhsy.util.SuperServiceController
+import androidx.compose.ui.platform.LocalContext
 import com.kers.killove.jhsy.ui.MainViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(vm: MainViewModel) {
     val settings by vm.settings.collectAsState()
+    val context = LocalContext.current
     val unlocked by vm.unlocked.collectAsState()
     val pinMessage by vm.pinMessage.collectAsState()
     val keysVisible = vm.keysVisible(settings)
@@ -69,6 +73,7 @@ fun SettingsScreen(vm: MainViewModel) {
     var fitMode by remember(settings.fitMode) { mutableStateOf(settings.fitMode) }
     var isolate by remember(settings.isolateHomeLock) { mutableStateOf(settings.isolateHomeLock) }
     var powerSave by remember(settings.powerSaveEnabled) { mutableStateOf(settings.powerSaveEnabled) }
+    var superSvc by remember(settings.superServiceEnabled) { mutableStateOf(settings.superServiceEnabled) }
     var powerTh by remember(settings.powerSaveBatteryThreshold) { mutableIntStateOf(settings.powerSaveBatteryThreshold) }
     var transProv by remember(settings.translateProvider) { mutableStateOf(settings.translateProvider) }
     var transKey by remember(settings.translateApiKey, keysVisible) {
@@ -157,8 +162,69 @@ fun SettingsScreen(vm: MainViewModel) {
             )
         }
 
-        RowSwitch("强制前台服务", fgs) { fgs = it }
+        RowSwitch("强制前台服务（通知栏常驻，划掉可自启）", fgs) { fgs = it }
         RowSwitch("息屏时跳过", skipOff) { skipOff = it }
+        val ignoring = BatteryHelper.isIgnoringBatteryOptimizations(context)
+        Text(
+            if (ignoring) "电池优化：已忽略（有利于后台保活）"
+            else "电池优化：未忽略（划掉/息屏易被系统杀进程）",
+            style = MaterialTheme.typography.bodySmall
+        )
+        OutlinedButton(
+            onClick = { BatteryHelper.requestIgnoreBatteryOptimizations(context) },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(if (ignoring) "打开应用详情（可再检查）" else "申请忽略电池优化（推荐）")
+        }
+        Text(
+            "三星建议：设置 → 电池 → 本应用 → 不受限制；允许自启动",
+            style = MaterialTheme.typography.bodySmall
+        )
+
+        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+        Text("超级服务（独立进程保活）", style = MaterialTheme.typography.titleMedium)
+        val superSt = SuperServiceController.status(context)
+        Text(superSt.message, style = MaterialTheme.typography.bodySmall)
+        Text(
+            "Root: ${if (superSt.hasRoot) "可用" else "无"} · 无障碍: ${if (superSt.hasAccessibility) "已开" else "未开"}",
+            style = MaterialTheme.typography.bodySmall
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedButton(
+                onClick = { SuperServiceController.openAccessibilitySettings(context) },
+                modifier = Modifier.weight(1f)
+            ) { Text("申请无障碍") }
+            OutlinedButton(
+                onClick = {
+                    if (!superSt.canEnable) {
+                        SuperServiceController.openAccessibilitySettings(context)
+                        return@OutlinedButton
+                    }
+                    val err = SuperServiceController.enable(context)
+                    if (err == null) {
+                        superSvc = true
+                    }
+                },
+                modifier = Modifier.weight(1f),
+                enabled = true
+            ) { Text(if (superSvc) "已开启" else "开启超级服务") }
+        }
+        if (superSvc) {
+            OutlinedButton(
+                onClick = {
+                    SuperServiceController.disable(context)
+                    superSvc = false
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("关闭超级服务") }
+        }
+        Text(
+            "说明：更换服务运行在独立进程 :svc；UI 划掉后服务进程仍可继续。无 Root/无障碍时无法开启超级服务。",
+            style = MaterialTheme.typography.bodySmall
+        )
         EnumDropdown("方向过滤", OrientationFilter.entries, orientFilter) { orientFilter = it }
         EnumDropdown("壁纸铺满方式", WallpaperFitMode.entries, fitMode) { fitMode = it }
         Text("填充=等比铺满（Windows 填充）；适应=完整显示；拉伸=强制铺满", style = MaterialTheme.typography.bodySmall)
@@ -445,6 +511,7 @@ fun SettingsScreen(vm: MainViewModel) {
                         isolateHomeLock = isolate,
                         powerSaveEnabled = powerSave,
                         powerSaveBatteryThreshold = powerTh.coerceIn(5, 50),
+                        superServiceEnabled = superSvc,
                         translateProvider = transProv,
                         translateApiKey = if (keysVisible) transKey.trim() else settings.translateApiKey,
                         translateSecret = if (keysVisible) transSecret.trim() else settings.translateSecret,

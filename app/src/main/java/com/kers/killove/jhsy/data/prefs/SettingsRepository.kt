@@ -20,6 +20,7 @@ import com.kers.killove.jhsy.domain.OrientationFilter
 import com.kers.killove.jhsy.domain.ResolutionMode
 import com.kers.killove.jhsy.domain.UiTextColor
 import com.kers.killove.jhsy.domain.WallpaperTarget
+import com.kers.killove.jhsy.util.ProcessBridgePrefs
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -43,6 +44,7 @@ class SettingsRepository(private val context: Context) {
         val ISOLATE_HL = booleanPreferencesKey("isolate_home_lock")
         val POWER_SAVE = booleanPreferencesKey("power_save")
         val POWER_SAVE_TH = intPreferencesKey("power_save_threshold")
+        val SUPER_SERVICE = booleanPreferencesKey("super_service")
         val TRANS_PROVIDER = stringPreferencesKey("translate_provider")
         val TRANS_KEY = stringPreferencesKey("translate_api_key")
         val TRANS_SECRET = stringPreferencesKey("translate_secret")
@@ -97,6 +99,7 @@ class SettingsRepository(private val context: Context) {
             isolateHomeLock = p[Keys.ISOLATE_HL] ?: false,
             powerSaveEnabled = p[Keys.POWER_SAVE] ?: false,
             powerSaveBatteryThreshold = (p[Keys.POWER_SAVE_TH] ?: 20).coerceIn(5, 50),
+            superServiceEnabled = p[Keys.SUPER_SERVICE] ?: false,
             translateProvider = TranslateProvider.fromCode(p[Keys.TRANS_PROVIDER] ?: "off"),
             translateApiKey = p[Keys.TRANS_KEY] ?: "",
             translateSecret = p[Keys.TRANS_SECRET] ?: "",
@@ -145,6 +148,7 @@ class SettingsRepository(private val context: Context) {
             p[Keys.ISOLATE_HL] = settings.isolateHomeLock
             p[Keys.POWER_SAVE] = settings.powerSaveEnabled
             p[Keys.POWER_SAVE_TH] = settings.powerSaveBatteryThreshold.coerceIn(5, 50)
+            p[Keys.SUPER_SERVICE] = settings.superServiceEnabled
             p[Keys.TRANS_PROVIDER] = settings.translateProvider.code
             p[Keys.TRANS_KEY] = settings.translateApiKey
             p[Keys.TRANS_SECRET] = settings.translateSecret
@@ -174,6 +178,7 @@ class SettingsRepository(private val context: Context) {
             p[Keys.PIN_HASH] = settings.pinHash
             p[Keys.PIN_ENABLED] = settings.pinEnabled
         }
+        ProcessBridgePrefs.sync(context, settings)
     }
 
     suspend fun setLastCategory(code: String) {

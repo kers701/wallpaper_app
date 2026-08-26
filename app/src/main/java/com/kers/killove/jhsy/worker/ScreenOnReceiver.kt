@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
- * 息屏休眠后亮屏时触发：若已超过间隔则立即换壁纸，并确保调度仍在。
+ * 亮屏 / 解锁：补一次到期更换，并拉起 FGS + WorkManager。
  */
 class ScreenOnReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
@@ -28,16 +28,12 @@ class ScreenOnReceiver : BroadcastReceiver() {
                 val due = settings.lastChangeAt <= 0L ||
                     System.currentTimeMillis() - settings.lastChangeAt >= intervalMs
 
-                if (due) {
-                    // 亮屏后补一次更换（忽略息屏跳过）
-                    ChangeWallpaperWorker.enqueueOneShot(context, forceIgnoreScreenOff = true)
-                }
+                // 双保险始终挂上
+                WallpaperForegroundService.start(context)
+                ChangeWallpaperWorker.enqueue(context, settings.intervalMinutes)
 
-                // 确保后台调度仍在（进程被杀后恢复）
-                if (settings.useForegroundService || settings.intervalMinutes < 15) {
-                    WallpaperForegroundService.start(context)
-                } else {
-                    ChangeWallpaperWorker.enqueue(context, settings.intervalMinutes)
+                if (due) {
+                    ChangeWallpaperWorker.enqueueOneShot(context, forceIgnoreScreenOff = true)
                 }
             } finally {
                 pending.finish()

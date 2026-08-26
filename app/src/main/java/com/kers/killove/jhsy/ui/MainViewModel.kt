@@ -13,6 +13,8 @@ import com.kers.killove.jhsy.domain.ChangeResult
 import com.kers.killove.jhsy.data.translate.KeywordTranslator
 import com.kers.killove.jhsy.domain.WallpaperChanger
 import com.kers.killove.jhsy.service.WallpaperForegroundService
+import com.kers.killove.jhsy.util.SuperServiceController
+import com.kers.killove.jhsy.util.ProcessBridgePrefs
 import com.kers.killove.jhsy.util.PinSecurity
 import com.kers.killove.jhsy.worker.ChangeWallpaperWorker
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -306,17 +308,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun applySchedule(s: AppSettings) {
         val ctx = getApplication<Application>()
-        if (!s.enabled) {
+        ProcessBridgePrefs.sync(ctx, s)
+        if (!s.enabled && !s.superServiceEnabled) {
             ChangeWallpaperWorker.cancel(ctx)
             WallpaperForegroundService.stop(ctx)
+            SuperServiceController.disable(ctx)
             return
         }
-        if (s.useForegroundService || s.intervalMinutes < 15) {
-            ChangeWallpaperWorker.cancel(ctx)
-            WallpaperForegroundService.start(ctx)
+        // UI 进程只负责调度；真正换壁纸在 :svc 独立进程
+        WallpaperForegroundService.start(ctx)
+        ChangeWallpaperWorker.enqueue(ctx, s.intervalMinutes)
+        if (s.superServiceEnabled) {
+            SuperServiceController.enable(ctx)
         } else {
-            WallpaperForegroundService.stop(ctx)
-            ChangeWallpaperWorker.enqueue(ctx, s.intervalMinutes)
+            SuperServiceController.disable(ctx)
         }
     }
 }

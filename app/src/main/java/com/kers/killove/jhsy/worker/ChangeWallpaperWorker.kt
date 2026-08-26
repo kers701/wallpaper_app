@@ -1,11 +1,9 @@
 package com.kers.killove.jhsy.worker
 
 import android.content.Context
-import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
-import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
@@ -16,6 +14,7 @@ import com.kers.killove.jhsy.data.remote.WallhavenApi
 import com.kers.killove.jhsy.data.wallpaper.SystemWallpaperSetter
 import com.kers.killove.jhsy.domain.ChangeResult
 import com.kers.killove.jhsy.domain.WallpaperChanger
+import com.kers.killove.jhsy.service.WallpaperForegroundService
 import kotlinx.coroutines.flow.first
 import java.util.concurrent.TimeUnit
 
@@ -29,8 +28,10 @@ class ChangeWallpaperWorker(
         val settings = settingsRepo.settingsFlow.first()
         if (!settings.enabled) return Result.success()
 
-        val force = inputData.getBoolean(KEY_FORCE_SCREEN_ON, false)
+        // 被拉起时尽量把前台服务也拉起来，方便划掉后恢复
+        runCatching { WallpaperForegroundService.start(applicationContext) }
 
+        val force = inputData.getBoolean(KEY_FORCE_SCREEN_ON, false)
         val changer = WallpaperChanger(
             context = applicationContext,
             settingsRepo = settingsRepo,
@@ -42,26 +43,22 @@ class ChangeWallpaperWorker(
         return when (val r = changer.changeOnce(forceIgnoreScreenOff = force)) {
             is ChangeResult.Success -> Result.success()
             is ChangeResult.Failure -> {
-                if (runAttemptCount < 3) Result.retry() else Result.failure()
+                if (runAttemptCount < 3) Result.retry() else Result.success()
             }
         }
     }
 
     companion object {
-        const val UNIQUE_NAME = "wallpaperc_periodic_change"
-        const val ONE_SHOT_NAME = "wallpaperc_oneshot_change"
+        const val UNIQUE_NAME = "jhsy_periodic_change"
+        const val ONE_SHOT_NAME = "jhsy_oneshot_change"
         const val KEY_FORCE_SCREEN_ON = "force_screen_on"
 
         fun enqueue(context: Context, intervalMinutes: Int) {
+            // WorkManager 周期最短 15 分钟；更短间隔依赖 FGS 循环
             val minutes = intervalMinutes.coerceAtLeast(15).toLong()
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build()
             val request = PeriodicWorkRequestBuilder<ChangeWallpaperWorker>(
                 minutes, TimeUnit.MINUTES
-            )
-                .setConstraints(constraints)
-                .build()
+            ).build()
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 UNIQUE_NAME,
                 ExistingPeriodicWorkPolicy.UPDATE,
@@ -69,7 +66,6 @@ class ChangeWallpaperWorker(
             )
         }
 
-        /** 息屏恢复 / 立即触发：单次任务，不受 Doze 延迟影响更多 */
         fun enqueueOneShot(context: Context, forceIgnoreScreenOff: Boolean = true) {
             val data = androidx.work.Data.Builder()
                 .putBoolean(KEY_FORCE_SCREEN_ON, forceIgnoreScreenOff)

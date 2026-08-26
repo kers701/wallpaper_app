@@ -1,7 +1,6 @@
 package com.kers.killove.jhsy
 
 import android.app.Application
-import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
 import androidx.work.Configuration
@@ -28,16 +27,13 @@ class WallpapercApp : Application(), Configuration.Provider {
     override fun onCreate() {
         super.onCreate()
         registerScreenReceiver()
-        // 进程被杀后重新创建时，恢复定时任务 / 前台服务
         appScope.launch {
             runCatching {
                 val settings = SettingsRepository(this@WallpapercApp).settingsFlow.first()
                 if (!settings.enabled) return@runCatching
-                if (settings.useForegroundService || settings.intervalMinutes < 15) {
-                    WallpaperForegroundService.start(this@WallpapercApp)
-                } else {
-                    ChangeWallpaperWorker.enqueue(this@WallpapercApp, settings.intervalMinutes)
-                }
+                // 进程重建：FGS + WorkManager 同时恢复
+                WallpaperForegroundService.start(this@WallpapercApp)
+                ChangeWallpaperWorker.enqueue(this@WallpapercApp, settings.intervalMinutes)
             }
         }
     }

@@ -127,6 +127,9 @@ data class AppSettings(
     /** 省电阈值 5～50，默认 20 */
     val powerSaveBatteryThreshold: Int = 20,
 
+    /** 超级服务：独立进程 + Root/无障碍保活 */
+    val superServiceEnabled: Boolean = false,
+
     /** 翻译（仅展示/日志，不改搜索词） */
     val translateProvider: TranslateProvider = TranslateProvider.Off,
     val translateApiKey: String = "",

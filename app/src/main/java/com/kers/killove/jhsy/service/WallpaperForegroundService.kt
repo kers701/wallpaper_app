@@ -1,5 +1,6 @@
 package com.kers.killove.jhsy.service
 
+import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -19,6 +20,8 @@ import com.kers.killove.jhsy.data.prefs.SettingsRepository
 import com.kers.killove.jhsy.data.remote.WallhavenApi
 import com.kers.killove.jhsy.data.wallpaper.SystemWallpaperSetter
 import com.kers.killove.jhsy.domain.WallpaperChanger
+import com.kers.killove.jhsy.util.ProcessBridgePrefs
+import com.kers.killove.jhsy.worker.ChangeWallpaperWorker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -29,6 +32,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
+/**
+ * 壁纸更换服务，可运行在独立进程 `:svc`，与 UI 进程分离。
+ */
 class WallpaperForegroundService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -40,10 +46,8 @@ class WallpaperForegroundService : Service() {
     override fun onCreate() {
         super.onCreate()
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-        wakeLock = pm.newWakeLock(
-            PowerManager.PARTIAL_WAKE_LOCK,
-            "jhsy:fgs"
-        ).apply { setReferenceCounted(false) }
+        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "jhsy:fgs")
+            .apply { setReferenceCounted(false) }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -57,14 +61,37 @@ class WallpaperForegroundService : Service() {
         return START_STICKY
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        // 主进程被划掉时，独立 :svc 进程可能仍在；若同进程则自启
+        if (!ProcessBridgePrefs.enabled(this) && !ProcessBridgePrefs.superService(this)) return
+        scope.launch {
+            ChangeWallpaperWorker.enqueue(applicationContext, ProcessBridgePrefs.intervalMinutes(this@WallpaperForegroundService))
+            delay(500)
+            start(applicationContext)
+        }
+        try {
+            val restart = Intent(applicationContext, WallpaperForegroundService::class.java)
+            val pi = PendingIntent.getService(
+                applicationContext, 99, restart,
+                PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
+            )
+            (getSystemService(Context.ALARM_SERVICE) as AlarmManager).set(
+                AlarmManager.RTC_WAKEUP,
+                System.currentTimeMillis() + 1200L,
+                pi
+            )
+        } catch (_: Exception) {
+        }
+    }
+
     private fun ensureForegroundAndLoop() {
         createChannel()
         val notification = buildNotification()
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 startForeground(
-                    NOTIFICATION_ID,
-                    notification,
+                    NOTIFICATION_ID, notification,
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
                 )
             } else {
@@ -83,37 +110,51 @@ class WallpaperForegroundService : Service() {
     }
 
     private suspend fun runLoop() {
-        val settingsRepo = SettingsRepository(applicationContext)
-        val dao = WallpaperDatabase.get(applicationContext).dao()
-        val changer = WallpaperChanger(
-            applicationContext,
-            settingsRepo,
-            WallhavenApi(),
-            SystemWallpaperSetter(applicationContext),
-            dao
-        )
+        // 优先用 DataStore；失败则用桥接（独立进程）
+        val settingsRepo = runCatching { SettingsRepository(applicationContext) }.getOrNull()
+        val dao = runCatching { WallpaperDatabase.get(applicationContext).dao() }.getOrNull()
+        val changer = if (dao != null && settingsRepo != null) {
+            WallpaperChanger(
+                applicationContext, settingsRepo, WallhavenApi(),
+                SystemWallpaperSetter(applicationContext), dao
+            )
+        } else null
+
         while (scope.isActive) {
             try {
-                val settings = settingsRepo.settingsFlow.first()
-                if (!settings.enabled || !settings.useForegroundService) {
+                val enabled = settingsRepo?.let {
+                    runCatching { it.settingsFlow.first().enabled }.getOrNull()
+                } ?: ProcessBridgePrefs.enabled(this)
+
+                val superOn = ProcessBridgePrefs.superService(this)
+                if (!enabled && !superOn) {
                     stopSelf()
                     break
                 }
-                val intervalMs = settings.intervalMinutes.coerceIn(5, 180) * 60_000L
-                val last = settings.lastChangeAt
+
+                val intervalMin = settingsRepo?.let {
+                    runCatching { it.settingsFlow.first().intervalMinutes }.getOrNull()
+                } ?: ProcessBridgePrefs.intervalMinutes(this)
+
+                val last = settingsRepo?.let {
+                    runCatching { it.settingsFlow.first().lastChangeAt }.getOrNull()
+                } ?: ProcessBridgePrefs.lastChangeAt(this)
+
+                val intervalMs = intervalMin.coerceIn(5, 180) * 60_000L
                 val due = last <= 0L || System.currentTimeMillis() - last >= intervalMs
-                if (due) {
+                if (due && changer != null) {
                     acquireWake()
                     try {
                         changer.changeOnce(forceIgnoreScreenOff = false)
+                        ProcessBridgePrefs.setLastChangeAt(this, System.currentTimeMillis())
                     } finally {
                         releaseWake()
                     }
                 }
-                delay(60_000L)
+                delay(30_000L)
             } catch (e: Exception) {
                 e.printStackTrace()
-                delay(60_000L)
+                delay(30_000L)
             }
         }
     }
@@ -141,6 +182,7 @@ class WallpaperForegroundService : Service() {
             NotificationManager.IMPORTANCE_LOW
         ).apply {
             description = getString(R.string.notification_channel_desc)
+            setShowBadge(false)
         }
         nm.createNotificationChannel(channel)
     }
@@ -158,11 +200,12 @@ class WallpaperForegroundService : Service() {
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.notification_title))
-            .setContentText(getString(R.string.notification_text))
+            .setContentText("后台更换服务运行中（独立进程）")
             .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(open)
             .addAction(0, "停止", stop)
             .setOngoing(true)
+            .setOnlyAlertOnce(true)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .build()
     }
@@ -171,6 +214,12 @@ class WallpaperForegroundService : Service() {
         loopJob?.cancel()
         loopJob = null
         releaseWake()
+        if (ProcessBridgePrefs.enabled(this) || ProcessBridgePrefs.superService(this)) {
+            try {
+                ChangeWallpaperWorker.enqueue(applicationContext, ProcessBridgePrefs.intervalMinutes(this))
+            } catch (_: Exception) {
+            }
+        }
         scope.cancel()
         super.onDestroy()
     }
