@@ -88,10 +88,7 @@ class ManualChangeService : Service() {
                 )
                 detail = when (r) {
                     is ChangeResult.Success -> {
-                        ProcessBridgePrefs.setLastChangeAt(
-                            this@ManualChangeService,
-                            System.currentTimeMillis()
-                        )
+                        // 手动进程不写 lastChangeAt，不参与定时倒计时
                         "已设置 [${r.item.source}] ${r.item.id}" +
                             if (r.detail.isNotBlank()) " · ${r.detail}" else ""
                     }

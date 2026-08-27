@@ -77,6 +77,33 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 refreshJumpTranslation(s)
             }
         }
+        // 定期把 :svc/:manual 写入的 last_change 同步回主进程 DataStore，修正首页/概览倒计时
+        viewModelScope.launch {
+            val app = getApplication<Application>()
+            while (true) {
+                runCatching {
+                    val b = ProcessBridgePrefs.lastChangeAt(app)
+                    _bridgeLastChange.value = b
+                    val ds = settings.value.lastChangeAt
+                    if (b > 0L && b > ds + 1_000L) {
+                        settingsRepo.setLastChangeAt(b)
+                    }
+                }
+                kotlinx.coroutines.delay(3_000)
+            }
+        }
+    }
+
+    /** 界面 resume 时立刻同步一次桥接时间 */
+    fun syncChangeClockFromBridge() {
+        viewModelScope.launch {
+            val app = getApplication<Application>()
+            val b = ProcessBridgePrefs.lastChangeAt(app)
+            _bridgeLastChange.value = b
+            if (b > 0L && b > settings.value.lastChangeAt + 1_000L) {
+                settingsRepo.setLastChangeAt(b)
+            }
+        }
     }
 
     private suspend fun refreshJumpTranslation(s: AppSettings) {
@@ -92,6 +119,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _status = MutableStateFlow("就绪")
     val status: StateFlow<String> = _status.asStateFlow()
+
+    /** 跨进程桥接中的上次更换时间（:svc/:manual 写入，主进程可能更准） */
+    private val _bridgeLastChange = MutableStateFlow(0L)
+    val bridgeLastChange: StateFlow<Long> = _bridgeLastChange.asStateFlow()
 
     private val _busy = MutableStateFlow(false)
     val busy: StateFlow<Boolean> = _busy.asStateFlow()
@@ -461,6 +492,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 if (h.isNotBlank() && !h.contains("已交由")) _status.value = h
                 else if (_status.value.contains("已交由")) _status.value = "更换流程已结束"
             }
+            // 手动不改定时时钟；仅刷新桥接读数供展示（仍是自动上次时间）
+            _bridgeLastChange.value = ProcessBridgePrefs.lastChangeAt(ctx)
             _busy.value = false
             _downloadProgress.value = 0f
             _downloadLabel.value = ""

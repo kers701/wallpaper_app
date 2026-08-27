@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.PowerManager
 import com.kers.killove.jhsy.data.local.LocalFallbackStore
 import com.kers.killove.jhsy.data.local.NextWallpaperStore
+import com.kers.killove.jhsy.data.local.OverviewCacheStore
 import com.kers.killove.jhsy.data.local.WallpaperDao
 import com.kers.killove.jhsy.data.local.WallpaperEntity
 import com.kers.killove.jhsy.data.prefs.SettingsRepository
@@ -89,11 +90,13 @@ class WallpaperChanger(
 
         if (settings.forceLocalMode) {
             if (settings.isolateHomeLock && settings.target == WallpaperTarget.Both && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                val home = applyLocalFallback(settings, "强制本地模式", WallpaperTarget.Home, emptySet())
+                val home = applyLocalFallback(settings, "强制本地模式", WallpaperTarget.Home, emptySet(), countChange = false)
                 if (home is ChangeResult.Failure) return home
                 val used = setOf((home as ChangeResult.Success).item.id)
-                val lock = applyLocalFallback(settings, "强制本地模式", WallpaperTarget.Lock, used)
-                return combineIsolate(home, lock)
+                val lock = applyLocalFallback(settings, "强制本地模式", WallpaperTarget.Lock, used, countChange = false)
+                val combined = combineIsolate(home, lock)
+                if (combined is ChangeResult.Success) settingsRepo.incrementChangeCount()
+                return combined
             }
             return applyLocalFallback(settings, "强制本地模式", settings.target, emptySet())
         }
@@ -112,30 +115,35 @@ class WallpaperChanger(
             val kwLock = pickKeyword(settings, offset = 1)
             val home = changeForTarget(
                 settings, WallpaperTarget.Home, emptySet(), forceKeyword = kwHome,
-                skipPrefetchUse = liveDownloadOnly
+                skipPrefetchUse = liveDownloadOnly, countChange = false,
+                touchScheduleClock = !liveDownloadOnly
             )
             if (home is ChangeResult.Failure) return home
             val homeId = (home as ChangeResult.Success).item.id
             val lock = changeForTarget(
                 settings, WallpaperTarget.Lock, setOf(homeId), forceKeyword = kwLock,
-                skipPrefetchUse = liveDownloadOnly
+                skipPrefetchUse = liveDownloadOnly, countChange = false,
+                touchScheduleClock = !liveDownloadOnly
             )
-            // 隔离用了两个词，索引 +2
+            // 隔离用了两个词，索引 +2；次数只 +1（桌面+锁屏算一次）
             advanceKeywordIndex(settings, steps = 2)
             val combined = combineIsolate(home, lock)
-            // 仅自动路径预取下一张；手动不触发
-            if (!liveDownloadOnly && combined is ChangeResult.Success) {
-                schedulePrefetch(
-                    listOf(WallpaperTarget.Home, WallpaperTarget.Lock),
-                    setOf(homeId, (lock as? ChangeResult.Success)?.item?.id ?: "")
-                )
+            if (combined is ChangeResult.Success) {
+                settingsRepo.incrementChangeCount()
+                if (!liveDownloadOnly) {
+                    schedulePrefetch(
+                        listOf(WallpaperTarget.Home, WallpaperTarget.Lock),
+                        setOf(homeId, (lock as? ChangeResult.Success)?.item?.id ?: "")
+                    )
+                }
             }
             return combined
         }
 
         val single = changeForTarget(
             settings, settings.target, emptySet(), forceKeyword = null,
-            skipPrefetchUse = liveDownloadOnly
+            skipPrefetchUse = liveDownloadOnly,
+            touchScheduleClock = !liveDownloadOnly
         )
         if (!liveDownloadOnly && single is ChangeResult.Success) {
             schedulePrefetch(listOf(settings.target), setOf(single.item.id))
@@ -169,14 +177,17 @@ class WallpaperChanger(
         excludeIds: Set<String>,
         forceKeyword: String?,
         advanceKeyword: Boolean = true,
-        skipPrefetchUse: Boolean = false
+        skipPrefetchUse: Boolean = false,
+        countChange: Boolean = true,
+        /** false=手动立即换：不写 lastChangeAt，不参与定时 */
+        touchScheduleClock: Boolean = true
     ): ChangeResult {
         // 手动立即更换：强制当场下载，不消费预下载槽
         if (!skipPrefetchUse) {
             val ready = nextStore.takeReady(target)
             if (ready != null) {
                 onProgress(0.2f, "使用预下载壁纸…")
-                when (val r = applyReadySlot(ready, settings, target, advanceKeyword)) {
+                when (val r = applyReadySlot(ready, settings, target, advanceKeyword, countChange, touchScheduleClock)) {
                     is ChangeResult.Success -> {
                         onProgress(1f, "预下载已应用")
                         return r
@@ -238,7 +249,7 @@ class WallpaperChanger(
         if (candidates.isNotEmpty()) {
             val item = pickCandidate(candidates, excludeIds)
             if (item != null) {
-                when (val r = downloadAndSet(item, settings, category, fromWallhaven, keyword, target, advanceKeyword)) {
+                when (val r = downloadAndSet(item, settings, category, fromWallhaven, keyword, target, advanceKeyword, countChange, touchScheduleClock)) {
                     is ChangeResult.Success -> return r
                     is ChangeResult.Failure -> lastError = "Wallhaven 下载失败: ${r.message}"
                 }
@@ -251,7 +262,7 @@ class WallpaperChanger(
                 ).filter { it.id !in excludeIds }
                 val alt = pickCandidate(more, excludeIds)
                 if (alt != null) {
-                    when (val r = downloadAndSet(alt, settings, category, true, keyword, target, advanceKeyword)) {
+                    when (val r = downloadAndSet(alt, settings, category, true, keyword, target, advanceKeyword, countChange, touchScheduleClock)) {
                         is ChangeResult.Success -> return r
                         is ChangeResult.Failure -> lastError = "Wallhaven 下载失败: ${r.message}"
                     }
@@ -267,7 +278,7 @@ class WallpaperChanger(
                 try {
                     val fb = api.fetchFallbackApi(url, maxOf(settings.minWidth, dw), maxOf(settings.minHeight, dh))
                     val unique = fb.copy(id = fb.id + "_${target.name}_${System.nanoTime() % 100000}")
-                    when (val r = downloadAndSet(unique, settings, category, false, null, target, advanceKeyword = false)) {
+                    when (val r = downloadAndSet(unique, settings, category, false, null, target, advanceKeyword = false, countChange = countChange, touchScheduleClock = touchScheduleClock)) {
                         is ChangeResult.Success -> return r
                         is ChangeResult.Failure -> errors += "#${i + 1} ${r.message}"
                     }
@@ -326,7 +337,9 @@ class WallpaperChanger(
         settings: AppSettings,
         reason: String,
         target: WallpaperTarget,
-        excludeIds: Set<String>
+        excludeIds: Set<String>,
+        countChange: Boolean = true,
+        touchScheduleClock: Boolean = true
     ): ChangeResult {
         if (!settings.localFallbackEnabled && !settings.forceLocalMode) {
             return ChangeResult.Failure(reason)
@@ -366,9 +379,12 @@ class WallpaperChanger(
             )
         )
         dao.trimToKeep(HISTORY_KEEP)
-        settingsRepo.setLastChangeAt(System.currentTimeMillis())
-        ProcessBridgePrefs.setLastChangeAt(context, System.currentTimeMillis())
-        settingsRepo.incrementChangeCount()
+        OverviewCacheStore.update(context, target, file)
+        if (touchScheduleClock) {
+            settingsRepo.setLastChangeAt(System.currentTimeMillis())
+            ProcessBridgePrefs.setLastChangeAt(context, System.currentTimeMillis())
+        }
+        if (countChange) settingsRepo.incrementChangeCount()
         return ChangeResult.Success(
             item.copy(fileSize = size, category = "local←$reason"),
             file.absolutePath,
@@ -383,7 +399,9 @@ class WallpaperChanger(
         fromWallhaven: Boolean,
         usedKeyword: String?,
         target: WallpaperTarget,
-        advanceKeyword: Boolean
+        advanceKeyword: Boolean,
+        countChange: Boolean = true,
+        touchScheduleClock: Boolean = true
     ): ChangeResult {
         val dir = File(context.filesDir, "wallpapers").apply { mkdirs() }
         val targetSuffix = when (target) {
@@ -474,9 +492,12 @@ class WallpaperChanger(
         }
 
         if (item.source != "local") trimCache(dir, keep = 40)
-        settingsRepo.setLastChangeAt(System.currentTimeMillis())
-        ProcessBridgePrefs.setLastChangeAt(context, System.currentTimeMillis())
-        settingsRepo.incrementChangeCount()
+        OverviewCacheStore.update(context, target, finalFile)
+        if (touchScheduleClock) {
+            settingsRepo.setLastChangeAt(System.currentTimeMillis())
+            ProcessBridgePrefs.setLastChangeAt(context, System.currentTimeMillis())
+        }
+        if (countChange) settingsRepo.incrementChangeCount()
         return ChangeResult.Success(
             item.copy(fileSize = fileSize),
             finalFile.absolutePath,
@@ -630,7 +651,9 @@ class WallpaperChanger(
         slot: NextWallpaperStore.Slot,
         settings: AppSettings,
         target: WallpaperTarget,
-        advanceKeyword: Boolean
+        advanceKeyword: Boolean,
+        countChange: Boolean = true,
+        touchScheduleClock: Boolean = true
     ): ChangeResult {
         val file = slot.file()
         if (!file.exists() || file.length() < 32L) {
@@ -675,9 +698,12 @@ class WallpaperChanger(
         if (advanceKeyword && settings.useKeywords && settings.activeKeywords().isNotEmpty()) {
             advanceKeywordIndex(settings, steps = 1)
         }
-        settingsRepo.setLastChangeAt(System.currentTimeMillis())
-        ProcessBridgePrefs.setLastChangeAt(context, System.currentTimeMillis())
-        settingsRepo.incrementChangeCount()
+        OverviewCacheStore.update(context, target, useFile)
+        if (touchScheduleClock) {
+            settingsRepo.setLastChangeAt(System.currentTimeMillis())
+            ProcessBridgePrefs.setLastChangeAt(context, System.currentTimeMillis())
+        }
+        if (countChange) settingsRepo.incrementChangeCount()
         val item = WallpaperItem(
             id = slot.id,
             pathUrl = slot.sourceUrl,
