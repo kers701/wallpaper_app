@@ -22,6 +22,9 @@ import com.kers.killove.jhsy.data.remote.WallhavenApi
 import com.kers.killove.jhsy.data.wallpaper.SystemWallpaperSetter
 import com.kers.killove.jhsy.domain.WallpaperChanger
 import com.kers.killove.jhsy.util.ProcessBridgePrefs
+import com.kers.killove.jhsy.util.LocationHelper
+import com.kers.killove.jhsy.util.ForegroundAppHelper
+import com.kers.killove.jhsy.domain.AvoidanceLocation
 import com.kers.killove.jhsy.worker.ChangeWallpaperWorker
 import com.kers.killove.jhsy.service.ManualChangeService
 import kotlinx.coroutines.CoroutineScope
@@ -42,6 +45,7 @@ class WallpaperForegroundService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var loopJob: Job? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    @Volatile private var lastStatusText: String = "运行中 · 自动更换已开启"
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -59,10 +63,20 @@ class WallpaperForegroundService : Service() {
                 return START_NOT_STICKY
             }
             ACTION_CHANGE_NOW -> {
-                // 兼容旧入口：转交第三进程 :manual
                 ManualChangeService.start(this)
-                // 若本进程本就在跑自动循环则继续；否则不在此做更换
                 if (ProcessBridgePrefs.enabled(this) || ProcessBridgePrefs.superService(this)) {
+                    ensureForegroundAndLoop()
+                }
+            }
+            ACTION_ADD_AVOID_HERE -> {
+                scope.launch {
+                    handleAddAvoidHere()
+                    ensureForegroundAndLoop()
+                }
+            }
+            ACTION_ADD_FG_BLACKLIST -> {
+                scope.launch {
+                    handleAddFgBlacklist()
                     ensureForegroundAndLoop()
                 }
             }
@@ -191,10 +205,9 @@ class WallpaperForegroundService : Service() {
         while (scope.isActive) {
             try {
                 tick++
-                // 约每 2 分钟刷新前台通知，降低被「一键清空」后长期无通知的概率
-                if (tick % 4 == 0) {
-                    ensureForegroundAndLoop()
-                }
+                // 约每 30s～2 分钟刷新动态通知状态（休眠原因 / 运行中）
+                lastStatusText = resolveNotificationText(null)
+                refreshNotification(lastStatusText)
                 // 预下载失败 5 分钟重试（与更换周期解耦）
                 if (tick % 2 == 0 && changer != null) {
                     runCatching { changer.tickPrefetchMaintenance() }
@@ -235,7 +248,8 @@ class WallpaperForegroundService : Service() {
                         // changeOnce 内已含黑名单判断
                         changer.changeOnce(forceIgnoreScreenOff = false)
                         ProcessBridgePrefs.setLastChangeAt(this, System.currentTimeMillis())
-                        refreshNotification("后台更换服务运行中（独立进程）")
+                        lastStatusText = resolveNotificationText(null)
+                        refreshNotification(lastStatusText)
                     } finally {
                         ProcessBridgePrefs.releaseChange(this)
                         releaseWake()
@@ -249,10 +263,21 @@ class WallpaperForegroundService : Service() {
         }
     }
 
-    private fun refreshNotification(text: String) {
+    private fun refreshNotification(overrideText: String? = null) {
         try {
+            if (!overrideText.isNullOrBlank()) {
+                lastStatusText = overrideText
+            } else {
+                // 异步刷新状态文案后再次 notify
+                scope.launch {
+                    lastStatusText = resolveNotificationText(null)
+                    val nm = getSystemService(NotificationManager::class.java) ?: return@launch
+                    val n = buildNotification(null)
+                    nm.notify(NOTIFICATION_ID, n)
+                }
+            }
             val nm = getSystemService(NotificationManager::class.java) ?: return
-            val n = buildNotification(text)
+            val n = buildNotification(overrideText)
             nm.notify(NOTIFICATION_ID, n)
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -263,6 +288,111 @@ class WallpaperForegroundService : Service() {
             } catch (_: Exception) {
             }
         } catch (_: Exception) {
+        }
+    }
+
+    private suspend fun handleAddAvoidHere() {
+        try {
+            if (!LocationHelper.hasLocationPermission(this)) {
+                refreshNotification("定位休眠操作失败：无定位权限")
+                return
+            }
+            val cur = LocationHelper.currentLocation(this)
+            if (cur == null) {
+                refreshNotification("添加避让失败：暂无定位")
+                return
+            }
+            val repo = SettingsRepository(applicationContext)
+            val s = repo.settingsFlow.first()
+            val name = LocationHelper.reverseGeocode(s.amapApiKey, cur.latitude, cur.longitude)
+                ?: String.format(java.util.Locale.US, "当前位置 %.5f,%.5f", cur.latitude, cur.longitude)
+            val id = "cur_${System.currentTimeMillis()}"
+            val list = s.avoidanceLocations().toMutableList()
+            if (list.any { LocationHelper.distanceMeters(it.lat, it.lng, cur.latitude, cur.longitude) < 15.0 }) {
+                refreshNotification("附近已有避让点，未重复添加")
+                return
+            }
+            list.add(AvoidanceLocation(id, name, cur.latitude, cur.longitude))
+            val json = LocationHelper.locationsToJson(list)
+            repo.save(s.copy(avoidanceLocationsJson = json, locationAvoidEnabled = true))
+            refreshNotification("已添加避让点：$name")
+        } catch (e: Exception) {
+            refreshNotification("添加避让失败：${e.message}")
+        }
+    }
+
+    private suspend fun handleAddFgBlacklist() {
+        try {
+            val pkg = ForegroundAppHelper.currentForegroundPackage(this)
+            if (pkg.isNullOrBlank()) {
+                refreshNotification("添加黑名单失败：无法识别前台应用（需使用情况访问权限）")
+                return
+            }
+            // 忽略本应用
+            if (pkg == packageName || pkg.startsWith(packageName)) {
+                refreshNotification("当前前台为本应用，已跳过")
+                return
+            }
+            val repo = SettingsRepository(applicationContext)
+            val s = repo.settingsFlow.first()
+            if (pkg in s.blacklistPackages) {
+                val label = ForegroundAppHelper.appLabel(this, pkg)
+                refreshNotification("「$label」已在黑名单中")
+                return
+            }
+            val next = s.copy(blacklistPackages = s.blacklistPackages + pkg)
+            repo.save(next)
+            val label = ForegroundAppHelper.appLabel(this, pkg)
+            refreshNotification("已将「$label」加入黑名单")
+        } catch (e: Exception) {
+            refreshNotification("添加黑名单失败：${e.message}")
+        }
+    }
+
+    /** 根据定位/黑名单/省电动态生成通知正文；override 用于更换进度等临时文案 */
+    private suspend fun resolveNotificationText(overrideText: String?): String {
+        if (!overrideText.isNullOrBlank()) return overrideText
+        return try {
+            val repo = runCatching { SettingsRepository(applicationContext) }.getOrNull()
+            val s = repo?.let { runCatching { it.settingsFlow.first() }.getOrNull() }
+            if (s != null) {
+                // 应用休眠优先
+                if (s.blacklistPackages.isNotEmpty() &&
+                    ForegroundAppHelper.isBlacklistedForeground(this, s.blacklistPackages)
+                ) {
+                    val pkg = ForegroundAppHelper.currentForegroundPackage(this) ?: "?"
+                    val label = ForegroundAppHelper.appLabel(this, pkg)
+                    return "应用休眠 · 正在使用（$label）"
+                }
+                // 定位休眠：启用避让且在区内
+                if (s.locationAvoidEnabled && s.avoidanceLocations().isNotEmpty()) {
+                    val (inZone, hit) = LocationHelper.isInAvoidZone(
+                        this, s.avoidanceLocations(), s.locationAvoidRadiusMeters.toDouble()
+                    )
+                    if (inZone) {
+                        val tag = hit?.name?.ifBlank { null } ?: "避让点"
+                        return "定位休眠 · 已进入（$tag）范围"
+                    }
+                }
+                // 省电休眠
+                if (s.powerSaveEnabled) {
+                    val bm = getSystemService(Context.BATTERY_SERVICE) as? android.os.BatteryManager
+                    val pct = bm?.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: -1
+                    val charging = try {
+                        val ifilter = Intent(Intent.ACTION_BATTERY_CHANGED)
+                        val st = registerReceiver(null, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+                        val status = st?.getIntExtra(android.os.BatteryManager.EXTRA_STATUS, -1) ?: -1
+                        status == android.os.BatteryManager.BATTERY_STATUS_CHARGING ||
+                            status == android.os.BatteryManager.BATTERY_STATUS_FULL
+                    } catch (_: Exception) { false }
+                    if (!charging && pct in 0..100 && pct < s.powerSaveBatteryThreshold) {
+                        return "省电休眠 · 电量 $pct%（阈值 ${s.powerSaveBatteryThreshold}%）"
+                    }
+                }
+            }
+            "运行中 · 自动更换已开启"
+        } catch (_: Exception) {
+            "后台更换服务运行中"
         }
     }
 
@@ -304,7 +434,10 @@ class WallpaperForegroundService : Service() {
         }
     }
 
-    private fun buildNotification(contentText: String = "后台更换服务运行中（独立进程）"): Notification {
+    private fun buildNotification(overrideText: String? = null): Notification {
+        // 同步路径：尽量读即时状态；失败则用 override / 默认
+        val contentText = overrideText?.takeIf { it.isNotBlank() } ?: lastStatusText
+        val sleeping = contentText.contains("休眠")
         val open = PendingIntent.getActivity(
             this, 0,
             Intent(this, MainActivity::class.java),
@@ -320,13 +453,29 @@ class WallpaperForegroundService : Service() {
             Intent(this, ManualChangeService::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle(getString(R.string.notification_title))
+        val addAvoid = PendingIntent.getService(
+            this, 3,
+            Intent(this, WallpaperForegroundService::class.java).setAction(ACTION_ADD_AVOID_HERE),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val addBlack = PendingIntent.getService(
+            this, 4,
+            Intent(this, WallpaperForegroundService::class.java).setAction(ACTION_ADD_FG_BLACKLIST),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val title = when {
+            contentText.startsWith("定位休眠") -> "镜花水月 · 定位休眠"
+            contentText.startsWith("应用休眠") -> "镜花水月 · 应用休眠"
+            contentText.startsWith("省电休眠") -> "镜花水月 · 省电休眠"
+            contentText.contains("更换") || contentText.contains("%") -> "镜花水月 · 更换中"
+            else -> getString(R.string.notification_title)
+        }
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle(title)
             .setContentText(contentText)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(contentText))
             .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(open)
-            .addAction(0, "立即更换", changeNow)
-            .addAction(0, "停止", stop)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setSilent(true)
@@ -334,7 +483,17 @@ class WallpaperForegroundService : Service() {
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
-            .build()
+        if (sleeping) {
+            // 休眠中仍可停止 / 立即更换
+            builder.addAction(0, "立即更换", changeNow)
+            builder.addAction(0, "停止", stop)
+        } else {
+            // 正常运行：定位避让 + 应用黑名单
+            builder.addAction(0, "定位避让", addAvoid)
+            builder.addAction(0, "应用黑名单", addBlack)
+            builder.addAction(0, "停止", stop)
+        }
+        return builder.build()
     }
 
     override fun onDestroy() {

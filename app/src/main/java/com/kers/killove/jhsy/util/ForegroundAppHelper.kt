@@ -71,6 +71,16 @@ object ForegroundAppHelper {
         }
     }
 
+    fun appLabel(context: Context, packageName: String): String {
+        return try {
+            val pm = context.packageManager
+            val ai = pm.getApplicationInfo(packageName, 0)
+            pm.getApplicationLabel(ai)?.toString() ?: packageName
+        } catch (_: Exception) {
+            packageName
+        }
+    }
+
     fun isBlacklistedForeground(context: Context, blacklist: List<String>): Boolean {
         if (blacklist.isEmpty()) return false
         val fg = currentForegroundPackage(context) ?: return false
