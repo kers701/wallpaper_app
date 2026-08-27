@@ -37,7 +37,9 @@ import com.kers.killove.jhsy.ui.screens.GlassCard
 import com.kers.killove.jhsy.ui.screens.HistoryScreen
 import com.kers.killove.jhsy.ui.screens.HelpGuideScreen
 import com.kers.killove.jhsy.ui.screens.HomeScreen
+import com.kers.killove.jhsy.ui.screens.LocationAvoidListScreen
 import com.kers.killove.jhsy.ui.screens.LocationAvoidScreen
+import com.kers.killove.jhsy.ui.screens.BlacklistSelectedScreen
 import com.kers.killove.jhsy.ui.screens.OverviewScreen
 import com.kers.killove.jhsy.ui.screens.PermissionOnboardingScreen
 import com.kers.killove.jhsy.ui.screens.SettingsScreen
@@ -102,10 +104,24 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
                         }
                         composable("history") { HistoryScreen(vm) }
                         composable("blacklist") {
-                            BlacklistScreen(vm, onBack = { nav.popBackStack() })
+                            BlacklistScreen(
+                                vm,
+                                onBack = { nav.popBackStack() },
+                                onOpenSelected = { nav.navigate("blacklist_selected") }
+                            )
+                        }
+                        composable("blacklist_selected") {
+                            BlacklistSelectedScreen(vm, onBack = { nav.popBackStack() })
                         }
                         composable("location_avoid") {
-                            LocationAvoidScreen(vm, onBack = { nav.popBackStack() })
+                            LocationAvoidScreen(
+                                vm,
+                                onBack = { nav.popBackStack() },
+                                onOpenList = { nav.navigate("location_avoid_list") }
+                            )
+                        }
+                        composable("location_avoid_list") {
+                            LocationAvoidListScreen(vm, onBack = { nav.popBackStack() })
                         }
                         composable("help") {
                             HelpGuideScreen(onBack = { nav.popBackStack() })

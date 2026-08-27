@@ -40,7 +40,7 @@ import com.kers.killove.jhsy.ui.MainViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BlacklistScreen(vm: MainViewModel, onBack: () -> Unit) {
+fun BlacklistScreen(vm: MainViewModel, onBack: () -> Unit, onOpenSelected: () -> Unit = {}) {
     val settings by vm.settings.collectAsState()
     val apps by vm.launcherApps.collectAsState()
     val textColor = LocalUiTextColor.current
@@ -90,23 +90,10 @@ fun BlacklistScreen(vm: MainViewModel, onBack: () -> Unit) {
             ) { Text(if (hasUsage) "打开使用情况访问设置" else "前往授权") }
 
             Spacer(Modifier.height(12.dp))
-            Text("已选 ${selected.size} 个", style = MaterialTheme.typography.titleSmall, color = textColor)
-            if (selected.isEmpty()) {
-                Text("暂无勾选", style = MaterialTheme.typography.bodySmall, color = textColor.copy(alpha = 0.6f))
-            } else {
-                selected.forEach { app ->
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Checkbox(checked = true, onCheckedChange = { vm.toggleBlacklistPackage(app.packageName) })
-                        Column(Modifier.weight(1f)) {
-                            Text(app.label, color = textColor, style = MaterialTheme.typography.bodyMedium)
-                            Text(app.packageName, color = textColor.copy(alpha = 0.55f), style = MaterialTheme.typography.bodySmall)
-                        }
-                    }
-                }
-            }
+            OutlinedButton(
+                onClick = onOpenSelected,
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("查看已选名单（${selected.size}）") }
 
             HorizontalDivider(Modifier.padding(vertical = 12.dp), color = textColor.copy(alpha = 0.2f))
             Text("搜索全部应用", style = MaterialTheme.typography.titleSmall, color = textColor)
