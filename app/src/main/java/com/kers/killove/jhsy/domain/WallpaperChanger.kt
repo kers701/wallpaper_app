@@ -78,9 +78,10 @@ class WallpaperChanger(
         }
 
 
-        // 前台黑名单应用：休眠不换
-        if (!forceIgnoreScreenOff && settings.blacklistPackages.isNotEmpty()) {
-            if (ForegroundAppHelper.isBlacklistedForeground(context, settings.blacklistPackages)) {
+        // 前台黑名单应用：休眠不换（以文件桥+设置合并后的列表为准，避免跨进程勾选状态不一致）
+        if (!forceIgnoreScreenOff) {
+            val bl = ProcessBridgePrefs.mergeBlacklist(context, settings.blacklistPackages)
+            if (bl.isNotEmpty() && ForegroundAppHelper.isBlacklistedForeground(context, bl)) {
                 val fg = ForegroundAppHelper.currentForegroundPackage(context) ?: "?"
                 return ChangeResult.Failure("黑名单应用在前台，休眠（$fg）")
             }

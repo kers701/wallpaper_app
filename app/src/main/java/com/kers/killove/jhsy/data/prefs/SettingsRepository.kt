@@ -164,7 +164,7 @@ class SettingsRepository(private val context: Context) {
             proxyPort = p[Keys.PROXY_PORT] ?: 0,
             proxyUser = p[Keys.PROXY_USER] ?: "",
             proxyPassword = p[Keys.PROXY_PASS] ?: "",
-            blacklistPackages = splitLines(p[Keys.BLACKLIST] ?: ""),
+            blacklistPackages = ProcessBridgePrefs.mergeBlacklist(context, splitLines(p[Keys.BLACKLIST] ?: "")),
             overviewMinimalMode = p[Keys.OVERVIEW_MINIMAL] ?: false,
             changeCount = p[Keys.CHANGE_COUNT] ?: 0L,
             localFallbackUseCache = p[Keys.LOCAL_FB_CACHE] ?: true,
@@ -179,7 +179,32 @@ class SettingsRepository(private val context: Context) {
             locationAvoidEnabled = p[Keys.LOC_AVOID] ?: false,
             locationAvoidRadiusMeters = (p[Keys.LOC_RADIUS] ?: 10).coerceIn(5, 500),
             amapApiKey = p[Keys.AMAP_KEY] ?: "",
-            avoidanceLocationsJson = p[Keys.AVOID_LOCS] ?: "[]",
+            avoidanceLocationsJson = run {
+                val fromStore = p[Keys.AVOID_LOCS] ?: "[]"
+                val fromFile = ProcessBridgePrefs.readAvoidLocationsJson(context)
+                if (!fromFile.isNullOrBlank() && fromFile != "[]" && (fromStore.isBlank() || fromStore == "[]")) fromFile
+                else if (!fromFile.isNullOrBlank() && fromFile != fromStore) {
+                    // 合并两边 JSON 数组（按 id 去重）
+                    try {
+                        val a = org.json.JSONArray(fromStore)
+                        val b = org.json.JSONArray(fromFile)
+                        val seen = mutableSetOf<String>()
+                        val out = org.json.JSONArray()
+                        for (src in listOf(a, b)) {
+                            for (i in 0 until src.length()) {
+                                val o = src.optJSONObject(i) ?: continue
+                                val id = o.optString("id")
+                                if (id.isNotBlank() && id in seen) continue
+                                if (id.isNotBlank()) seen.add(id)
+                                out.put(o)
+                            }
+                        }
+                        out.toString()
+                    } catch (_: Exception) {
+                        fromStore
+                    }
+                } else fromStore
+            },
             locationFallbackEnabled = p[Keys.LOC_FALLBACK] ?: true,
             locationExtremeFallbackEnabled = p[Keys.LOC_EXTREME] ?: false,
             locationSavedPurity = p[Keys.LOC_SAVED_PURITY] ?: "",
@@ -189,6 +214,7 @@ class SettingsRepository(private val context: Context) {
     }
 
     suspend fun save(settings: AppSettings) {
+        // 黑名单以本次传入列表为准（用户取消勾选必须能删掉），写 DataStore 后 sync 会整文件覆盖桥接文件
         context.dataStore.edit { p ->
             p[Keys.ENABLED] = settings.enabled
             p[Keys.INTERVAL] = settings.intervalMinutes.coerceIn(5, 180)
@@ -263,7 +289,7 @@ class SettingsRepository(private val context: Context) {
             p[Keys.LOC_IN_ZONE] = settings.locationInAvoidZone
         }
         ProcessBridgePrefs.sync(context, settings)
-            ProxyHttp.applySettings(settings)
+        ProxyHttp.applySettings(settings)
     }
 
     suspend fun setLastCategory(code: String) {

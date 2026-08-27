@@ -737,9 +737,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setBlacklist(packages: List<String>) {
         viewModelScope.launch {
-            val next = settings.value.copy(blacklistPackages = packages.distinct())
+            val list = packages.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+            // 先覆盖跨进程文件，避免 :svc 仍用旧名单触发休眠
+            ProcessBridgePrefs.writeBlacklist(getApplication(), list)
+            val next = settings.value.copy(blacklistPackages = list)
             settingsRepo.save(next)
-            _status.value = "黑名单已更新（${packages.size} 个应用）"
+            _status.value = "黑名单已更新（${list.size} 个应用）"
         }
     }
 

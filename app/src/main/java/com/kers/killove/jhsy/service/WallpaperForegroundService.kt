@@ -115,18 +115,33 @@ class WallpaperForegroundService : Service() {
 
 
     /** 仅挂前台通知，不启动自动轮询循环（手动一次性用） */
-    private fun ensureForegroundOnly() {
-        createChannel()
-        val notification = buildNotification("独立进程正在更换…")
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                startForeground(
-                    NOTIFICATION_ID, notification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-                )
-            } else {
-                startForeground(NOTIFICATION_ID, notification)
+
+    private fun fgsTypeMask(): Int {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return 0
+        var mask = 0
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            // API 34+: specialUse
+            mask = mask or ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+        }
+        // 有定位权限时带上 location，使「仅运行时允许」在 FGS 存活期间仍可读定位
+        if (LocationHelper.hasLocationPermission(this)) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                mask = mask or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
             }
+        }
+        return mask
+    }
+
+    private fun startFg(notification: Notification) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val type = fgsTypeMask()
+                if (type != 0) {
+                    startForeground(NOTIFICATION_ID, notification, type)
+                    return
+                }
+            }
+            startForeground(NOTIFICATION_ID, notification)
         } catch (e: Exception) {
             e.printStackTrace()
             try {
@@ -134,6 +149,12 @@ class WallpaperForegroundService : Service() {
             } catch (_: Exception) {
             }
         }
+    }
+
+    private fun ensureForegroundOnly() {
+        createChannel()
+        val notification = buildNotification("独立进程正在更换…")
+        startFg(notification)
     }
 
     private fun stopForegroundCompat() {
@@ -155,22 +176,7 @@ class WallpaperForegroundService : Service() {
     private fun ensureForegroundAndLoop() {
         createChannel()
         val notification = buildNotification()
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                startForeground(
-                    NOTIFICATION_ID, notification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-                )
-            } else {
-                startForeground(NOTIFICATION_ID, notification)
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            try {
-                startForeground(NOTIFICATION_ID, notification)
-            } catch (_: Exception) {
-            }
-        }
+        startFg(notification)
         try {
             val nm = getSystemService(NotificationManager::class.java)
             nm?.notify(NOTIFICATION_ID, notification)
@@ -279,14 +285,7 @@ class WallpaperForegroundService : Service() {
             val nm = getSystemService(NotificationManager::class.java) ?: return
             val n = buildNotification(overrideText)
             nm.notify(NOTIFICATION_ID, n)
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                    startForeground(NOTIFICATION_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
-                } else {
-                    startForeground(NOTIFICATION_ID, n)
-                }
-            } catch (_: Exception) {
-            }
+            startFg(n)
         } catch (_: Exception) {
         }
     }
@@ -314,6 +313,7 @@ class WallpaperForegroundService : Service() {
             }
             list.add(AvoidanceLocation(id, name, cur.latitude, cur.longitude))
             val json = LocationHelper.locationsToJson(list)
+            ProcessBridgePrefs.writeAvoidLocationsJson(this, json)
             repo.save(s.copy(avoidanceLocationsJson = json, locationAvoidEnabled = true))
             refreshNotification("已添加避让点：$name")
         } catch (e: Exception) {
@@ -349,7 +349,17 @@ class WallpaperForegroundService : Service() {
                 ensureForegroundAndLoop()
                 return
             }
-            val next = s.copy(blacklistPackages = s.blacklistPackages + pkg)
+            val merged = ProcessBridgePrefs.mergeBlacklist(this, s.blacklistPackages)
+            if (pkg in merged) {
+                lastStatusText = "「$label」已在黑名单中"
+                refreshNotification(lastStatusText)
+                ensureForegroundAndLoop()
+                return
+            }
+            val nextList = merged + pkg
+            // 先写跨进程文件，再写 DataStore，主进程打开后能合并到
+            ProcessBridgePrefs.writeBlacklist(this, nextList)
+            val next = s.copy(blacklistPackages = nextList)
             repo.save(next)
             lastStatusText = "已将「$label」加入黑名单"
             refreshNotification(lastStatusText)
@@ -369,8 +379,9 @@ class WallpaperForegroundService : Service() {
             val s = repo?.let { runCatching { it.settingsFlow.first() }.getOrNull() }
             if (s != null) {
                 // 应用休眠优先
-                if (s.blacklistPackages.isNotEmpty() &&
-                    ForegroundAppHelper.isBlacklistedForeground(this, s.blacklistPackages)
+                val bl = ProcessBridgePrefs.mergeBlacklist(this, s.blacklistPackages)
+                if (bl.isNotEmpty() &&
+                    ForegroundAppHelper.isBlacklistedForeground(this, bl)
                 ) {
                     val pkg = ForegroundAppHelper.currentForegroundPackage(this) ?: "?"
                     val label = ForegroundAppHelper.appLabel(this, pkg)
@@ -384,6 +395,14 @@ class WallpaperForegroundService : Service() {
                     if (inZone) {
                         val tag = hit?.name?.ifBlank { null } ?: "避让点"
                         return "定位休眠 · 已进入（$tag）范围"
+                    }
+                    // 有开启避让但读不到位置：提示权限（部分机型无「始终允许」）
+                    if (LocationHelper.currentLocation(this) == null) {
+                        return if (LocationHelper.hasLocationPermission(this)) {
+                            "定位暂不可用 · 请保持前台服务；系统若支持请到权限页选始终允许"
+                        } else {
+                            "定位权限不足 · 请授予定位（仅运行时亦可，需保持服务运行）"
+                        }
                     }
                 }
                 // 省电休眠

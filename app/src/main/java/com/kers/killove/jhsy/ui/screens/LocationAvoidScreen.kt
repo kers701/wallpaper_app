@@ -38,6 +38,7 @@ import com.kers.killove.jhsy.domain.AvoidanceLocation
 import com.kers.killove.jhsy.ui.LocalUiTextColor
 import com.kers.killove.jhsy.ui.MainViewModel
 import com.kers.killove.jhsy.util.LocationHelper
+import com.kers.killove.jhsy.util.RootKeepAlive
 import kotlinx.coroutines.delay
 import java.util.Locale
 
@@ -138,7 +139,7 @@ fun LocationAvoidScreen(vm: MainViewModel, onBack: () -> Unit, onOpenList: () ->
         item {
             Text(
                 "配置高德开发者 Key 后可搜索位置。进入避让点触发半径内可开启绿色模式（R13 / 仅 Sketchy 随机），并可开启极限回退（仅本地换壁纸）。离开后恢复原状态。\n" +
-                    "重要：Android 10 及以上须将定位设为「始终允许」，否则应用划掉/后台后无法读取位置，通知只会显示「运行中」。",
+                    "重要：后台判定避让需要定位「始终允许」。Android 11+ 和多数国产系统（三星等）的弹窗里往往没有该选项，请点下方按钮进入系统设置手动选择。",
                 style = MaterialTheme.typography.bodySmall,
                 color = textColor.copy(alpha = 0.8f)
             )
@@ -165,14 +166,25 @@ fun LocationAvoidScreen(vm: MainViewModel, onBack: () -> Unit, onOpenList: () ->
                             val missingFg = need.any {
                                 ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
                             }
-                            if (missingFg) {
-                                permLauncher.launch(need.toTypedArray())
-                            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
-                                !LocationHelper.hasBackgroundLocationPermission(context)
-                            ) {
-                                permLauncher.launch(arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION))
-                            } else {
-                                refreshLocation()
+                            when {
+                                missingFg -> permLauncher.launch(need.toTypedArray())
+                                Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+                                    !LocationHelper.hasBackgroundLocationPermission(context) -> {
+                                    // 11+ 系统弹窗无「始终允许」：直接进应用详情让用户手选
+                                    // 部分机型仍会弹出后台定位请求，再失败则打开设置
+                                    try {
+                                        if (Build.VERSION.SDK_INT == Build.VERSION_CODES.Q) {
+                                            permLauncher.launch(
+                                                arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                                            )
+                                        } else {
+                                            LocationHelper.openAppLocationSettings(context)
+                                        }
+                                    } catch (_: Exception) {
+                                        LocationHelper.openAppLocationSettings(context)
+                                    }
+                                }
+                                else -> refreshLocation()
                             }
                         }
                     ) {
@@ -180,10 +192,52 @@ fun LocationAvoidScreen(vm: MainViewModel, onBack: () -> Unit, onOpenList: () ->
                             when {
                                 !LocationHelper.hasLocationPermission(context) -> "授予定位权限"
                                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
-                                    !LocationHelper.hasBackgroundLocationPermission(context) -> "授予始终允许"
+                                    !LocationHelper.hasBackgroundLocationPermission(context) ->
+                                    "去系统设置开启始终允许"
                                 else -> "刷新定位"
                             }
                         )
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+                        LocationHelper.hasLocationPermission(context) &&
+                        !LocationHelper.hasBackgroundLocationPermission(context)
+                    ) {
+                        Text(
+                            "你的系统弹窗只有「仅运行时允许 / 询问 / 不允许」是正常的，很多机型（含三星）不会在弹窗里给「始终允许」。\n" +
+                                "请先选「仅运行时允许」并打开精确位置。\n" +
+                                "再点下方打开权限页：应用信息 → 权限 → 位置，看是否多出「始终允许」。\n" +
+                                "三星还可试：设置 → 位置 → 应用权限 → 镜花水月。\n" +
+                                "若系统始终没有该选项：保持前台服务运行时，本版会用定位类型前台服务在「仅运行时」下尽量读取位置；仍失败则只能在打开应用时判定。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = textColor.copy(alpha = 0.8f)
+                        )
+                        OutlinedButton(
+                            onClick = { LocationHelper.openAppLocationSettings(context) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("打开应用权限设置") }
+                        if (RootKeepAlive.hasRoot()) {
+                            OutlinedButton(
+                                onClick = {
+                                    val ok = RootKeepAlive.grantBackgroundLocation(context.packageName)
+                                    refreshLocation()
+                                    // 状态写在 nearest 旁通过 refresh 体现；无 Toast 时文案已足够
+                                    if (ok && LocationHelper.hasBackgroundLocationPermission(context)) {
+                                        nearestText = "Root 已授予后台定位"
+                                    } else if (ok) {
+                                        nearestText = "已执行 Root 授权命令，请点刷新定位确认（部分系统仍需重启应用）"
+                                    } else {
+                                        nearestText = "Root 授权失败"
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Root 授予后台定位") }
+                        } else {
+                            Text(
+                                "无障碍权限不能增强定位。若有 Root，安装本版后可点「Root 授予后台定位」。",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = textColor.copy(alpha = 0.7f)
+                            )
+                        }
                     }
                     OutlinedTextField(
                         value = customLabel,

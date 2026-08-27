@@ -56,6 +56,33 @@ object RootKeepAlive {
         }
     }
 
+    /**
+     * 用 Root 强制授予定位 + 后台定位（系统设置里没有「始终允许」时的增强手段）。
+     * 无障碍权限无法获取定位，不能替代本方法。
+     */
+    fun grantBackgroundLocation(packageName: String): Boolean {
+        if (!hasRoot()) return false
+        return try {
+            val p = Runtime.getRuntime().exec("su")
+            DataOutputStream(p.outputStream).use { os ->
+                os.writeBytes("pm grant $packageName android.permission.ACCESS_FINE_LOCATION\n")
+                os.writeBytes("pm grant $packageName android.permission.ACCESS_COARSE_LOCATION\n")
+                os.writeBytes("pm grant $packageName android.permission.ACCESS_BACKGROUND_LOCATION\n")
+                // appops：允许前台/后台定位
+                os.writeBytes("cmd appops set $packageName FINE_LOCATION allow\n")
+                os.writeBytes("cmd appops set $packageName COARSE_LOCATION allow\n")
+                os.writeBytes("cmd appops set $packageName android:fine_location allow\n")
+                os.writeBytes("cmd appops set $packageName android:coarse_location allow\n")
+                os.writeBytes("exit\n")
+                os.flush()
+            }
+            p.waitFor(5, TimeUnit.SECONDS)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     fun stopDaemon(): Boolean {
         if (!hasRoot()) return false
         return try {
