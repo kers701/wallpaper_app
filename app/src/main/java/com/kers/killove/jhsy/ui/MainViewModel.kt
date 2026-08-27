@@ -15,6 +15,8 @@ import com.kers.killove.jhsy.domain.AvoidanceLocation
 import com.kers.killove.jhsy.util.LocationHelper
 import com.kers.killove.jhsy.data.translate.KeywordTranslator
 import com.kers.killove.jhsy.domain.WallpaperChanger
+import com.kers.killove.jhsy.domain.WallpaperTarget
+import com.kers.killove.jhsy.domain.WallpaperFitMode
 import com.kers.killove.jhsy.service.WallpaperForegroundService
 import com.kers.killove.jhsy.util.SuperServiceController
 import com.kers.killove.jhsy.util.ConfigBackup
@@ -131,6 +133,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun saveSettings(s: AppSettings) {
         viewModelScope.launch {
+            val oldFit = settings.value.fitMode
             // 锁定状态下不允许改写敏感字段
             val final = if (!keysVisible(s) && s.pinEnabled) {
                 s.copy(
@@ -143,8 +146,82 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             } else s
             settingsRepo.save(final)
             applySchedule(final)
-            _status.value =
-                "设置已保存（关键词 ${final.keywords.size} 个，跃迁 ${final.jumpKeywords.size} 个，密钥 ${final.apiKeys.size} 个）"
+            if (final.fitMode != oldFit) {
+                reapplyCurrentWallpapers(final)
+            } else {
+                _status.value =
+                    "设置已保存（关键词 ${final.keywords.size} 个，跃迁 ${final.jumpKeywords.size} 个，密钥 ${final.apiKeys.size} 个）"
+            }
+        }
+    }
+
+    /**
+     * 不重新下载，用历史记录里最近的桌面/锁屏缓存图，按当前铺满方式再设一次。
+     */
+    fun reapplyCurrentWallpapers(s: AppSettings = settings.value) {
+        viewModelScope.launch {
+            reapplyCurrentWallpapersSuspend(s)
+        }
+    }
+
+    private suspend fun reapplyCurrentWallpapersSuspend(s: AppSettings) {
+        _busy.value = true
+        _status.value = "铺满方式已更新，正在用当前壁纸重新设置…"
+        try {
+            val list = dao.recentList(40)
+            fun match(e: com.kers.killove.jhsy.data.local.WallpaperEntity, keys: List<String>): Boolean {
+                val path = e.path.lowercase()
+                val id = e.id.lowercase()
+                return keys.any { path.contains(it) || id.contains(it) }
+            }
+            val homeEnt = list.firstOrNull { match(it, listOf("_home", "home")) }
+                ?: list.firstOrNull { match(it, listOf("_both", "both")) }
+                ?: list.firstOrNull()
+            val lockEnt = list.firstOrNull { match(it, listOf("_lock", "lock")) }
+                ?: list.firstOrNull { match(it, listOf("_both", "both")) }
+                ?: homeEnt
+
+            val setter = SystemWallpaperSetter(getApplication())
+            var ok = 0
+            var fail = 0
+
+            suspend fun applyOne(path: String?, target: WallpaperTarget) {
+                if (path.isNullOrBlank()) {
+                    fail++
+                    return
+                }
+                val f = File(path)
+                if (!f.exists() || f.length() < 32L) {
+                    fail++
+                    return
+                }
+                if (setter.setFromFile(f, target, s.fitMode)) ok++ else fail++
+            }
+
+            when (s.target) {
+                WallpaperTarget.Home -> applyOne(homeEnt?.path, WallpaperTarget.Home)
+                WallpaperTarget.Lock -> applyOne(lockEnt?.path, WallpaperTarget.Lock)
+                WallpaperTarget.Both -> {
+                    if (s.isolateHomeLock) {
+                        applyOne(homeEnt?.path, WallpaperTarget.Home)
+                        applyOne(lockEnt?.path, WallpaperTarget.Lock)
+                    } else {
+                        // 非隔离：用最新一张对 Both
+                        val any = homeEnt ?: lockEnt
+                        applyOne(any?.path, WallpaperTarget.Both)
+                    }
+                }
+            }
+
+            _status.value = when {
+                ok > 0 && fail == 0 -> "铺满方式「${s.fitMode.label}」已应用到当前壁纸（未重新下载）"
+                ok > 0 -> "铺满已部分应用（成功 $ok，失败 $fail），请确认缓存图仍在"
+                else -> "没有可用的本地壁纸缓存，请先更换一次壁纸"
+            }
+        } catch (e: Exception) {
+            _status.value = "重新设置失败：${e.message}"
+        } finally {
+            _busy.value = false
         }
     }
 

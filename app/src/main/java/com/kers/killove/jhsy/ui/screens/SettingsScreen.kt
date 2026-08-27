@@ -266,7 +266,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
         )
         EnumDropdown("方向过滤", OrientationFilter.entries, orientFilter) { orientFilter = it }
         EnumDropdown("壁纸铺满方式", WallpaperFitMode.entries, fitMode) { fitMode = it }
-        Text("填充=等比铺满（Windows 填充）；适应=完整显示；拉伸=强制铺满", style = MaterialTheme.typography.bodySmall)
+        Text("填充=等比铺满；适应=完整显示留边；居中=原图居中裁多余；拉伸=强制变形铺满。修改后保存会用当前壁纸重设（不重新下载）", style = MaterialTheme.typography.bodySmall)
         RowSwitch("桌面锁屏隔离（两次下载，可用不同关键词）", isolate) { isolate = it }
         RowSwitch("省电模式", powerSave) { powerSave = it }
         if (powerSave) {

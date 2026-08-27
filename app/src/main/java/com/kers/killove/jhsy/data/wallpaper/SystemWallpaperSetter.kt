@@ -343,6 +343,12 @@ class SystemWallpaperSetter(private val context: Context) {
                 val top = (canvasH - h) / 2f
                 canvas.drawBitmap(src, null, RectF(left, top, left + w, top + h), paint)
             }
+            WallpaperFitMode.Center -> {
+                // 原图像素居中；大于画布的部分自然被裁切，小于则留黑边
+                val left = (canvasW - src.width) / 2f
+                val top = (canvasH - src.height) / 2f
+                canvas.drawBitmap(src, left, top, paint)
+            }
         }
         return out
     }
