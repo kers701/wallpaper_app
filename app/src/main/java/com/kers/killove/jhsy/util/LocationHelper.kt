@@ -19,11 +19,10 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
- * 定位避让：读取当前位置，判断是否在避让点 10 米内。
+ * 定位避让：读取当前位置，判断是否在避让点半径内（可配置）。
  * 地点搜索使用高德 Web 服务（需开发者 Key）。
  */
 object LocationHelper {
-    private const val RADIUS_M = 10.0
     
 
     fun hasLocationPermission(context: Context): Boolean {
@@ -64,15 +63,44 @@ object LocationHelper {
         return r * c
     }
 
-    /** 是否在任一避让点 [RADIUS_M] 米内 */
-    fun isInAvoidZone(context: Context, locations: List<AvoidanceLocation>): Pair<Boolean, AvoidanceLocation?> {
+    /**
+     * 是否在任一避让点 [radiusMeters] 米内。
+     * @return first=是否在区内，second=最近命中点（若有）
+     */
+    fun isInAvoidZone(
+        context: Context,
+        locations: List<AvoidanceLocation>,
+        radiusMeters: Double = 10.0
+    ): Pair<Boolean, AvoidanceLocation?> {
         if (locations.isEmpty()) return false to null
         val cur = currentLocation(context) ?: return false to null
+        val r = radiusMeters.coerceIn(5.0, 500.0)
+        var best: AvoidanceLocation? = null
+        var bestD = Double.MAX_VALUE
         for (loc in locations) {
             val d = distanceMeters(cur.latitude, cur.longitude, loc.lat, loc.lng)
-            if (d <= RADIUS_M) return true to loc
+            if (d <= r && d < bestD) {
+                bestD = d
+                best = loc
+            }
         }
-        return false to null
+        return (best != null) to best
+    }
+
+    /** 当前位置到最近避让点的距离（米）；无定位或无点时返回 null */
+    fun nearestDistanceMeters(context: Context, locations: List<AvoidanceLocation>): Pair<AvoidanceLocation?, Double?> {
+        if (locations.isEmpty()) return null to null
+        val cur = currentLocation(context) ?: return null to null
+        var best: AvoidanceLocation? = null
+        var bestD = Double.MAX_VALUE
+        for (loc in locations) {
+            val d = distanceMeters(cur.latitude, cur.longitude, loc.lat, loc.lng)
+            if (d < bestD) {
+                bestD = d
+                best = loc
+            }
+        }
+        return best to bestD
     }
 
     data class PlaceHit(val id: String, val name: String, val address: String, val lat: Double, val lng: Double)

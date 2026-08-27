@@ -870,6 +870,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun setAvoidRadiusMeters(meters: Int) {
+        viewModelScope.launch {
+            val m = meters.coerceIn(5, 500)
+            settingsRepo.save(settings.value.copy(locationAvoidRadiusMeters = m))
+            _status.value = "避让触发范围已设为 ${m} 米"
+        }
+    }
+
     fun removeAvoidanceLocation(id: String) {
         viewModelScope.launch {
             val cur = settings.value.avoidanceLocations().filter { it.id != id }

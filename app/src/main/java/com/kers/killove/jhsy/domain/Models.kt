@@ -253,6 +253,8 @@ data class AppSettings(
 
     /** 定位避让 */
     val locationAvoidEnabled: Boolean = false,
+    /** 触发半径（米），默认 10，可调 5～500 */
+    val locationAvoidRadiusMeters: Int = 10,
     val amapApiKey: String = "",
     val avoidanceLocationsJson: String = "[]",
     /** 绿色模式：进入避让区时纯度在 R13 与「仅 Sketchy」间随机 */

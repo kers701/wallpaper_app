@@ -758,7 +758,7 @@ class WallpaperChanger(
 
     /** 定位避让：进入避让区启用绿色模式（R13/仅Sketchy随机）与极限本地；离开后恢复 */
     private suspend fun applyLocationAvoidance(settings: AppSettings): AppSettings {
-        val (inZone, _) = LocationHelper.isInAvoidZone(context, settings.avoidanceLocations())
+        val (inZone, _) = LocationHelper.isInAvoidZone(context, settings.avoidanceLocations(), settings.locationAvoidRadiusMeters.toDouble())
         if (inZone) {
             if (!settings.locationInAvoidZone) {
                 var next = settings.copy(

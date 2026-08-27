@@ -95,6 +95,7 @@ class SettingsRepository(private val context: Context) {
         val CLOUD_ORIENT = booleanPreferencesKey("cloud_backup_orient")
         val CLOUD_WIFI = booleanPreferencesKey("cloud_backup_wifi")
         val LOC_AVOID = booleanPreferencesKey("location_avoid")
+        val LOC_RADIUS = intPreferencesKey("location_avoid_radius")
         val AMAP_KEY = stringPreferencesKey("amap_api_key")
         val AVOID_LOCS = stringPreferencesKey("avoidance_locations")
         val LOC_FALLBACK = booleanPreferencesKey("location_fallback")
@@ -176,6 +177,7 @@ class SettingsRepository(private val context: Context) {
             cloudBackupOrientSplit = p[Keys.CLOUD_ORIENT] ?: false,
             cloudBackupWifiOnly = p[Keys.CLOUD_WIFI] ?: true,
             locationAvoidEnabled = p[Keys.LOC_AVOID] ?: false,
+            locationAvoidRadiusMeters = (p[Keys.LOC_RADIUS] ?: 10).coerceIn(5, 500),
             amapApiKey = p[Keys.AMAP_KEY] ?: "",
             avoidanceLocationsJson = p[Keys.AVOID_LOCS] ?: "[]",
             locationFallbackEnabled = p[Keys.LOC_FALLBACK] ?: true,
@@ -251,6 +253,7 @@ class SettingsRepository(private val context: Context) {
             p[Keys.CLOUD_ORIENT] = settings.cloudBackupOrientSplit
             p[Keys.CLOUD_WIFI] = settings.cloudBackupWifiOnly
             p[Keys.LOC_AVOID] = settings.locationAvoidEnabled
+            p[Keys.LOC_RADIUS] = settings.locationAvoidRadiusMeters.coerceIn(5, 500)
             p[Keys.AMAP_KEY] = settings.amapApiKey
             p[Keys.AVOID_LOCS] = settings.avoidanceLocationsJson
             p[Keys.LOC_FALLBACK] = settings.locationFallbackEnabled

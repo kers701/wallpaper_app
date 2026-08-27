@@ -80,6 +80,7 @@ object ConfigBackup {
         o.put("cloudBackupOrientSplit", settings.cloudBackupOrientSplit)
         o.put("cloudBackupWifiOnly", settings.cloudBackupWifiOnly)
         o.put("locationAvoidEnabled", settings.locationAvoidEnabled)
+        o.put("locationAvoidRadiusMeters", settings.locationAvoidRadiusMeters)
         o.put("proxyEnabled", settings.proxyEnabled)
         o.put("proxyHost", settings.proxyHost)
         o.put("proxyPort", settings.proxyPort)
@@ -170,6 +171,7 @@ object ConfigBackup {
             cloudBackupOrientSplit = o.optBoolean("cloudBackupOrientSplit", base.cloudBackupOrientSplit),
             cloudBackupWifiOnly = o.optBoolean("cloudBackupWifiOnly", base.cloudBackupWifiOnly),
             locationAvoidEnabled = o.optBoolean("locationAvoidEnabled", base.locationAvoidEnabled),
+            locationAvoidRadiusMeters = o.optInt("locationAvoidRadiusMeters", base.locationAvoidRadiusMeters).coerceIn(5, 500),
             proxyEnabled = o.optBoolean("proxyEnabled", base.proxyEnabled),
             proxyHost = o.optString("proxyHost", base.proxyHost),
             proxyPort = o.optInt("proxyPort", base.proxyPort),

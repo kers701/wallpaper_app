@@ -723,7 +723,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             RowSwitch("绿色模式（区内 R13 / 仅 Sketchy 随机）", locFb) { locFb = it }
             RowSwitch("定位极限回退（区内仅本地换壁纸）", locExtreme) { locExtreme = it }
             Text(
-                "已选 ${settings.avoidanceLocations().size} 个点 · 区内: ${if (settings.locationInAvoidZone) "生效中" else "未触发"}",
+                "已选 ${settings.avoidanceLocations().size} 个点 · 半径 ${settings.locationAvoidRadiusMeters} 米 · 区内: ${if (settings.locationInAvoidZone) "生效中" else "未触发"}",
                 style = MaterialTheme.typography.bodySmall
             )
             OutlinedButton(onClick = onOpenLocationAvoid, modifier = Modifier.fillMaxWidth()) {
