@@ -1,7 +1,17 @@
 package com.kers.killove.jhsy.ui.screens
 
+import android.os.Build
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -20,6 +31,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -27,23 +39,28 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.unit.Dp
-import android.os.Build
-import com.kers.killove.jhsy.domain.CardStyle
-import com.kers.killove.jhsy.ui.LocalCardStyle
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.kers.killove.jhsy.ui.LocalCardAlpha
-import com.kers.killove.jhsy.ui.LocalUiTextColor
 import com.kers.killove.jhsy.data.wallpaper.SystemWallpaperSetter
+import com.kers.killove.jhsy.domain.CardStyle
+import com.kers.killove.jhsy.ui.LocalCardAlpha
+import com.kers.killove.jhsy.ui.LocalCardStyle
+import com.kers.killove.jhsy.ui.LocalUiTextColor
 import com.kers.killove.jhsy.ui.MainViewModel
 import kotlinx.coroutines.delay
 
+/**
+ * 全局板块卡片：跟随 LocalCardStyle。
+ * - 液态玻璃：半透明渐变 + 高光描边 + 流光扫过
+ * - 高斯模糊：底层强模糊磨砂层 + 清晰内容（不糊字）
+ * - 雾化：柔白弥散
+ */
 @Composable
 fun GlassCard(
     modifier: Modifier = Modifier,
@@ -51,52 +68,194 @@ fun GlassCard(
 ) {
     val alpha = LocalCardAlpha.current
     val style = LocalCardStyle.current
-    val shape = RoundedCornerShape(16.dp)
-    val (container, border, elev) = when (style) {
-        CardStyle.None -> Triple(
-            Color.Black.copy(alpha = alpha),
-            null as BorderStroke?,
-            0.dp
-        )
-        CardStyle.LiquidGlass -> Triple(
-            Color(0xFFB8D4FF).copy(alpha = (0.10f + alpha * 0.35f).coerceIn(0.08f, 0.55f)),
-            BorderStroke(1.dp, Color.White.copy(alpha = 0.35f)),
-            2.dp
-        )
-        CardStyle.GaussianBlur -> Triple(
-            Color.Black.copy(alpha = (alpha * 0.75f + 0.12f).coerceIn(0.15f, 0.65f)),
-            BorderStroke(0.5.dp, Color.White.copy(alpha = 0.12f)),
-            0.dp
-        )
-        CardStyle.Fog -> Triple(
-            Color(0xFFE8EEF5).copy(alpha = (0.14f + alpha * 0.40f).coerceIn(0.12f, 0.60f)),
-            BorderStroke(0.5.dp, Color.White.copy(alpha = 0.22f)),
-            0.dp
-        )
+    val shape = RoundedCornerShape(18.dp)
+    val contentColor = LocalUiTextColor.current
+
+    when (style) {
+        CardStyle.None -> {
+            Card(
+                modifier = modifier.fillMaxWidth(),
+                shape = shape,
+                elevation = CardDefaults.cardElevation(0.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color.Black.copy(alpha = alpha.coerceIn(0.12f, 0.75f)),
+                    contentColor = contentColor
+                )
+            ) { content() }
+        }
+        CardStyle.LiquidGlass -> LiquidGlassCard(modifier, shape, alpha, contentColor, content)
+        CardStyle.GaussianBlur -> GaussianBlurCard(modifier, shape, alpha, contentColor, content)
+        CardStyle.Fog -> FogCard(modifier, shape, alpha, contentColor, content)
     }
-    val cardMod = modifier
-        .fillMaxWidth()
-        .clip(shape)
-        .then(
-            if (style == CardStyle.GaussianBlur && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                Modifier.blur(12.dp)
-            } else Modifier
+}
+
+@Composable
+private fun LiquidGlassCard(
+    modifier: Modifier,
+    shape: RoundedCornerShape,
+    alpha: Float,
+    contentColor: Color,
+    content: @Composable () -> Unit
+) {
+    val transition = rememberInfiniteTransition(label = "liquid")
+    val sweep by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2800, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "sweep"
+    )
+    // 流光从左上扫到右下
+    val shimmerBrush = Brush.linearGradient(
+        colors = listOf(
+            Color.Transparent,
+            Color.White.copy(alpha = 0.05f),
+            Color.White.copy(alpha = 0.45f),
+            Color.Cyan.copy(alpha = 0.22f),
+            Color.White.copy(alpha = 0.40f),
+            Color.Transparent
+        ),
+        start = Offset(sweep * 900f - 280f, sweep * 500f - 160f),
+        end = Offset(sweep * 900f + 180f, sweep * 500f + 120f)
+    )
+    val bodyBrush = Brush.linearGradient(
+        colors = listOf(
+            Color(0xFFE8F4FF).copy(alpha = (0.22f + alpha * 0.28f).coerceIn(0.18f, 0.55f)),
+            Color(0xFFB8D4FF).copy(alpha = (0.12f + alpha * 0.22f).coerceIn(0.10f, 0.42f)),
+            Color(0xFF7EB6FF).copy(alpha = (0.08f + alpha * 0.18f).coerceIn(0.06f, 0.35f)),
+            Color(0xFF1A2A40).copy(alpha = (0.18f + alpha * 0.25f).coerceIn(0.12f, 0.48f))
+        ),
+        start = Offset.Zero,
+        end = Offset(800f, 900f)
+    )
+    val edgeBrush = Brush.linearGradient(
+        colors = listOf(
+            Color.White.copy(alpha = 0.75f),
+            Color(0xFFA8D8FF).copy(alpha = 0.35f),
+            Color.White.copy(alpha = 0.15f),
+            Color(0xFF6EC8FF).copy(alpha = 0.45f),
+            Color.White.copy(alpha = 0.65f)
         )
-    Card(
-        modifier = if (style == CardStyle.GaussianBlur && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            // blur on whole card would blur content; apply soft look via color only on older APIs
-            modifier.fillMaxWidth()
-        } else {
-            modifier.fillMaxWidth()
-        },
-        shape = shape,
-        border = border,
-        elevation = CardDefaults.cardElevation(defaultElevation = elev),
-        colors = CardDefaults.cardColors(
-            containerColor = container,
-            contentColor = LocalUiTextColor.current
-        )
+    )
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(bodyBrush)
+            .border(width = 1.4.dp, brush = edgeBrush, shape = shape)
     ) {
+        // 顶部高光条（玻璃折射感）
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(28.dp)
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color.White.copy(alpha = 0.38f),
+                            Color.White.copy(alpha = 0.08f),
+                            Color.Transparent
+                        )
+                    )
+                )
+        )
+        // 流光层
+        Box(Modifier.matchParentSize().background(shimmerBrush))
+        // 内容不被糊
+        Box(Modifier.padding(0.dp)) {
+            androidx.compose.runtime.CompositionLocalProvider(
+                LocalUiTextColor provides contentColor
+            ) {
+                content()
+            }
+        }
+    }
+}
+
+@Composable
+private fun GaussianBlurCard(
+    modifier: Modifier,
+    shape: RoundedCornerShape,
+    alpha: Float,
+    contentColor: Color,
+    content: @Composable () -> Unit
+) {
+    val frost = (0.28f + alpha * 0.45f).coerceIn(0.25f, 0.72f)
+    Box(modifier = modifier.fillMaxWidth().clip(shape)) {
+        // 底层：大半径模糊的磨砂块（只糊背景块，不糊上层文字）
+        Box(
+            Modifier
+                .matchParentSize()
+                .then(
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        Modifier.blur(28.dp)
+                    } else Modifier
+                )
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = frost * 0.55f),
+                            Color(0xFFD0D8E8).copy(alpha = frost * 0.4f),
+                            Color.Black.copy(alpha = frost * 0.85f)
+                        )
+                    )
+                )
+        )
+        // 中层：再叠一层半透明磨砂
+        Box(
+            Modifier
+                .matchParentSize()
+                .background(Color(0xFF0A0E18).copy(alpha = (0.35f + alpha * 0.35f).coerceIn(0.3f, 0.7f)))
+                .border(
+                    width = 1.dp,
+                    brush = Brush.linearGradient(
+                        listOf(
+                            Color.White.copy(alpha = 0.28f),
+                            Color.White.copy(alpha = 0.06f),
+                            Color.White.copy(alpha = 0.18f)
+                        )
+                    ),
+                    shape = shape
+                )
+        )
+        content()
+    }
+}
+
+@Composable
+private fun FogCard(
+    modifier: Modifier,
+    shape: RoundedCornerShape,
+    alpha: Float,
+    contentColor: Color,
+    content: @Composable () -> Unit
+) {
+    val a = (0.20f + alpha * 0.42f).coerceIn(0.16f, 0.62f)
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        Color(0xFFF2F6FC).copy(alpha = a + 0.08f),
+                        Color(0xFFC5D0E0).copy(alpha = a * 0.85f),
+                        Color(0xFF8A96A8).copy(alpha = a * 0.55f)
+                    )
+                )
+            )
+            .border(0.8.dp, Color.White.copy(alpha = 0.35f), shape)
+    ) {
+        Box(
+            Modifier
+                .matchParentSize()
+                .then(
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) Modifier.blur(8.dp) else Modifier
+                )
+                .background(Color.White.copy(alpha = 0.12f))
+        )
         content()
     }
 }

@@ -177,12 +177,12 @@ private fun pickHomeLockPaths(recent: List<WallpaperEntity>): Pair<String?, Stri
 
 @Composable
 private fun OverviewCard(cardAlpha: Float, content: @Composable () -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.2f + cardAlpha * 0.5f)),
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { content() }
+    // 走全局 GlassCard，使「板块美化」在概览页生效
+    GlassCard {
+        Column(
+            Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) { content() }
     }
 }
 
