@@ -57,6 +57,8 @@ fun LocationAvoidScreen(vm: MainViewModel, onBack: () -> Unit) {
     }
     var locText by remember { mutableStateOf("定位中…") }
     var nearestText by remember { mutableStateOf("") }
+    var customLabel by remember { mutableStateOf("") }
+    var resolvingName by remember { mutableStateOf(false) }
 
     fun refreshLocation() {
         if (!LocationHelper.hasLocationPermission(context)) {
@@ -148,6 +150,34 @@ fun LocationAvoidScreen(vm: MainViewModel, onBack: () -> Unit) {
                             if (missing) permLauncher.launch(need) else refreshLocation()
                         }
                     ) { Text("刷新定位") }
+                }
+                OutlinedTextField(
+                    value = customLabel,
+                    onValueChange = { customLabel = it },
+                    label = { Text("避让点标签（可空）") },
+                    placeholder = { Text("留空则自动解析地名") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            resolvingName = true
+                            vm.resolveCurrentPlaceName { name ->
+                                resolvingName = false
+                                if (!name.isNullOrBlank()) customLabel = name
+                            }
+                        },
+                        enabled = !resolvingName,
+                        modifier = Modifier.weight(1f)
+                    ) { Text(if (resolvingName) "解析中…" else "自动获取地名") }
+                    OutlinedButton(
+                        onClick = { vm.addCurrentLocationAsAvoid(customLabel) },
+                        modifier = Modifier.weight(1f)
+                    ) { Text("设为避让点") }
                 }
             }
         }

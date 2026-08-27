@@ -103,6 +103,45 @@ object LocationHelper {
         return best to bestD
     }
 
+
+    /**
+     * 高德逆地理编码：坐标 → 地点名称。
+     * 失败时返回 null。
+     */
+    fun reverseGeocode(apiKey: String, lat: Double, lng: Double): String? {
+        if (apiKey.isBlank()) return null
+        val url =
+            "https://restapi.amap.com/v3/geocode/regeo?key=$apiKey&location=$lng,$lat&extensions=base&radius=1000"
+        return try {
+            val req = Request.Builder().url(url).get().build()
+            ProxyHttp.execute(req).use { resp ->
+                val body = resp.body?.string().orEmpty()
+                val root = JSONObject(body)
+                if (root.optString("status") != "1") return null
+                val regeo = root.optJSONObject("regeocode") ?: return null
+                val formatted = regeo.optString("formatted_address").trim()
+                if (formatted.isNotBlank() && formatted != "[]") return formatted
+                val addr = regeo.optJSONObject("addressComponent")
+                if (addr != null) {
+                    val parts = listOf(
+                        addr.optString("province"),
+                        addr.optString("city").let { if (it == "[]") "" else it },
+                        addr.optString("district"),
+                        addr.optString("township"),
+                        addr.optString("streetNumber").let { sn ->
+                            // streetNumber can be object in some responses
+                            ""
+                        }
+                    ).map { it.trim() }.filter { it.isNotEmpty() && it != "[]" }
+                    if (parts.isNotEmpty()) return parts.joinToString("")
+                }
+                null
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     data class PlaceHit(val id: String, val name: String, val address: String, val lat: Double, val lng: Double)
 
     /** 高德地点关键字搜索 */

@@ -860,6 +860,49 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+
+    /** 将当前位置加入避让列表；[label] 为空则尝试高德逆地理，再不行用坐标名 */
+    fun addCurrentLocationAsAvoid(label: String = "") {
+        viewModelScope.launch {
+            val ctx = getApplication<Application>()
+            if (!LocationHelper.hasLocationPermission(ctx)) {
+                _status.value = "请先授予定位权限"
+                return@launch
+            }
+            val cur = LocationHelper.currentLocation(ctx)
+            if (cur == null) {
+                _status.value = "暂无定位，请打开系统定位后重试"
+                return@launch
+            }
+            val name = label.trim().ifBlank {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    LocationHelper.reverseGeocode(settings.value.amapApiKey, cur.latitude, cur.longitude)
+                } ?: String.format(java.util.Locale.US, "当前位置 %.5f,%.5f", cur.latitude, cur.longitude)
+            }
+            val id = "cur_${System.currentTimeMillis()}"
+            addAvoidanceLocation(
+                AvoidanceLocation(id, name, cur.latitude, cur.longitude)
+            )
+            _status.value = "已将当前位置加入避让：$name"
+        }
+    }
+
+    /** 仅解析当前位置地名（不写入列表） */
+    fun resolveCurrentPlaceName(onResult: (String?) -> Unit) {
+        viewModelScope.launch {
+            val ctx = getApplication<Application>()
+            val cur = LocationHelper.currentLocation(ctx)
+            if (cur == null) {
+                onResult(null)
+                return@launch
+            }
+            val name = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                LocationHelper.reverseGeocode(settings.value.amapApiKey, cur.latitude, cur.longitude)
+            }
+            onResult(name)
+        }
+    }
+
     fun addAvoidanceLocation(loc: AvoidanceLocation) {
         viewModelScope.launch {
             val cur = settings.value.avoidanceLocations().toMutableList()
