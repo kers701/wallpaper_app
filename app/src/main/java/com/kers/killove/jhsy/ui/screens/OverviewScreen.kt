@@ -2,6 +2,7 @@ package com.kers.killove.jhsy.ui.screens
 
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -77,6 +78,8 @@ fun OverviewScreen(vm: MainViewModel) {
 
     var homeBmp by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
     var lockBmp by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+    var jumpExpanded by remember { mutableStateOf(false) }
+    val jumpZh by vm.jumpKeywordsZh.collectAsState()
 
     fun reloadMeta() {
         vm.refreshOverview()
@@ -149,6 +152,91 @@ fun OverviewScreen(vm: MainViewModel) {
             }
         }
 
+        // 与首页相同的自动更换信息（无开关）
+        OverviewCard(cardAlpha) {
+            Text("自动更换", style = MaterialTheme.typography.titleMedium, color = textColor)
+            Text("间隔：${settings.intervalMinutes} 分钟", color = textColor)
+            val remain = run {
+                if (!settings.enabled) return@run -2
+                if (effectiveLast <= 0L) return@run -1
+                val remainMs = effectiveLast + intervalMs - System.currentTimeMillis()
+                if (remainMs <= 0L) 0 else ((remainMs + 59_999L) / 60_000L).toInt().coerceAtLeast(1)
+            }
+            Text(
+                when {
+                    remain == -2 -> "距下次更换：未开启"
+                    remain < 0 -> "距下次更换：等待首次更换"
+                    remain == 0 -> "距下次更换：即将更换 / 已到期"
+                    else -> "距下次更换还有 $remain 分钟"
+                },
+                color = textColor,
+                style = MaterialTheme.typography.titleSmall
+            )
+            Text("纯度：${settings.purity.label} · 类别：${settings.categoryMode.label}", color = textColor)
+            Text(
+                "目标：${settings.target.label}" + if (settings.isolateHomeLock) " · 桌面锁屏隔离" else "",
+                color = textColor
+            )
+            Text(
+                buildString {
+                    append("关键词：")
+                    if (!settings.useKeywords) append("未启用")
+                    else if (settings.jumpModeEnabled && settings.jumpKeywords.isNotEmpty())
+                        append("跃迁 ${settings.jumpKeywords.size} 个")
+                    else if (settings.keywords.isNotEmpty())
+                        append("${settings.keywords.size} 个")
+                    else append("空")
+                    append(" · 密钥：${settings.apiKeys.size} 个")
+                },
+                color = textColor
+            )
+            Text(
+                "分辨率：${settings.resolutionMode.label} · 方向：${settings.orientationFilter.label}",
+                color = textColor,
+                style = MaterialTheme.typography.bodySmall
+            )
+            Text("铺满：${settings.fitMode.label}", color = textColor, style = MaterialTheme.typography.bodySmall)
+        }
+
+        OverviewCard(cardAlpha) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { jumpExpanded = !jumpExpanded }
+            ) {
+                Text("跃迁关键词", style = MaterialTheme.typography.titleMedium, color = textColor)
+                Text(
+                    when {
+                        !settings.jumpModeEnabled -> "跃迁模式：关闭"
+                        settings.jumpKeywords.isEmpty() -> "跃迁模式：开启 · 列表为空"
+                        else -> "跃迁模式：开启 · 共 ${settings.jumpKeywords.size} 个" +
+                            if (jumpExpanded) " · 点击收起" else " · 点击展开"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = textColor.copy(alpha = 0.85f)
+                )
+                if (settings.jumpKeywords.isNotEmpty()) {
+                    val list = settings.jumpKeywords
+                    val idx = settings.jumpKeywordIndex.mod(list.size)
+                    val next = list[idx]
+                    val nextZh = jumpZh[next]
+                    Text(
+                        "下次将用：" + if (nextZh.isNullOrBlank()) next else "$next（$nextZh）",
+                        color = textColor,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    if (jumpExpanded) {
+                        Spacer(Modifier.height(6.dp))
+                        val shown = list.joinToString("、") { w ->
+                            val zh = jumpZh[w]
+                            if (zh.isNullOrBlank()) w else "$w($zh)"
+                        }
+                        Text(shown, color = textColor, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        }
+
         OverviewCard(cardAlpha) {
             Text("壁纸预览（缓存）", style = MaterialTheme.typography.titleSmall, color = textColor)
             Text("桌面 / 锁屏分别取最近对应目标的缓存图", style = MaterialTheme.typography.bodySmall, color = textColor.copy(alpha = 0.6f))
@@ -211,6 +299,22 @@ fun OverviewScreen(vm: MainViewModel) {
                     Text("开启后仅保留概览页", style = MaterialTheme.typography.bodySmall, color = textColor.copy(alpha = 0.65f))
                 }
                 Switch(checked = settings.overviewMinimalMode, onCheckedChange = { vm.setOverviewMinimal(it) })
+            }
+        }
+
+        // 自动更换开关（独立板块，在极简模式下方）
+        OverviewCard(cardAlpha) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("自动更换", style = MaterialTheme.typography.titleSmall, color = textColor)
+                    Text(
+                        if (settings.enabled) "已开启 · 间隔 ${settings.intervalMinutes} 分钟"
+                        else "已关闭",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = textColor.copy(alpha = 0.65f)
+                    )
+                }
+                Switch(checked = settings.enabled, onCheckedChange = { vm.setEnabled(it) })
             }
         }
     }

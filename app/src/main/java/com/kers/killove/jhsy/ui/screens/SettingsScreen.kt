@@ -95,6 +95,22 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
     var superSvc by remember(settings.superServiceEnabled) { mutableStateOf(settings.superServiceEnabled) }
     var restoreJson by remember { mutableStateOf("") }
     var showRestoreField by remember { mutableStateOf(false) }
+    // 配置页各板块折叠：默认只显示标题
+    var expandBasic by remember { mutableStateOf(false) }
+    var expandSuper by remember { mutableStateOf(false) }
+    var expandUi by remember { mutableStateOf(false) }
+    var expandTrans by remember { mutableStateOf(false) }
+    var expandBg by remember { mutableStateOf(false) }
+    var expandPin by remember { mutableStateOf(false) }
+    var expandBackup by remember { mutableStateOf(false) }
+    var expandProxy by remember { mutableStateOf(false) }
+    var expandKeys by remember { mutableStateOf(false) }
+    var expandKw by remember { mutableStateOf(false) }
+    var expandFb by remember { mutableStateOf(false) }
+    var expandLoc by remember { mutableStateOf(false) }
+    var expandCache by remember { mutableStateOf(false) }
+    var expandBl by remember { mutableStateOf(false) }
+    var expandSave by remember { mutableStateOf(true) }
     var powerTh by remember(settings.powerSaveBatteryThreshold) { mutableIntStateOf(settings.powerSaveBatteryThreshold) }
     var transProv by remember(settings.translateProvider) { mutableStateOf(settings.translateProvider) }
     var transKey by remember(settings.translateApiKey, keysVisible) {
@@ -173,12 +189,11 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        GlassCard {
-            Column(
-                Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-        Text("基础", style = MaterialTheme.typography.titleMedium)
+        CollapsibleSection(
+            title = "基础",
+            expanded = expandBasic,
+            onToggle = { expandBasic = !expandBasic }
+        ) {
         Text("更换间隔：${interval.toInt()} 分钟")
         Slider(
             value = interval,
@@ -227,15 +242,13 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             style = MaterialTheme.typography.bodySmall
         )
 
-            }
         }
 
-        GlassCard {
-            Column(
-                Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-        Text("超级服务（独立进程保活）", style = MaterialTheme.typography.titleMedium)
+        CollapsibleSection(
+            title = "超级服务（独立进程保活）",
+            expanded = expandSuper,
+            onToggle = { expandSuper = !expandSuper }
+        ) {
         val superSt = SuperServiceController.status(context)
         Text(superSt.message, style = MaterialTheme.typography.bodySmall)
         Text(
@@ -293,15 +306,13 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             )
         }
 
-            }
         }
 
-        GlassCard {
-            Column(
-                Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-        Text("界面外观", style = MaterialTheme.typography.titleMedium)
+        CollapsibleSection(
+            title = "界面外观",
+            expanded = expandUi,
+            onToggle = { expandUi = !expandUi }
+        ) {
         Text("主题遮罩透明度：${"%.0f".format(scrim * 100)}%", style = MaterialTheme.typography.bodySmall)
         Slider(value = scrim, onValueChange = { scrim = it }, valueRange = 0.15f..0.85f)
         Text("卡片透明度：${"%.0f".format(cardA * 100)}%（越高越实）", style = MaterialTheme.typography.bodySmall)
@@ -310,15 +321,13 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
         EnumDropdown("板块美化（全局）", CardStyle.entries, cardStyleOpt) { cardStyleOpt = it }
         Text("液态玻璃 / 高斯模糊 / 雾化 / 无 — 所有页面板块同步", style = MaterialTheme.typography.bodySmall)
 
-            }
         }
 
-        GlassCard {
-            Column(
-                Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-        Text("关键词翻译（仅展示/日志）", style = MaterialTheme.typography.titleMedium)
+        CollapsibleSection(
+            title = "关键词翻译（仅展示/日志）",
+            expanded = expandTrans,
+            onToggle = { expandTrans = !expandTrans }
+        ) {
         EnumDropdown("翻译引擎", TranslateProvider.entries, transProv) { transProv = it }
         if (keysVisible) {
             OutlinedTextField(
@@ -351,15 +360,13 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
         }
         Text("翻译结果只显示在首页跃迁列表与状态，不改变实际搜索词", style = MaterialTheme.typography.bodySmall)
 
-            }
         }
 
-        GlassCard {
-            Column(
-                Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-        Text("软件背景", style = MaterialTheme.typography.titleMedium)
+        CollapsibleSection(
+            title = "软件背景",
+            expanded = expandBg,
+            onToggle = { expandBg = !expandBg }
+        ) {
         Text(
             "优先本地路径 → API 链接 → 系统壁纸；都为空则使用莫奈取色",
             style = MaterialTheme.typography.bodySmall
@@ -382,15 +389,13 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             singleLine = true
         )
 
-            }
         }
 
-        GlassCard {
-            Column(
-                Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-        Text("PIN 锁定", style = MaterialTheme.typography.titleMedium)
+        CollapsibleSection(
+            title = "PIN 锁定",
+            expanded = expandPin,
+            onToggle = { expandPin = !expandPin }
+        ) {
         Text(
             if (settings.pinEnabled) {
                 if (unlocked) "状态：已解锁（敏感项可见）" else "状态：已锁定（密钥/关键词/兜底 API 已隐藏）"
@@ -466,15 +471,13 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             Text("PIN 仅存哈希，进程重启后需重新解锁", style = MaterialTheme.typography.bodySmall)
         }
 
-            }
         }
 
-        GlassCard {
-            Column(
-                Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-        Text("配置备份 / 恢复", style = MaterialTheme.typography.titleMedium)
+        CollapsibleSection(
+            title = "配置备份 / 恢复",
+            expanded = expandBackup,
+            onToggle = { expandBackup = !expandBackup }
+        ) {
         if (keysVisible) {
             Text("备份不含 PIN；恢复后保留本机 PIN 设置", style = MaterialTheme.typography.bodySmall)
             Text(
@@ -527,15 +530,13 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             LockedField("配置备份 / 恢复（请先解锁 PIN）")
         }
 
-            }
         }
 
-        GlassCard {
-            Column(
-                Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-        Text("网络代理", style = MaterialTheme.typography.titleMedium)
+        CollapsibleSection(
+            title = "网络代理",
+            expanded = expandProxy,
+            onToggle = { expandProxy = !expandProxy }
+        ) {
         if (keysVisible) {
             RowSwitch("启用 HTTP 代理（不可用自动回退系统网络）", proxyOn) { proxyOn = it }
             OutlinedTextField(
@@ -573,8 +574,13 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
         } else {
             LockedField("网络代理（请先解锁 PIN）")
         }
+        }
 
-        Text("API 密钥（可多个，每行一个）", style = MaterialTheme.typography.titleMedium)
+        CollapsibleSection(
+            title = "API 密钥（可多个，每行一个）",
+            expanded = expandKeys,
+            onToggle = { expandKeys = !expandKeys }
+        ) {
         if (keysVisible) {
             OutlinedTextField(
                 value = apiKeysText,
@@ -588,16 +594,13 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
         } else {
             LockedField("Wallhaven API Keys")
         }
-
-            }
         }
 
-        GlassCard {
-            Column(
-                Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-        Text("关键词", style = MaterialTheme.typography.titleMedium)
+        CollapsibleSection(
+            title = "关键词",
+            expanded = expandKw,
+            onToggle = { expandKw = !expandKw }
+        ) {
         RowSwitch("启用关键词搜索", useKeywords) { useKeywords = it }
         RowSwitch("跃迁模式（用上次成功标签覆盖跃迁列表）", jumpMode) { jumpMode = it }
         Text(
@@ -656,15 +659,13 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             LockedField("本地关键词 / 远程地址")
         }
 
-            }
         }
 
-        GlassCard {
-            Column(
-                Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-        Text("兜底策略", style = MaterialTheme.typography.titleMedium)
+        CollapsibleSection(
+            title = "兜底策略",
+            expanded = expandFb,
+            onToggle = { expandFb = !expandFb }
+        ) {
         RowSwitch("网络兜底（Wallhaven 失败 → 备用 API）", netFb) { netFb = it }
         if (keysVisible) {
             OutlinedTextField(
@@ -705,15 +706,13 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             )
         }
 
-            }
         }
 
-        GlassCard {
-            Column(
-                Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-        Text("定位避让", style = MaterialTheme.typography.titleMedium)
+        CollapsibleSection(
+            title = "定位避让",
+            expanded = expandLoc,
+            onToggle = { expandLoc = !expandLoc }
+        ) {
         RowSwitch("启用定位避让", locAvoid) { locAvoid = it }
         if (locAvoid) {
             if (keysVisible) {
@@ -732,29 +731,25 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             }
         }
 
-            }
         }
 
-        GlassCard {
-            Column(
-                Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-        Text("缓存与日志", style = MaterialTheme.typography.titleMedium)
+        CollapsibleSection(
+            title = "缓存与日志",
+            expanded = expandCache,
+            onToggle = { expandCache = !expandCache }
+        ) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = { vm.clearWallpaperCache() }, modifier = Modifier.weight(1f)) { Text("清空缓存文件") }
             OutlinedButton(onClick = { vm.clearLogs() }, modifier = Modifier.weight(1f)) { Text("清空更换记录") }
         }
 
-            }
         }
 
-        GlassCard {
-            Column(
-                Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-        Text("应用黑名单", style = MaterialTheme.typography.titleMedium)
+        CollapsibleSection(
+            title = "应用黑名单",
+            expanded = expandBl,
+            onToggle = { expandBl = !expandBl }
+        ) {
         Text(
             "已选 ${settings.blacklistPackages.size} 个 · 前台休眠不换壁纸",
             style = MaterialTheme.typography.bodySmall
@@ -763,8 +758,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             onClick = onOpenBlacklist,
             modifier = Modifier.fillMaxWidth()
         ) { Text("管理黑名单…") }
-
-
+        }
 
         Button(
             onClick = {
@@ -827,8 +821,6 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("保存设置")
-        }
-            }
         }
     }
 }

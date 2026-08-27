@@ -8,6 +8,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -506,5 +507,40 @@ fun RowSwitch(title: String, checked: Boolean, onChecked: (Boolean) -> Unit) {
     ) {
         Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f), color = textColor)
         Switch(checked = checked, onCheckedChange = onChecked)
+    }
+}
+
+
+@Composable
+fun CollapsibleSection(
+    title: String,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    val textColor = LocalUiTextColor.current
+    GlassCard {
+        Column(
+            Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onToggle),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(title, style = MaterialTheme.typography.titleMedium, color = textColor, modifier = Modifier.weight(1f))
+                Text(
+                    if (expanded) "收起 ▲" else "展开 ▼",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = textColor.copy(alpha = 0.65f)
+                )
+            }
+            if (expanded) {
+                content()
+            }
+        }
     }
 }
