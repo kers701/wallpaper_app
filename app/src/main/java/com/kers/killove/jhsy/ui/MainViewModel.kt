@@ -106,12 +106,49 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /**
      * 概览/首页手动刷新：读时钟文件 → 写回 DataStore，并刷新服务状态与缓存大小。
      */
+
+    /**
+     * 本周热词：某词使用超过 20 次则写入本地关键词列表；
+     * 已有该词不写入；本地关键词 ≥701 时跳过。
+     */
+    fun promoteWeeklyHotKeywords() {
+        viewModelScope.launch {
+            try {
+                val s = settings.value
+                if (s.keywords.size >= 701) return@launch
+                val weekMs = 7L * 24 * 60 * 60 * 1000
+                val now = System.currentTimeMillis()
+                val weekList = dao.recentList(500).filter { now - it.setAt <= weekMs }
+                val counts = weekList
+                    .map { it.keyword.trim() }
+                    .filter { it.isNotEmpty() }
+                    .groupingBy { it }
+                    .eachCount()
+                val existing = s.keywords.map { it.trim().lowercase() }.toHashSet()
+                val toAdd = counts
+                    .filter { (kw, c) -> c > 20 && kw.lowercase() !in existing }
+                    .keys
+                    .toList()
+                if (toAdd.isEmpty()) return@launch
+                val room = (701 - s.keywords.size).coerceAtLeast(0)
+                if (room <= 0) return@launch
+                val added = toAdd.take(room)
+                val next = s.copy(keywords = s.keywords + added)
+                settingsRepo.save(next)
+                _status.value = "本周热词已写入本地关键词：${added.joinToString("、")}（+${added.size}）"
+            } catch (e: Exception) {
+                // 静默失败，不影响概览
+            }
+        }
+    }
+
     fun refreshOverview() {
         viewModelScope.launch {
             val app = getApplication<Application>()
             pullChangeClock(app)
             refreshServiceStatus()
             refreshCacheSize()
+            promoteWeeklyHotKeywords()
             val ts = ProcessBridgePrefs.effectiveLastChangeAt(app)
             _status.value = if (ts > 0L) {
                 val fmt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())

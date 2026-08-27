@@ -255,7 +255,7 @@ data class AppSettings(
     val locationAvoidEnabled: Boolean = false,
     val amapApiKey: String = "",
     val avoidanceLocationsJson: String = "[]",
-    /** 定位回退：进入避让区时锁定纯度 R13 */
+    /** 绿色模式：进入避让区时纯度在 R13 与「仅 Sketchy」间随机 */
     val locationFallbackEnabled: Boolean = true,
     /** 定位极限回退：进入避让区仅用本地文件换壁纸 */
     val locationExtremeFallbackEnabled: Boolean = false,

@@ -33,7 +33,7 @@ import com.kers.killove.jhsy.util.LocationHelper
 
 /**
  * 定位避让二级页：配置高德 Key 后可搜索地点加入列表。
- * 更换壁纸前若当前位置在列表任一点 10 米内，触发纯度锁定 / 极限本地回退。
+ * 更换壁纸前若当前位置在列表任一点 10 米内，触发绿色模式（R13/仅Sketchy随机）/ 极限本地回退。
  */
 @Composable
 fun LocationAvoidScreen(vm: MainViewModel, onBack: () -> Unit) {
@@ -57,7 +57,7 @@ fun LocationAvoidScreen(vm: MainViewModel, onBack: () -> Unit) {
             Text("定位避让", style = MaterialTheme.typography.headlineSmall, color = textColor)
         }
         Text(
-            "配置高德开发者 Key 后可搜索位置。进入避让点 10 米内可锁定纯度 R13，并可开启极限回退（仅本地换壁纸）。离开后恢复原状态。",
+            "配置高德开发者 Key 后可搜索位置。进入避让点 10 米内可开启绿色模式（纯度在 R13 与「仅 Sketchy」间随机），并可开启极限回退（仅本地换壁纸）。离开后恢复原状态。",
             style = MaterialTheme.typography.bodySmall,
             color = textColor.copy(alpha = 0.8f)
         )

@@ -108,6 +108,7 @@ fun OverviewScreen(vm: MainViewModel) {
 
     // 每 20 秒从时钟文件拉一次时间，自动换壁纸后无需杀进程
     LaunchedEffect(Unit) {
+        vm.promoteWeeklyHotKeywords()
         while (true) {
             kotlinx.coroutines.delay(20_000)
             vm.syncChangeClockFromBridge()

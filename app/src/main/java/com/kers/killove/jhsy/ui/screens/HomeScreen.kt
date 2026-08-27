@@ -39,6 +39,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -326,6 +327,7 @@ fun HomeScreen(vm: MainViewModel) {
         "${w}×${h}"
     }
     val jumpZh by vm.jumpKeywordsZh.collectAsState()
+    var jumpExpanded by remember { mutableStateOf(false) }
 
     val bridgeLast by vm.bridgeLastChange.collectAsState()
     fun calcRemain(): Int {
@@ -416,23 +418,25 @@ fun HomeScreen(vm: MainViewModel) {
         }
 
         GlassCard {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                Modifier
+                    .padding(16.dp)
+                    .fillMaxWidth()
+                    .clickable { jumpExpanded = !jumpExpanded },
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 Text("跃迁关键词", style = MaterialTheme.typography.titleMedium, color = textColor)
                 Text(
                     when {
                         !settings.jumpModeEnabled -> "跃迁模式：关闭"
                         settings.jumpKeywords.isEmpty() -> "跃迁模式：开启 · 列表为空"
-                        else -> "跃迁模式：开启 · 共 ${settings.jumpKeywords.size} 个"
+                        else -> "跃迁模式：开启 · 共 ${settings.jumpKeywords.size} 个" +
+                            if (jumpExpanded) " · 点击收起" else " · 点击展开"
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = textColor.copy(alpha = 0.85f)
                 )
                 if (settings.jumpKeywords.isNotEmpty()) {
-                    val shown = settings.jumpKeywords.joinToString("、") { w ->
-                        val zh = jumpZh[w]
-                        if (zh.isNullOrBlank()) w else "$w($zh)"
-                    }
-                    Text(shown, color = textColor)
                     val list = settings.jumpKeywords
                     val idx = settings.jumpKeywordIndex.mod(list.size)
                     val next = list[idx]
@@ -442,6 +446,13 @@ fun HomeScreen(vm: MainViewModel) {
                         color = textColor,
                         style = MaterialTheme.typography.bodySmall
                     )
+                    if (jumpExpanded) {
+                        val shown = list.joinToString("、") { w ->
+                            val zh = jumpZh[w]
+                            if (zh.isNullOrBlank()) w else "$w($zh)"
+                        }
+                        Text(shown, color = textColor)
+                    }
                 }
             }
         }

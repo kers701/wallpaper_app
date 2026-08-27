@@ -756,7 +756,7 @@ class WallpaperChanger(
     }
 
 
-    /** 定位避让：进入避让区锁定纯度/极限本地；离开后恢复 */
+    /** 定位避让：进入避让区启用绿色模式（R13/仅Sketchy随机）与极限本地；离开后恢复 */
     private suspend fun applyLocationAvoidance(settings: AppSettings): AppSettings {
         val (inZone, _) = LocationHelper.isInAvoidZone(context, settings.avoidanceLocations())
         if (inZone) {
@@ -767,13 +767,24 @@ class WallpaperChanger(
                     locationSavedForceLocal = settings.forceLocalMode
                 )
                 if (settings.locationFallbackEnabled) {
-                    next = next.copy(purity = Purity.R13)
+                    // 绿色模式：区内在 R13 与「仅 Sketchy」之间随机，不再固定锁 R13
+                    val green = listOf(Purity.R13, Purity.Only13).random()
+                    next = next.copy(purity = green)
                 }
                 if (settings.locationExtremeFallbackEnabled) {
                     next = next.copy(forceLocalMode = true)
                 }
                 settingsRepo.save(next)
                 return next
+            }
+            // 已在区内：每次更换再次随机绿色纯度（R13 / 仅 Sketchy）
+            if (settings.locationFallbackEnabled) {
+                val green = listOf(Purity.R13, Purity.Only13).random()
+                if (green != settings.purity) {
+                    val next = settings.copy(purity = green)
+                    settingsRepo.save(next)
+                    return next
+                }
             }
             return settings
         } else {
