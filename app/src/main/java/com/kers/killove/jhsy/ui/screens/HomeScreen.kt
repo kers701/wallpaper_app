@@ -54,6 +54,9 @@ import com.kers.killove.jhsy.ui.LocalCardStyle
 import com.kers.killove.jhsy.ui.LocalUiTextColor
 import com.kers.killove.jhsy.ui.MainViewModel
 import kotlinx.coroutines.delay
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
  * 全局板块卡片：跟随 LocalCardStyle。
@@ -98,79 +101,107 @@ private fun LiquidGlassCard(
     content: @Composable () -> Unit
 ) {
     val transition = rememberInfiniteTransition(label = "liquid")
-    val sweep by transition.animateFloat(
+    // 描边高光缓慢游走
+    val edgePhase by transition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2800, easing = LinearEasing),
+            animation = tween(durationMillis = 5200, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "sweep"
+        label = "edge"
     )
-    // 流光从左上扫到右下
-    val shimmerBrush = Brush.linearGradient(
-        colors = listOf(
-            Color.Transparent,
-            Color.White.copy(alpha = 0.05f),
-            Color.White.copy(alpha = 0.45f),
-            Color.Cyan.copy(alpha = 0.22f),
-            Color.White.copy(alpha = 0.40f),
-            Color.Transparent
+    // 波纹 1
+    val wave1 by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 4800, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
         ),
-        start = Offset(sweep * 900f - 280f, sweep * 500f - 160f),
-        end = Offset(sweep * 900f + 180f, sweep * 500f + 120f)
+        label = "wave1"
     )
+    // 波纹 2，相位错开
+    val wave2 by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 6400, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "wave2"
+    )
+
     val bodyBrush = Brush.linearGradient(
         colors = listOf(
-            Color(0xFFE8F4FF).copy(alpha = (0.22f + alpha * 0.28f).coerceIn(0.18f, 0.55f)),
-            Color(0xFFB8D4FF).copy(alpha = (0.12f + alpha * 0.22f).coerceIn(0.10f, 0.42f)),
-            Color(0xFF7EB6FF).copy(alpha = (0.08f + alpha * 0.18f).coerceIn(0.06f, 0.35f)),
-            Color(0xFF1A2A40).copy(alpha = (0.18f + alpha * 0.25f).coerceIn(0.12f, 0.48f))
+            Color(0xFFEAF5FF).copy(alpha = (0.20f + alpha * 0.26f).coerceIn(0.16f, 0.50f)),
+            Color(0xFFB8D4FF).copy(alpha = (0.11f + alpha * 0.20f).coerceIn(0.09f, 0.40f)),
+            Color(0xFF6AA8E8).copy(alpha = (0.07f + alpha * 0.16f).coerceIn(0.05f, 0.32f)),
+            Color(0xFF152030).copy(alpha = (0.16f + alpha * 0.24f).coerceIn(0.12f, 0.45f))
         ),
         start = Offset.Zero,
-        end = Offset(800f, 900f)
+        end = Offset(720f, 880f)
     )
+
+    // 渐变高光描边：亮点沿边缓慢移动
+    val ang = edgePhase * 2f * PI.toFloat()
     val edgeBrush = Brush.linearGradient(
         colors = listOf(
-            Color.White.copy(alpha = 0.75f),
-            Color(0xFFA8D8FF).copy(alpha = 0.35f),
-            Color.White.copy(alpha = 0.15f),
-            Color(0xFF6EC8FF).copy(alpha = 0.45f),
-            Color.White.copy(alpha = 0.65f)
-        )
+            Color.White.copy(alpha = 0.90f),
+            Color(0xFFB8E0FF).copy(alpha = 0.55f),
+            Color.White.copy(alpha = 0.12f),
+            Color(0xFF7EC8FF).copy(alpha = 0.40f),
+            Color.White.copy(alpha = 0.20f),
+            Color(0xFFE8F7FF).copy(alpha = 0.75f)
+        ),
+        start = Offset(400f + cos(ang) * 420f, 400f + sin(ang) * 420f),
+        end = Offset(400f + cos(ang + PI.toFloat()) * 420f, 400f + sin(ang + PI.toFloat()) * 420f)
     )
+
+    // 软波纹：径向扩散，低对比，避免光柱感
+    fun rippleBrush(phase: Float, cx0: Float, cy0: Float, dx: Float, dy: Float): Brush {
+        val cx = cx0 + cos(phase * 2f * PI.toFloat()) * dx
+        val cy = cy0 + sin(phase * 2f * PI.toFloat()) * dy
+        val radius = 160f + phase * 220f
+        return Brush.radialGradient(
+            colors = listOf(
+                Color.White.copy(alpha = 0.20f * (1f - phase * 0.55f)),
+                Color(0xFFA8D8FF).copy(alpha = 0.10f * (1f - phase * 0.4f)),
+                Color.Transparent
+            ),
+            center = Offset(cx, cy),
+            radius = radius.coerceAtLeast(80f)
+        )
+    }
+    val ripple1 = rippleBrush(wave1, 180f, 120f, 120f, 80f)
+    val ripple2 = rippleBrush((wave2 + 0.35f) % 1f, 420f, 260f, 100f, 110f)
+
     Box(
         modifier = modifier
             .fillMaxWidth()
             .clip(shape)
             .background(bodyBrush)
-            .border(width = 1.4.dp, brush = edgeBrush, shape = shape)
+            .border(width = 1.6.dp, brush = edgeBrush, shape = shape)
     ) {
-        // 顶部高光条（玻璃折射感）
+        // 顶缘柔和高光（非光柱）
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(28.dp)
+                .height(22.dp)
                 .background(
                     Brush.verticalGradient(
                         listOf(
-                            Color.White.copy(alpha = 0.38f),
-                            Color.White.copy(alpha = 0.08f),
+                            Color.White.copy(alpha = 0.22f),
+                            Color.White.copy(alpha = 0.06f),
                             Color.Transparent
                         )
                     )
                 )
         )
-        // 流光层
-        Box(Modifier.matchParentSize().background(shimmerBrush))
-        // 内容不被糊
-        Box(Modifier.padding(0.dp)) {
-            androidx.compose.runtime.CompositionLocalProvider(
-                LocalUiTextColor provides contentColor
-            ) {
-                content()
-            }
-        }
+        // 波纹流光层（两层错相位）
+        Box(Modifier.matchParentSize().background(ripple1))
+        Box(Modifier.matchParentSize().background(ripple2))
+        content()
     }
 }
 
