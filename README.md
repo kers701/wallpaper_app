@@ -13,8 +13,6 @@
 | 目标 SDK | 35 |
 | 仓库 | https://github.com/kers701/wallpaper_app |
 
-> 与旧包名（如 `com.kers701.wallpaperc`）**不能覆盖安装**，数据不互通。
-
 ---
 
 ## 功能概览
