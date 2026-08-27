@@ -1,5 +1,6 @@
 package com.kers.killove.jhsy.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -28,6 +29,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.unit.Dp
+import android.os.Build
+import com.kers.killove.jhsy.domain.CardStyle
+import com.kers.killove.jhsy.ui.LocalCardStyle
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.kers.killove.jhsy.ui.LocalCardAlpha
@@ -42,10 +50,50 @@ fun GlassCard(
     content: @Composable () -> Unit
 ) {
     val alpha = LocalCardAlpha.current
+    val style = LocalCardStyle.current
+    val shape = RoundedCornerShape(16.dp)
+    val (container, border, elev) = when (style) {
+        CardStyle.None -> Triple(
+            Color.Black.copy(alpha = alpha),
+            null as BorderStroke?,
+            0.dp
+        )
+        CardStyle.LiquidGlass -> Triple(
+            Color(0xFFB8D4FF).copy(alpha = (0.10f + alpha * 0.35f).coerceIn(0.08f, 0.55f)),
+            BorderStroke(1.dp, Color.White.copy(alpha = 0.35f)),
+            2.dp
+        )
+        CardStyle.GaussianBlur -> Triple(
+            Color.Black.copy(alpha = (alpha * 0.75f + 0.12f).coerceIn(0.15f, 0.65f)),
+            BorderStroke(0.5.dp, Color.White.copy(alpha = 0.12f)),
+            0.dp
+        )
+        CardStyle.Fog -> Triple(
+            Color(0xFFE8EEF5).copy(alpha = (0.14f + alpha * 0.40f).coerceIn(0.12f, 0.60f)),
+            BorderStroke(0.5.dp, Color.White.copy(alpha = 0.22f)),
+            0.dp
+        )
+    }
+    val cardMod = modifier
+        .fillMaxWidth()
+        .clip(shape)
+        .then(
+            if (style == CardStyle.GaussianBlur && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                Modifier.blur(12.dp)
+            } else Modifier
+        )
     Card(
-        modifier = modifier.fillMaxWidth(),
+        modifier = if (style == CardStyle.GaussianBlur && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // blur on whole card would blur content; apply soft look via color only on older APIs
+            modifier.fillMaxWidth()
+        } else {
+            modifier.fillMaxWidth()
+        },
+        shape = shape,
+        border = border,
+        elevation = CardDefaults.cardElevation(defaultElevation = elev),
         colors = CardDefaults.cardColors(
-            containerColor = Color.Black.copy(alpha = alpha),
+            containerColor = container,
             contentColor = LocalUiTextColor.current
         )
     ) {

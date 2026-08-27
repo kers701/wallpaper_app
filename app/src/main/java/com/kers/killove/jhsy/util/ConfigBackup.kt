@@ -12,6 +12,7 @@ import com.kers.killove.jhsy.domain.UiTextColor
 import com.kers.killove.jhsy.domain.WallpaperFitMode
 import com.kers.killove.jhsy.domain.WallpaperTarget
 import com.kers.killove.jhsy.domain.CloudBackupProvider
+import com.kers.killove.jhsy.domain.CardStyle
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -55,6 +56,7 @@ object ConfigBackup {
         o.put("uiScrimAlpha", settings.uiScrimAlpha.toDouble())
         o.put("uiCardAlpha", settings.uiCardAlpha.toDouble())
         o.put("uiTextColor", settings.uiTextColor.name)
+        o.put("cardStyle", settings.cardStyle.name)
         o.put("apiKeys", JSONArray(settings.apiKeys))
         o.put("apiKeyIndex", settings.apiKeyIndex)
         o.put("keywords", JSONArray(settings.keywords))
@@ -139,6 +141,7 @@ object ConfigBackup {
             uiScrimAlpha = o.optDouble("uiScrimAlpha", base.uiScrimAlpha.toDouble()).toFloat().coerceIn(0.15f, 0.85f),
             uiCardAlpha = o.optDouble("uiCardAlpha", base.uiCardAlpha.toDouble()).toFloat().coerceIn(0f, 0.7f),
             uiTextColor = enumUi(o.optString("uiTextColor", base.uiTextColor.name)),
+            cardStyle = runCatching { CardStyle.valueOf(o.optString("cardStyle", base.cardStyle.name)) }.getOrDefault(base.cardStyle),
             apiKeys = strList("apiKeys").ifEmpty { base.apiKeys },
             apiKeyIndex = o.optInt("apiKeyIndex", base.apiKeyIndex).coerceAtLeast(0),
             keywords = strList("keywords"),

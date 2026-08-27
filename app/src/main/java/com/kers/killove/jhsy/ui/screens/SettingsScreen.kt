@@ -51,7 +51,7 @@ import com.kers.killove.jhsy.domain.TranslateProvider
 import com.kers.killove.jhsy.domain.WallpaperFitMode
 import com.kers.killove.jhsy.domain.OrientationFilter
 import com.kers.killove.jhsy.domain.WallpaperTarget
-import com.kers.killove.jhsy.domain.CloudBackupProvider
+import com.kers.killove.jhsy.domain.CardStyle
 import com.kers.killove.jhsy.ui.LocalUiTextColor
 import com.kers.killove.jhsy.util.BatteryHelper
 import com.kers.killove.jhsy.util.SuperServiceController
@@ -138,17 +138,11 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
     }
     var localFbCache by remember(settings.localFallbackUseCache) { mutableStateOf(settings.localFallbackUseCache) }
     var localFbSkip by remember(settings.localFallbackCacheSkipNewest) { mutableIntStateOf(settings.localFallbackCacheSkipNewest) }
-    var cloudProv by remember(settings.cloudBackupProvider) { mutableStateOf(settings.cloudBackupProvider) }
-    var cloudUrl by remember(settings.cloudBackupUrl, keysVisible) { mutableStateOf(if (keysVisible) settings.cloudBackupUrl else "") }
-    var cloudUser by remember(settings.cloudBackupUser, keysVisible) { mutableStateOf(if (keysVisible) settings.cloudBackupUser else "") }
-    var cloudPass by remember(settings.cloudBackupPassword, keysVisible) { mutableStateOf(if (keysVisible) settings.cloudBackupPassword else "") }
-    var cloudPath by remember(settings.cloudBackupPath) { mutableStateOf(settings.cloudBackupPath) }
-    var cloudOrient by remember(settings.cloudBackupOrientSplit) { mutableStateOf(settings.cloudBackupOrientSplit) }
-    var cloudWifi by remember(settings.cloudBackupWifiOnly) { mutableStateOf(settings.cloudBackupWifiOnly) }
     var locAvoid by remember(settings.locationAvoidEnabled) { mutableStateOf(settings.locationAvoidEnabled) }
     var amapKey by remember(settings.amapApiKey, keysVisible) { mutableStateOf(if (keysVisible) settings.amapApiKey else "") }
     var locFb by remember(settings.locationFallbackEnabled) { mutableStateOf(settings.locationFallbackEnabled) }
     var locExtreme by remember(settings.locationExtremeFallbackEnabled) { mutableStateOf(settings.locationExtremeFallbackEnabled) }
+    var cardStyleOpt by remember(settings.cardStyle) { mutableStateOf(settings.cardStyle) }
 
     var bgApi by remember(settings.bgApiUrl) { mutableStateOf(settings.bgApiUrl) }
     var bgLocal by remember(settings.bgLocalPath) { mutableStateOf(settings.bgLocalPath) }
@@ -165,6 +159,11 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        GlassCard {
+            Column(
+                Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
         Text("基础", style = MaterialTheme.typography.titleMedium)
         Text("更换间隔：${interval.toInt()} 分钟")
         Slider(
@@ -214,7 +213,14 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             style = MaterialTheme.typography.bodySmall
         )
 
-        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            }
+        }
+
+        GlassCard {
+            Column(
+                Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
         Text("超级服务（独立进程保活）", style = MaterialTheme.typography.titleMedium)
         val superSt = SuperServiceController.status(context)
         Text(superSt.message, style = MaterialTheme.typography.bodySmall)
@@ -273,15 +279,31 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             )
         }
 
-        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            }
+        }
+
+        GlassCard {
+            Column(
+                Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
         Text("界面外观", style = MaterialTheme.typography.titleMedium)
         Text("主题遮罩透明度：${"%.0f".format(scrim * 100)}%", style = MaterialTheme.typography.bodySmall)
         Slider(value = scrim, onValueChange = { scrim = it }, valueRange = 0.15f..0.85f)
         Text("卡片透明度：${"%.0f".format(cardA * 100)}%（越高越实）", style = MaterialTheme.typography.bodySmall)
         Slider(value = cardA, onValueChange = { cardA = it }, valueRange = 0.05f..0.65f)
         EnumDropdown("文字颜色", UiTextColor.entries, textColorOpt) { textColorOpt = it }
+        EnumDropdown("板块美化（全局）", CardStyle.entries, cardStyleOpt) { cardStyleOpt = it }
+        Text("液态玻璃 / 高斯模糊 / 雾化 / 无 — 所有页面板块同步", style = MaterialTheme.typography.bodySmall)
 
-        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            }
+        }
+
+        GlassCard {
+            Column(
+                Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
         Text("关键词翻译（仅展示/日志）", style = MaterialTheme.typography.titleMedium)
         EnumDropdown("翻译引擎", TranslateProvider.entries, transProv) { transProv = it }
         if (keysVisible) {
@@ -315,7 +337,14 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
         }
         Text("翻译结果只显示在首页跃迁列表与状态，不改变实际搜索词", style = MaterialTheme.typography.bodySmall)
 
-        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            }
+        }
+
+        GlassCard {
+            Column(
+                Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
         Text("软件背景", style = MaterialTheme.typography.titleMedium)
         Text(
             "优先本地路径 → API 链接 → 系统壁纸；都为空则使用莫奈取色",
@@ -339,7 +368,14 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             singleLine = true
         )
 
-        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            }
+        }
+
+        GlassCard {
+            Column(
+                Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
         Text("PIN 锁定", style = MaterialTheme.typography.titleMedium)
         Text(
             if (settings.pinEnabled) {
@@ -416,7 +452,14 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             Text("PIN 仅存哈希，进程重启后需重新解锁", style = MaterialTheme.typography.bodySmall)
         }
 
-        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            }
+        }
+
+        GlassCard {
+            Column(
+                Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
         Text("配置备份 / 恢复", style = MaterialTheme.typography.titleMedium)
         if (keysVisible) {
             Text("备份不含 PIN；恢复后保留本机 PIN 设置", style = MaterialTheme.typography.bodySmall)
@@ -470,7 +513,14 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             LockedField("配置备份 / 恢复（请先解锁 PIN）")
         }
 
-        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            }
+        }
+
+        GlassCard {
+            Column(
+                Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
         Text("API 密钥（可多个，每行一个）", style = MaterialTheme.typography.titleMedium)
         if (keysVisible) {
             OutlinedTextField(
@@ -486,7 +536,14 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             LockedField("Wallhaven API Keys")
         }
 
-        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            }
+        }
+
+        GlassCard {
+            Column(
+                Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
         Text("关键词", style = MaterialTheme.typography.titleMedium)
         RowSwitch("启用关键词搜索", useKeywords) { useKeywords = it }
         RowSwitch("跃迁模式（用上次成功标签覆盖跃迁列表）", jumpMode) { jumpMode = it }
@@ -546,7 +603,14 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             LockedField("本地关键词 / 远程地址")
         }
 
-        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            }
+        }
+
+        GlassCard {
+            Column(
+                Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
         Text("兜底策略", style = MaterialTheme.typography.titleMedium)
         RowSwitch("网络兜底（Wallhaven 失败 → 备用 API）", netFb) { netFb = it }
         if (keysVisible) {
@@ -588,31 +652,14 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             )
         }
 
-        HorizontalDivider(Modifier.padding(vertical = 8.dp))
-        Text("云备份（WebDAV / OneDrive / Google）", style = MaterialTheme.typography.titleMedium)
-        Text(
-            "OneDrive / Google 请填其 WebDAV 兼容地址或第三方网关；统一走 WebDAV 协议。",
-            style = MaterialTheme.typography.bodySmall
-        )
-        EnumDropdown("云备份提供方", CloudBackupProvider.entries, cloudProv) { cloudProv = it }
-        if (cloudProv != CloudBackupProvider.Off) {
-            if (keysVisible) {
-                OutlinedTextField(value = cloudUrl, onValueChange = { cloudUrl = it }, label = { Text("服务器 URL") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                OutlinedTextField(value = cloudUser, onValueChange = { cloudUser = it }, label = { Text("用户名") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                OutlinedTextField(value = cloudPass, onValueChange = { cloudPass = it }, label = { Text("密码 / Token") }, modifier = Modifier.fillMaxWidth(), singleLine = true, visualTransformation = PasswordVisualTransformation())
-            } else {
-                LockedField("云备份凭据")
-            }
-            OutlinedTextField(value = cloudPath, onValueChange = { cloudPath = it }, label = { Text("远程路径") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-            RowSwitch("仅 WiFi 时备份", cloudWifi) { cloudWifi = it }
-            RowSwitch("横竖屏壁纸分离备份（仅 WiFi）", cloudOrient) { cloudOrient = it }
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { vm.cloudUploadConfig() }, modifier = Modifier.weight(1f)) { Text("上传云备份") }
-                OutlinedButton(onClick = { vm.cloudDownloadConfig() }, modifier = Modifier.weight(1f)) { Text("从云恢复") }
             }
         }
 
-        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+        GlassCard {
+            Column(
+                Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
         Text("定位避让", style = MaterialTheme.typography.titleMedium)
         RowSwitch("启用定位避让", locAvoid) { locAvoid = it }
         if (locAvoid) {
@@ -624,7 +671,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             RowSwitch("定位回退（区内锁定纯度 R13）", locFb) { locFb = it }
             RowSwitch("定位极限回退（区内仅本地换壁纸）", locExtreme) { locExtreme = it }
             Text(
-                "已选 ${settings.avoidanceLocations().size} 个点 · 区内状态: ${if (settings.locationInAvoidZone) "生效中" else "未触发"}",
+                "已选 ${settings.avoidanceLocations().size} 个点 · 区内: ${if (settings.locationInAvoidZone) "生效中" else "未触发"}",
                 style = MaterialTheme.typography.bodySmall
             )
             OutlinedButton(onClick = onOpenLocationAvoid, modifier = Modifier.fillMaxWidth()) {
@@ -632,14 +679,28 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             }
         }
 
-        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            }
+        }
+
+        GlassCard {
+            Column(
+                Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
         Text("缓存与日志", style = MaterialTheme.typography.titleMedium)
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = { vm.clearWallpaperCache() }, modifier = Modifier.weight(1f)) { Text("清空缓存文件") }
             OutlinedButton(onClick = { vm.clearLogs() }, modifier = Modifier.weight(1f)) { Text("清空更换记录") }
         }
 
-        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            }
+        }
+
+        GlassCard {
+            Column(
+                Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
         Text("应用黑名单", style = MaterialTheme.typography.titleMedium)
         Text(
             "已选 ${settings.blacklistPackages.size} 个 · 前台休眠不换壁纸",
@@ -680,6 +741,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                         uiScrimAlpha = scrim,
                         uiCardAlpha = cardA,
                         uiTextColor = textColorOpt,
+                        cardStyle = cardStyleOpt,
                         minWidth = minW.toIntOrNull() ?: settings.minWidth,
                         minHeight = minH.toIntOrNull() ?: settings.minHeight,
                         apiKeys = keys,
@@ -694,13 +756,6 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                         localFallbackDir = localDir.trim(),
                         localFallbackUseCache = localFbCache,
                         localFallbackCacheSkipNewest = localFbSkip,
-                        cloudBackupProvider = cloudProv,
-                        cloudBackupUrl = if (keysVisible) cloudUrl.trim() else settings.cloudBackupUrl,
-                        cloudBackupUser = if (keysVisible) cloudUser.trim() else settings.cloudBackupUser,
-                        cloudBackupPassword = if (keysVisible) cloudPass else settings.cloudBackupPassword,
-                        cloudBackupPath = cloudPath.trim().ifBlank { "/jhsy_backup/" },
-                        cloudBackupOrientSplit = cloudOrient,
-                        cloudBackupWifiOnly = cloudWifi,
                         locationAvoidEnabled = locAvoid,
                         amapApiKey = if (keysVisible) amapKey.trim() else settings.amapApiKey,
                         locationFallbackEnabled = locFb,
@@ -714,6 +769,8 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("保存设置")
+        }
+            }
         }
     }
 }
@@ -753,7 +810,7 @@ private fun <T> EnumDropdown(
             is OrientationFilter -> it.label
             is WallpaperFitMode -> it.label
             is TranslateProvider -> it.label
-            is CloudBackupProvider -> it.label
+            is CardStyle -> it.label
             else -> it.toString()
         }
     },

@@ -116,6 +116,20 @@ enum class TriggerType(val code: String, val label: String) {
 }
 
 /** 云备份提供方 */
+
+/** 板块子主题美化（全局同步到所有页面卡片） */
+enum class CardStyle(val code: String, val label: String) {
+    None("none", "无"),
+    LiquidGlass("liquid_glass", "液态玻璃"),
+    GaussianBlur("gaussian_blur", "高斯模糊"),
+    Fog("fog", "雾化");
+
+    companion object {
+        fun fromCode(code: String): CardStyle =
+            entries.find { it.code == code } ?: None
+    }
+}
+
 enum class CloudBackupProvider(val code: String, val label: String) {
     Off("off", "关闭"),
     WebDav("webdav", "WebDAV"),
@@ -174,6 +188,8 @@ data class AppSettings(
     /** 卡片半透明程度 0～0.7（越高越不透明） */
     val uiCardAlpha: Float = 0.28f,
     val uiTextColor: UiTextColor = UiTextColor.White,
+    /** 板块美化：液态玻璃 / 高斯模糊 / 雾化 / 无 */
+    val cardStyle: CardStyle = CardStyle.None,
 
     val apiKeys: List<String> = emptyList(),
     val apiKeyIndex: Int = 0,

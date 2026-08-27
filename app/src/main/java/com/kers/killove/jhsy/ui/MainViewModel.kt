@@ -12,7 +12,6 @@ import com.kers.killove.jhsy.domain.AppSettings
 import com.kers.killove.jhsy.domain.ChangeResult
 import com.kers.killove.jhsy.domain.TriggerType
 import com.kers.killove.jhsy.domain.AvoidanceLocation
-import com.kers.killove.jhsy.util.CloudBackup
 import com.kers.killove.jhsy.util.LocationHelper
 import com.kers.killove.jhsy.data.translate.KeywordTranslator
 import com.kers.killove.jhsy.domain.WallpaperChanger
@@ -581,39 +580,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun cloudUploadConfig() {
-        viewModelScope.launch {
-            val s = settings.value
-            val r = CloudBackup.uploadConfig(getApplication(), s)
-            _status.value = r.fold(
-                onSuccess = { "云备份配置成功：$it" },
-                onFailure = { "云备份失败：${it.message}" }
-            )
-            if (s.cloudBackupOrientSplit) {
-                val r2 = CloudBackup.uploadOrientSplitWallpapers(getApplication(), s)
-                r2.onSuccess { _status.value = (_status.value + "\n" + it) }
-            }
-        }
-    }
 
-    fun cloudDownloadConfig() {
-        viewModelScope.launch {
-            val s = settings.value
-            CloudBackup.downloadConfig(s).fold(
-                onSuccess = { json ->
-                    try {
-                        val restored = ConfigBackup.fromJson(json, s)
-                        settingsRepo.save(restored)
-                        applySchedule(restored)
-                        _status.value = "已从云端恢复配置（PIN 未改动）"
-                    } catch (e: Exception) {
-                        _status.value = "解析云备份失败：${e.message}"
-                    }
-                },
-                onFailure = { _status.value = "云下载失败：${it.message}" }
-            )
-        }
-    }
 
     fun searchAvoidPlaces(keyword: String, onResult: (List<LocationHelper.PlaceHit>) -> Unit) {
         viewModelScope.launch {

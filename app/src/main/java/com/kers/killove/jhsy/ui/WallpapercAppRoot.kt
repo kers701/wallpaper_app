@@ -32,9 +32,11 @@ import com.kers.killove.jhsy.ui.screens.BlacklistScreen
 import com.kers.killove.jhsy.ui.screens.PermissionOnboardingScreen
 import com.kers.killove.jhsy.ui.screens.SettingsScreen
 import com.kers.killove.jhsy.ui.screens.LocationAvoidScreen
+import com.kers.killove.jhsy.domain.CardStyle
 
 val LocalUiTextColor = compositionLocalOf { Color.White }
 val LocalCardAlpha = compositionLocalOf { 0.28f }
+val LocalCardStyle = compositionLocalOf { CardStyle.None }
 
 @Composable
 fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
@@ -49,6 +51,7 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
     val settings by vm.settings.collectAsState()
     val textColor = Color(settings.uiTextColor.argb)
     val cardAlpha = settings.uiCardAlpha
+    val cardStyle = settings.cardStyle
     val minimal = settings.overviewMinimalMode
 
     LaunchedEffect(minimal) {
@@ -62,7 +65,8 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
 
     CompositionLocalProvider(
         LocalUiTextColor provides textColor,
-        LocalCardAlpha provides cardAlpha
+        LocalCardAlpha provides cardAlpha,
+        LocalCardStyle provides cardStyle
     ) {
         WallpaperBackground(settings = settings, scrimAlpha = settings.uiScrimAlpha) {
             Scaffold(

@@ -21,6 +21,7 @@ import com.kers.killove.jhsy.domain.ResolutionMode
 import com.kers.killove.jhsy.domain.UiTextColor
 import com.kers.killove.jhsy.domain.WallpaperTarget
 import com.kers.killove.jhsy.domain.CloudBackupProvider
+import com.kers.killove.jhsy.domain.CardStyle
 import com.kers.killove.jhsy.util.ProcessBridgePrefs
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -53,6 +54,7 @@ class SettingsRepository(private val context: Context) {
         val UI_SCRIM = floatPreferencesKey("ui_scrim_alpha")
         val UI_CARD = floatPreferencesKey("ui_card_alpha")
         val UI_TEXT = stringPreferencesKey("ui_text_color")
+        val CARD_STYLE = stringPreferencesKey("card_style")
         val API_KEYS = stringPreferencesKey("api_keys")
         val API_KEY_INDEX = intPreferencesKey("api_key_index")
         val KEYWORDS = stringPreferencesKey("keywords")
@@ -128,6 +130,7 @@ class SettingsRepository(private val context: Context) {
             uiScrimAlpha = (p[Keys.UI_SCRIM] ?: 0.52f).coerceIn(0.15f, 0.85f),
             uiCardAlpha = (p[Keys.UI_CARD] ?: 0.28f).coerceIn(0f, 0.7f),
             uiTextColor = UiTextColor.fromCode(p[Keys.UI_TEXT] ?: "white"),
+            cardStyle = CardStyle.fromCode(p[Keys.CARD_STYLE] ?: "none"),
             apiKeys = splitLines(keysRaw),
             apiKeyIndex = p[Keys.API_KEY_INDEX] ?: 0,
             keywords = splitLines(p[Keys.KEYWORDS] ?: ""),
@@ -197,6 +200,7 @@ class SettingsRepository(private val context: Context) {
             p[Keys.UI_SCRIM] = settings.uiScrimAlpha.coerceIn(0.15f, 0.85f)
             p[Keys.UI_CARD] = settings.uiCardAlpha.coerceIn(0f, 0.7f)
             p[Keys.UI_TEXT] = settings.uiTextColor.code
+            p[Keys.CARD_STYLE] = settings.cardStyle.code
             p[Keys.API_KEYS] = settings.apiKeys.joinToString("\n")
             p[Keys.API_KEY_INDEX] = settings.apiKeyIndex
             p[Keys.KEYWORDS] = settings.keywords.joinToString("\n")
