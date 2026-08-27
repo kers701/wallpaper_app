@@ -14,6 +14,7 @@ import com.kers.killove.jhsy.data.remote.WallhavenApi
 import com.kers.killove.jhsy.data.local.PageCacheStore
 import com.kers.killove.jhsy.data.wallpaper.SystemWallpaperSetter
 import com.kers.killove.jhsy.util.ForegroundAppHelper
+import com.kers.killove.jhsy.util.ProcessBridgePrefs
 import com.kers.killove.jhsy.util.LocationHelper
 import kotlinx.coroutines.flow.first
 import java.io.File
@@ -304,6 +305,7 @@ class WallpaperChanger(
         )
         dao.trimToKeep(HISTORY_KEEP)
         settingsRepo.setLastChangeAt(System.currentTimeMillis())
+        ProcessBridgePrefs.setLastChangeAt(context, System.currentTimeMillis())
         settingsRepo.incrementChangeCount()
         return ChangeResult.Success(
             item.copy(fileSize = size, category = "local←$reason"),
@@ -395,6 +397,7 @@ class WallpaperChanger(
 
         if (item.source != "local") trimCache(dir, keep = 40)
         settingsRepo.setLastChangeAt(System.currentTimeMillis())
+        ProcessBridgePrefs.setLastChangeAt(context, System.currentTimeMillis())
         settingsRepo.incrementChangeCount()
         return ChangeResult.Success(
             item.copy(fileSize = fileSize),

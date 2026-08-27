@@ -6,9 +6,18 @@ import com.kers.killove.jhsy.domain.AppSettings
 /**
  * 主进程写、服务进程读的轻量桥接。
  * 独立进程无法安全共用 DataStore，故用 SharedPreferences 同步关键开关。
+ *
+ * 另提供自动更换互斥：避免 FGS 循环与 WorkManager/亮屏 同时各跑一轮 changeOnce
+ * （隔离模式下会变成 4 条记录）。
  */
 object ProcessBridgePrefs {
     private const val NAME = "jhsy_bridge"
+
+    /** 自动更换最短间隔防抖（毫秒）：一轮隔离桌面+锁屏约需十余秒 */
+    private const val AUTO_CHANGE_DEBOUNCE_MS = 90_000L
+
+    /** changing 标记超时，避免异常退出后永远锁死 */
+    private const val CHANGING_STALE_MS = 4 * 60_000L
 
     fun sync(context: Context, s: AppSettings) {
         context.applicationContext
@@ -47,9 +56,50 @@ object ProcessBridgePrefs {
         sp(context).getLong("last_change", 0L)
 
     fun setLastChangeAt(context: Context, ts: Long) {
-        sp(context).edit().putLong("last_change", ts).apply()
+        sp(context).edit()
+            .putLong("last_change", ts)
+            .putBoolean("changing", false)
+            .apply()
+    }
+
+    /**
+     * 尝试占用自动更换锁。
+     * @param force 手动/通知「立即更换」时为 true，忽略防抖间隔，但仍避开正在进行中的一轮
+     * @return true 表示获得执行权，调用方必须在 finally 里 [releaseChange]
+     */
+    fun tryBeginChange(context: Context, force: Boolean = false): Boolean {
+        val prefs = sp(context)
+        synchronized(LOCK) {
+            val now = System.currentTimeMillis()
+            val changing = prefs.getBoolean("changing", false)
+            val changingAt = prefs.getLong("changing_at", 0L)
+            if (changing && now - changingAt < CHANGING_STALE_MS) {
+                return false
+            }
+            if (!force) {
+                val last = prefs.getLong("last_change", 0L)
+                if (last > 0L && now - last < AUTO_CHANGE_DEBOUNCE_MS) {
+                    return false
+                }
+            }
+            prefs.edit()
+                .putBoolean("changing", true)
+                .putLong("changing_at", now)
+                .commit()
+            return true
+        }
+    }
+
+    fun releaseChange(context: Context) {
+        synchronized(LOCK) {
+            sp(context).edit()
+                .putBoolean("changing", false)
+                .commit()
+        }
     }
 
     private fun sp(context: Context) =
         context.applicationContext.getSharedPreferences(NAME, Context.MODE_PRIVATE)
+
+    private val LOCK = Any()
 }

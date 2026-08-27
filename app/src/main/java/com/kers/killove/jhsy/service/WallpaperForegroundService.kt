@@ -59,6 +59,10 @@ class WallpaperForegroundService : Service() {
             ACTION_CHANGE_NOW -> {
                 ensureForegroundAndLoop()
                 scope.launch {
+                    // 手动/补换：force 忽略 90s 防抖，但仍避开正在进行中的一轮
+                    if (!ProcessBridgePrefs.tryBeginChange(this@WallpaperForegroundService, force = true)) {
+                        return@launch
+                    }
                     acquireWake()
                     try {
                         val settingsRepo = runCatching { SettingsRepository(applicationContext) }.getOrNull()
@@ -74,6 +78,7 @@ class WallpaperForegroundService : Service() {
                     } catch (e: Exception) {
                         e.printStackTrace()
                     } finally {
+                        ProcessBridgePrefs.releaseChange(this@WallpaperForegroundService)
                         releaseWake()
                     }
                 }
@@ -163,19 +168,30 @@ class WallpaperForegroundService : Service() {
                     runCatching { it.settingsFlow.first().intervalMinutes }.getOrNull()
                 } ?: ProcessBridgePrefs.intervalMinutes(this)
 
-                val last = settingsRepo?.let {
+                // 优先 bridge（跨进程一致），DataStore 仅作回退
+                val lastBridge = ProcessBridgePrefs.lastChangeAt(this)
+                val lastDs = settingsRepo?.let {
                     runCatching { it.settingsFlow.first().lastChangeAt }.getOrNull()
-                } ?: ProcessBridgePrefs.lastChangeAt(this)
+                } ?: 0L
+                val last = maxOf(lastBridge, lastDs)
 
                 val intervalMs = intervalMin.coerceIn(5, 180) * 60_000L
                 val due = last <= 0L || System.currentTimeMillis() - last >= intervalMs
                 if (due && changer != null) {
+                    // 自动轮询：90s 防抖 + changing 锁，避免与 Worker/亮屏 双开
+                    if (!ProcessBridgePrefs.tryBeginChange(this, force = false)) {
+                        delay(30_000L)
+                        continue
+                    }
+                    // 换之前再刷一次前台通知（用户手滑清通知后尽量挂回）
+                    ensureForegroundAndLoop()
                     acquireWake()
                     try {
                         // changeOnce 内已含黑名单判断
                         changer.changeOnce(forceIgnoreScreenOff = false)
                         ProcessBridgePrefs.setLastChangeAt(this, System.currentTimeMillis())
                     } finally {
+                        ProcessBridgePrefs.releaseChange(this)
                         releaseWake()
                     }
                 }
@@ -280,6 +296,21 @@ class WallpaperForegroundService : Service() {
 
         fun start(context: Context) {
             val i = Intent(context, WallpaperForegroundService::class.java)
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(i)
+                } else {
+                    context.startService(i)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
+        /** 拉起 FGS 并立即换一次（刷新通知 + :svc 执行） */
+        fun startChangeNow(context: Context) {
+            val i = Intent(context, WallpaperForegroundService::class.java)
+                .setAction(ACTION_CHANGE_NOW)
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     context.startForegroundService(i)

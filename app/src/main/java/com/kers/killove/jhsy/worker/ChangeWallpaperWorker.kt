@@ -8,16 +8,21 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import com.kers.killove.jhsy.data.local.WallpaperDatabase
 import com.kers.killove.jhsy.data.prefs.SettingsRepository
-import com.kers.killove.jhsy.data.remote.WallhavenApi
-import com.kers.killove.jhsy.data.wallpaper.SystemWallpaperSetter
-import com.kers.killove.jhsy.domain.ChangeResult
-import com.kers.killove.jhsy.domain.WallpaperChanger
 import com.kers.killove.jhsy.service.WallpaperForegroundService
 import kotlinx.coroutines.flow.first
 import java.util.concurrent.TimeUnit
 
+/**
+ * 周期 / 单次调度入口。
+ *
+ * 不再在此进程直接 changeOnce，避免与 :svc 前台服务各跑一轮
+ * （隔离模式下会变成 4 条更换记录）。
+ *
+ * 职责：
+ * - 拉起 FGS（重新 startForeground，顺带把被划掉的通知挂回来）
+ * - 若需要立刻换：发 ACTION_CHANGE_NOW，由 :svc 执行
+ */
 class ChangeWallpaperWorker(
     appContext: Context,
     params: WorkerParameters
@@ -28,23 +33,20 @@ class ChangeWallpaperWorker(
         val settings = settingsRepo.settingsFlow.first()
         if (!settings.enabled) return Result.success()
 
-        // 被拉起时尽量把前台服务也拉起来，方便划掉后恢复
-        runCatching { WallpaperForegroundService.start(applicationContext) }
+        val forceNow = inputData.getBoolean(KEY_FORCE_SCREEN_ON, false)
 
-        val force = inputData.getBoolean(KEY_FORCE_SCREEN_ON, false)
-        val changer = WallpaperChanger(
-            context = applicationContext,
-            settingsRepo = settingsRepo,
-            api = WallhavenApi(),
-            setter = SystemWallpaperSetter(applicationContext),
-            dao = WallpaperDatabase.get(applicationContext).dao()
-        )
-
-        return when (val r = changer.changeOnce(forceIgnoreScreenOff = force)) {
-            is ChangeResult.Success -> Result.success()
-            is ChangeResult.Failure -> {
-                if (runAttemptCount < 3) Result.retry() else Result.success()
+        return try {
+            if (forceNow) {
+                // 亮屏补换 / 单次任务：刷新通知并让 :svc 执行更换
+                WallpaperForegroundService.startChangeNow(applicationContext)
+            } else {
+                // 周期兜底：只保证 FGS 在跑，到期由 FGS runLoop 判断
+                WallpaperForegroundService.start(applicationContext)
             }
+            Result.success()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            if (runAttemptCount < 3) Result.retry() else Result.success()
         }
     }
 
