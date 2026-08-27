@@ -312,7 +312,7 @@ private fun FogCard(
 }
 
 @Composable
-fun HomeScreen(vm: MainViewModel) {
+fun HomeScreen(vm: MainViewModel, onOpenHelp: (() -> Unit)? = null) {
     val settings by vm.settings.collectAsState()
     val status by vm.status.collectAsState()
     val busy by vm.busy.collectAsState()
@@ -358,12 +358,25 @@ fun HomeScreen(vm: MainViewModel) {
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text("镜花水月", style = MaterialTheme.typography.headlineMedium, color = textColor)
-        Text(
-            "镜花水月 · 自动更换壁纸",
-            style = MaterialTheme.typography.bodyMedium,
-            color = textColor.copy(alpha = 0.8f)
-        )
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("镜花水月", style = MaterialTheme.typography.headlineMedium, color = textColor)
+                Text(
+                    "自动更换壁纸",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = textColor.copy(alpha = 0.8f)
+                )
+            }
+            if (onOpenHelp != null) {
+                OutlinedButton(onClick = onOpenHelp) {
+                    Text("使用说明")
+                }
+            }
+        }
 
         GlassCard {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

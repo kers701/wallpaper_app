@@ -35,6 +35,7 @@ import com.kers.killove.jhsy.domain.CardStyle
 import com.kers.killove.jhsy.ui.screens.BlacklistScreen
 import com.kers.killove.jhsy.ui.screens.GlassCard
 import com.kers.killove.jhsy.ui.screens.HistoryScreen
+import com.kers.killove.jhsy.ui.screens.HelpGuideScreen
 import com.kers.killove.jhsy.ui.screens.HomeScreen
 import com.kers.killove.jhsy.ui.screens.LocationAvoidScreen
 import com.kers.killove.jhsy.ui.screens.OverviewScreen
@@ -91,7 +92,7 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
                             .padding(bottom = if (minimal) 0.dp else 88.dp)
                     ) {
                         composable("overview") { OverviewScreen(vm) }
-                        composable("home") { HomeScreen(vm) }
+                        composable("home") { HomeScreen(vm, onOpenHelp = { nav.navigate("help") }) }
                         composable("settings") {
                             SettingsScreen(
                                 vm,
@@ -105,6 +106,9 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
                         }
                         composable("location_avoid") {
                             LocationAvoidScreen(vm, onBack = { nav.popBackStack() })
+                        }
+                        composable("help") {
+                            HelpGuideScreen(onBack = { nav.popBackStack() })
                         }
                     }
 
