@@ -441,6 +441,48 @@ class WallpaperChanger(
         }
     }
 
+
+    /** 定位避让：进入避让区锁定纯度/极限本地；离开后恢复 */
+    private suspend fun applyLocationAvoidance(settings: AppSettings): AppSettings {
+        val (inZone, _) = LocationHelper.isInAvoidZone(context, settings.avoidanceLocations())
+        if (inZone) {
+            if (!settings.locationInAvoidZone) {
+                var next = settings.copy(
+                    locationInAvoidZone = true,
+                    locationSavedPurity = settings.purity.code,
+                    locationSavedForceLocal = settings.forceLocalMode
+                )
+                if (settings.locationFallbackEnabled) {
+                    next = next.copy(purity = Purity.R13)
+                }
+                if (settings.locationExtremeFallbackEnabled) {
+                    next = next.copy(forceLocalMode = true)
+                }
+                settingsRepo.save(next)
+                return next
+            }
+            return settings
+        } else {
+            if (settings.locationInAvoidZone) {
+                val restoredPurity = if (settings.locationSavedPurity.isNotBlank()) {
+                    Purity.fromCode(settings.locationSavedPurity)
+                } else {
+                    settings.purity
+                }
+                val next = settings.copy(
+                    locationInAvoidZone = false,
+                    purity = restoredPurity,
+                    forceLocalMode = settings.locationSavedForceLocal,
+                    locationSavedPurity = "",
+                    locationSavedForceLocal = false
+                )
+                settingsRepo.save(next)
+                return next
+            }
+            return settings
+        }
+    }
+
     private fun shouldPowerSaveSleep(settings: AppSettings): Boolean {
         if (!settings.powerSaveEnabled) return false
         if (isCharging()) return false
