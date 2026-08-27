@@ -25,6 +25,7 @@ import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -536,20 +537,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             ) {
         Text("网络代理", style = MaterialTheme.typography.titleMedium)
         if (keysVisible) {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text("启用 HTTP 代理")
-                    Text(
-                        "开启且填写地址后走代理；不可用自动回退系统网络",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-                Switch(checked = proxyOn, onCheckedChange = { proxyOn = it })
-            }
+            RowSwitch("启用 HTTP 代理（不可用自动回退系统网络）", proxyOn) { proxyOn = it }
             OutlinedTextField(
                 value = proxyHost,
                 onValueChange = { proxyHost = it },
