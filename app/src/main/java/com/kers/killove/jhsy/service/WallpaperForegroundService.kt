@@ -70,9 +70,14 @@ class WallpaperForegroundService : Service() {
                         if (settingsRepo != null && dao != null) {
                             val changer = WallpaperChanger(
                                 applicationContext, settingsRepo, WallhavenApi(),
-                                SystemWallpaperSetter(applicationContext), dao
+                                SystemWallpaperSetter(applicationContext), dao,
+                                onProgress = { frac, label ->
+                                    val pct = (frac * 100).toInt().coerceIn(0, 100)
+                                    refreshNotification(if (label.isNotBlank()) "$label · $pct%" else "更换中 $pct%")
+                                }
                             )
                             changer.changeOnce(forceIgnoreScreenOff = true)
+                            refreshNotification("后台更换服务运行中（独立进程）")
                             ProcessBridgePrefs.setLastChangeAt(this@WallpaperForegroundService, System.currentTimeMillis())
                         }
                     } catch (e: Exception) {
@@ -148,12 +153,22 @@ class WallpaperForegroundService : Service() {
         val changer = if (dao != null && settingsRepo != null) {
             WallpaperChanger(
                 applicationContext, settingsRepo, WallhavenApi(),
-                SystemWallpaperSetter(applicationContext), dao
+                SystemWallpaperSetter(applicationContext), dao,
+                onProgress = { frac, label ->
+                    val pct = (frac * 100).toInt().coerceIn(0, 100)
+                    refreshNotification(if (label.isNotBlank()) "$label · $pct%" else "更换中 $pct%")
+                }
             )
         } else null
 
+        var tick = 0
         while (scope.isActive) {
             try {
+                tick++
+                // 约每 2 分钟刷新前台通知，降低被「一键清空」后长期无通知的概率
+                if (tick % 4 == 0) {
+                    ensureForegroundAndLoop()
+                }
                 val enabled = settingsRepo?.let {
                     runCatching { it.settingsFlow.first().enabled }.getOrNull()
                 } ?: ProcessBridgePrefs.enabled(this)
@@ -190,6 +205,7 @@ class WallpaperForegroundService : Service() {
                         // changeOnce 内已含黑名单判断
                         changer.changeOnce(forceIgnoreScreenOff = false)
                         ProcessBridgePrefs.setLastChangeAt(this, System.currentTimeMillis())
+                        refreshNotification("后台更换服务运行中（独立进程）")
                     } finally {
                         ProcessBridgePrefs.releaseChange(this)
                         releaseWake()
@@ -203,7 +219,24 @@ class WallpaperForegroundService : Service() {
         }
     }
 
-    private fun acquireWake() {
+    private fun refreshNotification(text: String) {
+        try {
+            val nm = getSystemService(NotificationManager::class.java) ?: return
+            val n = buildNotification(text)
+            nm.notify(NOTIFICATION_ID, n)
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    startForeground(NOTIFICATION_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+                } else {
+                    startForeground(NOTIFICATION_ID, n)
+                }
+            } catch (_: Exception) {
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+        private fun acquireWake() {
         try {
             if (wakeLock?.isHeld != true) wakeLock?.acquire(3 * 60_000L)
         } catch (_: Exception) {
@@ -241,7 +274,7 @@ class WallpaperForegroundService : Service() {
         }
     }
 
-    private fun buildNotification(): Notification {
+    private fun buildNotification(contentText: String = "后台更换服务运行中（独立进程）"): Notification {
         val open = PendingIntent.getActivity(
             this, 0,
             Intent(this, MainActivity::class.java),
@@ -259,7 +292,7 @@ class WallpaperForegroundService : Service() {
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.notification_title))
-            .setContentText("后台更换服务运行中（独立进程）")
+            .setContentText(contentText)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(open)
             .addAction(0, "立即更换", changeNow)

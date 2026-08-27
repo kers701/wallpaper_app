@@ -56,6 +56,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         api = api,
         setter = SystemWallpaperSetter(app),
         dao = dao,
+        onProgress = { frac, label ->
+            _downloadProgress.value = frac
+            _downloadLabel.value = label
+            if (label.isNotBlank()) _status.value = label
+        },
         localStore = localStore
     )
 
@@ -86,6 +91,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _busy = MutableStateFlow(false)
     val busy: StateFlow<Boolean> = _busy.asStateFlow()
+
+    private val _downloadProgress = MutableStateFlow(0f)
+    val downloadProgress: StateFlow<Float> = _downloadProgress.asStateFlow()
+    private val _downloadLabel = MutableStateFlow("")
+    val downloadLabel: StateFlow<String> = _downloadLabel.asStateFlow()
 
     private val _networkProbe = MutableStateFlow("点击下方按钮检测：本机网络 · Wallhaven · 兜底 API 延迟")
     val networkProbe: StateFlow<String> = _networkProbe.asStateFlow()
@@ -402,6 +412,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (_busy.value) return
         viewModelScope.launch {
             _busy.value = true
+            _downloadProgress.value = 0f
+            _downloadLabel.value = ""
             _status.value = "正在更换…"
             when (val r = changer.changeOnce(forceIgnoreScreenOff = true, triggerType = TriggerType.Manual)) {
                 is ChangeResult.Success -> {

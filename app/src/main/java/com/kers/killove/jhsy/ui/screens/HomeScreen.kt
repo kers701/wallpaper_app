@@ -8,6 +8,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -26,6 +27,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
@@ -213,39 +215,53 @@ private fun GaussianBlurCard(
     contentColor: Color,
     content: @Composable () -> Unit
 ) {
-    val frost = (0.28f + alpha * 0.45f).coerceIn(0.25f, 0.72f)
+    val backdrop = LocalBackdropBitmap.current
+    val frost = (0.22f + alpha * 0.40f).coerceIn(0.18f, 0.65f)
     Box(modifier = modifier.fillMaxWidth().clip(shape)) {
-        // 底层：大半径模糊的磨砂块（只糊背景块，不糊上层文字）
-        Box(
-            Modifier
-                .matchParentSize()
-                .then(
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                        Modifier.blur(28.dp)
-                    } else Modifier
-                )
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = frost * 0.55f),
-                            Color(0xFFD0D8E8).copy(alpha = frost * 0.4f),
-                            Color.Black.copy(alpha = frost * 0.85f)
+        // 真·磨砂折中：用当前软件背景图做底层，再强模糊
+        if (backdrop != null) {
+            Image(
+                bitmap = backdrop,
+                contentDescription = null,
+                modifier = Modifier
+                    .matchParentSize()
+                    .then(
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) Modifier.blur(32.dp)
+                        else Modifier
+                    ),
+                contentScale = ContentScale.Crop,
+                alpha = 0.95f
+            )
+        } else {
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .then(
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) Modifier.blur(28.dp)
+                        else Modifier
+                    )
+                    .background(
+                        Brush.radialGradient(
+                            colors = listOf(
+                                Color.White.copy(alpha = frost * 0.5f),
+                                Color.Black.copy(alpha = frost * 0.8f)
+                            )
                         )
                     )
-                )
-        )
-        // 中层：再叠一层半透明磨砂
+            )
+        }
+        // 磨砂罩：保证文字可读
         Box(
             Modifier
                 .matchParentSize()
-                .background(Color(0xFF0A0E18).copy(alpha = (0.35f + alpha * 0.35f).coerceIn(0.3f, 0.7f)))
+                .background(Color(0xFF0A0E18).copy(alpha = frost * 0.55f + 0.18f))
                 .border(
                     width = 1.dp,
                     brush = Brush.linearGradient(
                         listOf(
-                            Color.White.copy(alpha = 0.28f),
-                            Color.White.copy(alpha = 0.06f),
-                            Color.White.copy(alpha = 0.18f)
+                            Color.White.copy(alpha = 0.32f),
+                            Color.White.copy(alpha = 0.08f),
+                            Color.White.copy(alpha = 0.22f)
                         )
                     ),
                     shape = shape
@@ -296,6 +312,8 @@ fun HomeScreen(vm: MainViewModel) {
     val settings by vm.settings.collectAsState()
     val status by vm.status.collectAsState()
     val busy by vm.busy.collectAsState()
+    val downloadProgress by vm.downloadProgress.collectAsState()
+    val downloadLabel by vm.downloadLabel.collectAsState()
     val networkProbe by vm.networkProbe.collectAsState()
     val probing by vm.probing.collectAsState()
     val textColor = LocalUiTextColor.current
@@ -430,7 +448,21 @@ fun HomeScreen(vm: MainViewModel) {
             Column(Modifier.padding(16.dp)) {
                 Text("状态", style = MaterialTheme.typography.titleMedium, color = textColor)
                 Spacer(Modifier.height(8.dp))
-                if (busy) {
+                if (busy && downloadProgress > 0f) {
+                    LinearProgressIndicator(
+                        progress = { downloadProgress.coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    if (downloadLabel.isNotBlank()) {
+                        Text(
+                            downloadLabel,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = textColor.copy(alpha = 0.75f)
+                        )
+                        Spacer(Modifier.height(6.dp))
+                    }
+                } else if (busy) {
                     CircularProgressIndicator(color = textColor)
                     Spacer(Modifier.height(8.dp))
                 }

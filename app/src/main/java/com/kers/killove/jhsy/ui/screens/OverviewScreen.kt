@@ -147,6 +147,38 @@ fun OverviewScreen(vm: MainViewModel) {
         }
 
         OverviewCard(cardAlpha) {
+            val weekMs = 7L * 24 * 60 * 60 * 1000
+            val now = System.currentTimeMillis()
+            val weekList = recent.filter { now - it.setAt <= weekMs }
+            val purityCount = weekList.groupingBy { it.purity.ifBlank { "?" } }.eachCount()
+            val topKw = weekList.map { it.keyword.trim() }.filter { it.isNotEmpty() }
+                .groupingBy { it }.eachCount().entries.sortedByDescending { it.value }.take(3)
+            val autoCnt = weekList.count { it.triggerType.equals("auto", true) }
+            val manualCnt = weekList.size - autoCnt
+
+            Text("本周统计", style = MaterialTheme.typography.titleSmall, color = textColor)
+            Text("更换 ${weekList.size} 次 · 累计 ${settings.changeCount} 次", style = MaterialTheme.typography.bodyMedium, color = textColor)
+            Text("自动 $autoCnt · 手动/其他 $manualCnt", style = MaterialTheme.typography.bodySmall, color = textColor.copy(alpha = 0.75f))
+            if (purityCount.isNotEmpty()) {
+                Text(
+                    "纯度 " + purityCount.entries.joinToString(" · ") { "${it.key} ${it.value}" },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = textColor.copy(alpha = 0.75f)
+                )
+            }
+            if (topKw.isNotEmpty()) {
+                Text(
+                    "热词 " + topKw.joinToString(" · ") { "${it.key}×${it.value}" },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = textColor.copy(alpha = 0.75f)
+                )
+            }
+            if (weekList.isEmpty()) {
+                Text("近 7 日暂无更换记录", style = MaterialTheme.typography.bodySmall, color = textColor.copy(alpha = 0.55f))
+            }
+        }
+
+        OverviewCard(cardAlpha) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("极简模式", style = MaterialTheme.typography.titleSmall, color = textColor)

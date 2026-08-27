@@ -11,6 +11,9 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,6 +40,9 @@ import java.net.URL
  * 2. 填了 API 链接 → 打开时自动拉取
  * 3. 都为空 → 尝试系统壁纸，失败则莫奈渐变取色
  */
+/** 供卡片磨砂：当前软件背景图（已加载），高斯模式卡片背后叠一层模糊图 */
+val LocalBackdropBitmap = staticCompositionLocalOf<androidx.compose.ui.graphics.ImageBitmap?> { null }
+
 @Composable
 fun WallpaperBackground(
     settings: AppSettings,
@@ -137,6 +143,8 @@ fun WallpaperBackground(
                 .fillMaxSize()
                 .background(Color.Black.copy(alpha = scrimAlpha))
         )
-        content()
+        CompositionLocalProvider(LocalBackdropBitmap provides bitmap) {
+            content()
+        }
     }
 }

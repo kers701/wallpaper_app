@@ -25,6 +25,7 @@ class WallpaperChanger(
     private val api: WallhavenApi,
     private val setter: SystemWallpaperSetter,
     private val dao: WallpaperDao,
+    private val onProgress: (Float, String) -> Unit = { _, _ -> },
     private val localStore: LocalFallbackStore = LocalFallbackStore(context)
 ) {
     private val pageCache by lazy { PageCacheStore.from(context) }
@@ -331,25 +332,41 @@ class WallpaperChanger(
         }
         val dest = File(dir, "${item.id.replace(Regex("[^a-zA-Z0-9._-]"), "_")}_$targetSuffix.jpg")
 
-        val ok = if (item.source == "local") true
-        else {
+        val ok = if (item.source == "local") {
+            onProgress(1f, "本地图")
+            true
+        } else {
             val prefetched = item.prefetchedBytes
             if (prefetched != null && prefetched.isNotEmpty()) {
+                onProgress(0.5f, "写入缓存…")
                 runCatching {
                     dest.parentFile?.mkdirs()
                     dest.writeBytes(prefetched)
                     true
                 }.getOrDefault(false)
-            } else api.downloadToFile(item.pathUrl, dest)
+            } else {
+                onProgress(0f, "下载中…")
+                api.downloadToFile(item.pathUrl, dest) { read, total ->
+                    val frac = if (total > 0L) (read.toFloat() / total).coerceIn(0f, 1f) else 0f
+                    val label = if (total > 0L) {
+                        "下载 ${read / 1024}KB / ${total / 1024}KB"
+                    } else {
+                        "下载 ${read / 1024}KB"
+                    }
+                    onProgress(frac, label)
+                }
+            }
         }
         val finalFile = if (item.source == "local") File(item.pathUrl) else dest
         if (!ok || !finalFile.exists() || finalFile.length() == 0L) {
             return ChangeResult.Failure("下载失败 (${item.source})")
         }
 
+        onProgress(0.95f, "正在设置壁纸…")
         if (!setter.setFromFile(finalFile, target, settings.fitMode)) {
             return ChangeResult.Failure("系统设置壁纸失败（部分机型锁屏需额外权限）")
         }
+        onProgress(1f, "完成")
 
         val fileSize = finalFile.length()
         val kwRecord = if (item.source == "wallhaven") (usedKeyword ?: "") else ""

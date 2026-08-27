@@ -401,7 +401,14 @@ class WallhavenApi(
         }
     }
 
-    suspend fun downloadToFile(url: String, dest: java.io.File): Boolean =
+    /**
+     * @param onProgress (已下载字节, 总字节；总字节未知时为 -1)
+     */
+    suspend fun downloadToFile(
+        url: String,
+        dest: java.io.File,
+        onProgress: ((Long, Long) -> Unit)? = null
+    ): Boolean =
         withContext(Dispatchers.IO) {
             val request = Request.Builder()
                 .url(url)
@@ -410,10 +417,24 @@ class WallhavenApi(
                 .build()
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) return@withContext false
-                val bytes = response.body?.bytes() ?: return@withContext false
+                val body = response.body ?: return@withContext false
+                val total = body.contentLength()
                 dest.parentFile?.mkdirs()
-                dest.writeBytes(bytes)
-                true
+                body.byteStream().use { input ->
+                    dest.outputStream().use { output ->
+                        val buf = ByteArray(16 * 1024)
+                        var readTotal = 0L
+                        while (true) {
+                            val n = input.read(buf)
+                            if (n <= 0) break
+                            output.write(buf, 0, n)
+                            readTotal += n
+                            onProgress?.invoke(readTotal, total)
+                        }
+                        output.flush()
+                    }
+                }
+                dest.length() > 0L
             }
         }
 
