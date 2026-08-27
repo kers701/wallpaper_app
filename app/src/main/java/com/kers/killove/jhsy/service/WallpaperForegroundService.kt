@@ -204,19 +204,25 @@ class WallpaperForegroundService : Service() {
     private fun createChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val nm = getSystemService(NotificationManager::class.java) ?: return
-        // 新 channel id：旧 jhsy_service 若已建成 LOW，系统不允许再改重要级别
+        // v3：IMPORTANCE_LOW，便于三星等机型将通知设为「最小化」并弱化/隐藏状态栏图标，降低烧屏风险
+        // 渠道重要级别创建后不可改，故换新 id
         val channel = NotificationChannel(
             CHANNEL_ID,
             getString(R.string.notification_channel_name),
-            NotificationManager.IMPORTANCE_DEFAULT
+            NotificationManager.IMPORTANCE_LOW
         ).apply {
             description = getString(R.string.notification_channel_desc)
             setShowBadge(false)
             setSound(null, null)
+            enableVibration(false)
+            enableLights(false)
+            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         }
         nm.createNotificationChannel(channel)
-        // 删除旧低优先级渠道，避免用户只看到旧渠道
-        try { nm.deleteNotificationChannel("jhsy_service") } catch (_: Exception) {}
+        // 清理旧渠道
+        for (old in listOf("jhsy_service", "jhsy_service_v2")) {
+            try { nm.deleteNotificationChannel(old) } catch (_: Exception) {}
+        }
     }
 
     private fun buildNotification(): Notification {
@@ -244,7 +250,8 @@ class WallpaperForegroundService : Service() {
             .addAction(0, "停止", stop)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setSilent(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
@@ -266,7 +273,7 @@ class WallpaperForegroundService : Service() {
     }
 
     companion object {
-        private const val CHANNEL_ID = "jhsy_service_v2"
+        private const val CHANNEL_ID = "jhsy_service_v3"
         private const val NOTIFICATION_ID = 1001
         const val ACTION_STOP = "com.kers.killove.jhsy.STOP"
         const val ACTION_CHANGE_NOW = "com.kers.killove.jhsy.CHANGE_NOW"

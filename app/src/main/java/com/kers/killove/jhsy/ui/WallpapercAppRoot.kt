@@ -31,6 +31,7 @@ import com.kers.killove.jhsy.ui.screens.OverviewScreen
 import com.kers.killove.jhsy.ui.screens.BlacklistScreen
 import com.kers.killove.jhsy.ui.screens.PermissionOnboardingScreen
 import com.kers.killove.jhsy.ui.screens.SettingsScreen
+import com.kers.killove.jhsy.ui.screens.LocationAvoidScreen
 
 val LocalUiTextColor = compositionLocalOf { Color.White }
 val LocalCardAlpha = compositionLocalOf { 0.28f }
@@ -109,10 +110,13 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
                 ) {
                     composable("overview") { OverviewScreen(vm) }
                     composable("home") { HomeScreen(vm) }
-                    composable("settings") { SettingsScreen(vm, onOpenBlacklist = { nav.navigate("blacklist") }) }
+                    composable("settings") { SettingsScreen(vm, onOpenBlacklist = { nav.navigate("blacklist") }, onOpenLocationAvoid = { nav.navigate("location_avoid") }) }
                     composable("history") { HistoryScreen(vm) }
                     composable("blacklist") {
                         BlacklistScreen(vm, onBack = { nav.popBackStack() })
+                    }
+                    composable("location_avoid") {
+                        LocationAvoidScreen(vm, onBack = { nav.popBackStack() })
                     }
                 }
             }

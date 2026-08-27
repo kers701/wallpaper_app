@@ -103,6 +103,39 @@ enum class UiTextColor(val code: String, val label: String, val argb: Long) {
     }
 }
 
+
+/** 更换触发方式 */
+enum class TriggerType(val code: String, val label: String) {
+    Manual("manual", "手动"),
+    Auto("auto", "自动");
+
+    companion object {
+        fun fromCode(code: String): TriggerType =
+            entries.find { it.code == code } ?: Auto
+    }
+}
+
+/** 云备份提供方 */
+enum class CloudBackupProvider(val code: String, val label: String) {
+    Off("off", "关闭"),
+    WebDav("webdav", "WebDAV"),
+    OneDrive("onedrive", "OneDrive"),
+    GoogleDrive("gdrive", "Google 云盘");
+
+    companion object {
+        fun fromCode(code: String): CloudBackupProvider =
+            entries.find { it.code == code } ?: Off
+    }
+}
+
+/** 定位避让点 */
+data class AvoidanceLocation(
+    val id: String,
+    val name: String,
+    val lat: Double,
+    val lng: Double
+)
+
 data class AppSettings(
     val enabled: Boolean = false,
     val intervalMinutes: Int = 10,
@@ -176,7 +209,35 @@ data class AppSettings(
     /** 概览页极简模式：只显示概览，隐藏其它页 */
     val overviewMinimalMode: Boolean = false,
     /** 累计成功更换次数 */
-    val changeCount: Long = 0L
+    val changeCount: Long = 0L,
+
+    /** 本地兜底时是否也从 wallpapers 缓存选取（排除最新若干张） */
+    val localFallbackUseCache: Boolean = true,
+    /** 从缓存选取时跳过最新 N 张 */
+    val localFallbackCacheSkipNewest: Int = 3,
+
+    /** 云备份 */
+    val cloudBackupProvider: CloudBackupProvider = CloudBackupProvider.Off,
+    val cloudBackupUrl: String = "",
+    val cloudBackupUser: String = "",
+    val cloudBackupPassword: String = "",
+    val cloudBackupPath: String = "/jhsy_backup/",
+    /** 横屏/竖屏壁纸分离备份（仅 WiFi） */
+    val cloudBackupOrientSplit: Boolean = false,
+    val cloudBackupWifiOnly: Boolean = true,
+
+    /** 定位避让 */
+    val locationAvoidEnabled: Boolean = false,
+    val amapApiKey: String = "",
+    val avoidanceLocationsJson: String = "[]",
+    /** 定位回退：进入避让区时锁定纯度 R13 */
+    val locationFallbackEnabled: Boolean = true,
+    /** 定位极限回退：进入避让区仅用本地文件换壁纸 */
+    val locationExtremeFallbackEnabled: Boolean = false,
+    /** 进入避让区前保存的纯度 code，离开后恢复；空表示未锁定 */
+    val locationSavedPurity: String = "",
+    val locationSavedForceLocal: Boolean = false,
+    val locationInAvoidZone: Boolean = false
 ) {
     fun nextApiKey(): String? {
         val keys = apiKeys.map { it.trim() }.filter { it.isNotEmpty() }
@@ -217,7 +278,30 @@ data class AppSettings(
         if (!enabled || lastChangeAt <= 0L) return 0L
         return lastChangeAt + intervalMinutes.coerceIn(5, 180) * 60_000L
     }
+
+    fun avoidanceLocations(): List<AvoidanceLocation> {
+        if (avoidanceLocationsJson.isBlank() || avoidanceLocationsJson == "[]") return emptyList()
+        return try {
+            val arr = org.json.JSONArray(avoidanceLocationsJson)
+            val out = mutableListOf<AvoidanceLocation>()
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                val id = o.optString("id")
+                if (id.isBlank()) continue
+                val name = o.optString("name", id)
+                val lat = o.optDouble("lat", Double.NaN)
+                val lng = o.optDouble("lng", Double.NaN)
+                if (!lat.isNaN() && !lng.isNaN()) {
+                    out.add(AvoidanceLocation(id, name, lat, lng))
+                }
+            }
+            out
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
 }
+
 
 data class WallpaperItem(
     val id: String,

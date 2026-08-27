@@ -132,4 +132,34 @@ class LocalFallbackStore(private val context: Context) {
 
     fun defaultDirPath(): String =
         File(context.filesDir, "local_fallback").absolutePath
+
+    /**
+     * 本地兜底候选：自定义/私有目录 + 可选 wallpapers 缓存。
+     * 缓存按修改时间倒序，跳过最新 [skipNewest] 张，避免总是抽到刚换的图。
+     */
+    fun listFallbackCandidates(settings: AppSettings): List<File> {
+        val fromDir = listMedia(settings)
+        if (!settings.localFallbackUseCache) return fromDir
+        val cacheDir = File(context.filesDir, "wallpapers")
+        val skip = settings.localFallbackCacheSkipNewest.coerceIn(0, 50)
+        val fromCache = if (cacheDir.isDirectory) {
+            cacheDir.listFiles()
+                ?.filter { it.isFile && it.extension.lowercase() in imageExts && it.length() > 0 }
+                ?.sortedByDescending { it.lastModified() }
+                ?.drop(skip)
+                .orEmpty()
+        } else emptyList()
+        // 目录优先，再缓存；去重按绝对路径
+        val seen = mutableSetOf<String>()
+        val out = mutableListOf<File>()
+        for (f in fromDir + fromCache) {
+            val key = f.absolutePath
+            if (key !in seen) {
+                seen += key
+                out += f
+            }
+        }
+        return out
+    }
 }
+

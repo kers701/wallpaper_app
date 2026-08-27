@@ -10,6 +10,10 @@ import com.kers.killove.jhsy.data.remote.WallhavenApi
 import com.kers.killove.jhsy.data.wallpaper.SystemWallpaperSetter
 import com.kers.killove.jhsy.domain.AppSettings
 import com.kers.killove.jhsy.domain.ChangeResult
+import com.kers.killove.jhsy.domain.TriggerType
+import com.kers.killove.jhsy.domain.AvoidanceLocation
+import com.kers.killove.jhsy.util.CloudBackup
+import com.kers.killove.jhsy.util.LocationHelper
 import com.kers.killove.jhsy.data.translate.KeywordTranslator
 import com.kers.killove.jhsy.domain.WallpaperChanger
 import com.kers.killove.jhsy.service.WallpaperForegroundService
@@ -272,7 +276,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _busy.value = true
             _status.value = "正在更换…"
-            when (val r = changer.changeOnce(forceIgnoreScreenOff = true)) {
+            when (val r = changer.changeOnce(forceIgnoreScreenOff = true, triggerType = TriggerType.Manual)) {
                 is ChangeResult.Success -> {
                     val res = if (r.item.width > 0) "${r.item.width}×${r.item.height}" else ""
                     val extra = if (r.item.source == "local" && r.item.category.startsWith("local←")) {
@@ -544,6 +548,101 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun hasUsageAccess(): Boolean = ForegroundAppHelper.hasUsageAccess(getApplication())
 
+
+
+    fun clearWallpaperCache() {
+        viewModelScope.launch {
+            try {
+                val dir = File(getApplication<Application>().filesDir, "wallpapers")
+                var n = 0
+                if (dir.isDirectory) {
+                    dir.listFiles()?.forEach { if (it.isFile) { it.delete(); n++ } }
+                }
+                val frames = File(getApplication<Application>().cacheDir, "video_frames")
+                if (frames.isDirectory) {
+                    frames.listFiles()?.forEach { if (it.isFile) { it.delete(); n++ } }
+                }
+                refreshCacheSize()
+                _status.value = "已清空壁纸缓存（$n 个文件）"
+            } catch (e: Exception) {
+                _status.value = "清空缓存失败：${e.message}"
+            }
+        }
+    }
+
+    fun clearLogs() {
+        viewModelScope.launch {
+            try {
+                dao.deleteAll()
+                _status.value = "已清空更换记录（日志）"
+            } catch (e: Exception) {
+                _status.value = "清空记录失败：${e.message}"
+            }
+        }
+    }
+
+    fun cloudUploadConfig() {
+        viewModelScope.launch {
+            val s = settings.value
+            val r = CloudBackup.uploadConfig(getApplication(), s)
+            _status.value = r.fold(
+                onSuccess = { "云备份配置成功：$it" },
+                onFailure = { "云备份失败：${it.message}" }
+            )
+            if (s.cloudBackupOrientSplit) {
+                val r2 = CloudBackup.uploadOrientSplitWallpapers(getApplication(), s)
+                r2.onSuccess { _status.value = (_status.value + "\n" + it) }
+            }
+        }
+    }
+
+    fun cloudDownloadConfig() {
+        viewModelScope.launch {
+            val s = settings.value
+            CloudBackup.downloadConfig(s).fold(
+                onSuccess = { json ->
+                    try {
+                        val restored = ConfigBackup.fromJson(json, s)
+                        settingsRepo.save(restored)
+                        applySchedule(restored)
+                        _status.value = "已从云端恢复配置（PIN 未改动）"
+                    } catch (e: Exception) {
+                        _status.value = "解析云备份失败：${e.message}"
+                    }
+                },
+                onFailure = { _status.value = "云下载失败：${it.message}" }
+            )
+        }
+    }
+
+    fun searchAvoidPlaces(keyword: String, onResult: (List<LocationHelper.PlaceHit>) -> Unit) {
+        viewModelScope.launch {
+            val key = settings.value.amapApiKey
+            val hits = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                LocationHelper.searchPlaces(key, keyword)
+            }
+            onResult(hits)
+        }
+    }
+
+    fun addAvoidanceLocation(loc: AvoidanceLocation) {
+        viewModelScope.launch {
+            val cur = settings.value.avoidanceLocations().toMutableList()
+            if (cur.none { it.id == loc.id }) cur.add(loc)
+            val json = LocationHelper.locationsToJson(cur)
+            settingsRepo.save(settings.value.copy(avoidanceLocationsJson = json))
+            _status.value = "已加入避让：${loc.name}"
+        }
+    }
+
+    fun removeAvoidanceLocation(id: String) {
+        viewModelScope.launch {
+            val cur = settings.value.avoidanceLocations().filter { it.id != id }
+            val json = LocationHelper.locationsToJson(cur)
+            settingsRepo.save(settings.value.copy(avoidanceLocationsJson = json))
+            _status.value = "已移除避让点"
+        }
+    }
 
     private fun applySchedule(s: AppSettings) {
         val ctx = getApplication<Application>()

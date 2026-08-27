@@ -14,6 +14,7 @@ import com.kers.killove.jhsy.data.remote.WallhavenApi
 import com.kers.killove.jhsy.data.local.PageCacheStore
 import com.kers.killove.jhsy.data.wallpaper.SystemWallpaperSetter
 import com.kers.killove.jhsy.util.ForegroundAppHelper
+import com.kers.killove.jhsy.util.LocationHelper
 import kotlinx.coroutines.flow.first
 import java.io.File
 
@@ -26,14 +27,24 @@ class WallpaperChanger(
     private val localStore: LocalFallbackStore = LocalFallbackStore(context)
 ) {
     private val pageCache by lazy { PageCacheStore.from(context) }
+    private var currentTrigger: TriggerType = TriggerType.Auto
 
     companion object {
         private const val CACHE_LIMIT_BYTES = 10L * 1024 * 1024 * 1024 // 10GB
         private const val HISTORY_KEEP = 77
     }
 
-    suspend fun changeOnce(forceIgnoreScreenOff: Boolean = false): ChangeResult {
-        val settings = settingsRepo.settingsFlow.first()
+    suspend fun changeOnce(
+        forceIgnoreScreenOff: Boolean = false,
+        triggerType: TriggerType = TriggerType.Auto
+    ): ChangeResult {
+        currentTrigger = triggerType
+        var settings = settingsRepo.settingsFlow.first()
+
+        // 定位避让：进入/离开避让区时调整纯度与强制本地
+        if (settings.locationAvoidEnabled && settings.avoidanceLocations().isNotEmpty()) {
+            settings = applyLocationAvoidance(settings)
+        }
 
         if (!forceIgnoreScreenOff && settings.skipWhenScreenOff && isScreenOff()) {
             return ChangeResult.Failure("息屏已跳过本次更换")
@@ -257,7 +268,7 @@ class WallpaperChanger(
         if (!settings.localFallbackEnabled && !settings.forceLocalMode) {
             return ChangeResult.Failure(reason)
         }
-        val files = localStore.listImages(settings).filter { f ->
+        val files = localStore.listFallbackCandidates(settings).filter { f ->
             val id = "local_${f.name}"
             id !in excludeIds
         }
@@ -287,7 +298,8 @@ class WallpaperChanger(
                 width = 0, height = 0,
                 fileSize = size,
                 source = "local",
-                keyword = ""
+                keyword = "",
+                triggerType = currentTrigger.code
             )
         )
         dao.trimToKeep(HISTORY_KEEP)
@@ -351,7 +363,8 @@ class WallpaperChanger(
                 height = item.height,
                 fileSize = fileSize,
                 source = item.source,
-                keyword = kwRecord
+                keyword = kwRecord,
+                triggerType = currentTrigger.code
             )
         )
         dao.trimToKeep(HISTORY_KEEP)

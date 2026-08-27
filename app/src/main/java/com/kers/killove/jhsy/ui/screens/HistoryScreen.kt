@@ -2,6 +2,8 @@ package com.kers.killove.jhsy.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -31,6 +33,17 @@ fun HistoryScreen(vm: MainViewModel) {
             .padding(16.dp)
     ) {
         Text("最近记录", style = MaterialTheme.typography.headlineSmall, color = textColor)
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            androidx.compose.material3.OutlinedButton(onClick = { vm.clearLogs() }) {
+                Text("清空记录")
+            }
+            androidx.compose.material3.OutlinedButton(onClick = { vm.clearWallpaperCache() }) {
+                Text("清空缓存")
+            }
+        }
         if (recent.isEmpty()) {
             Text(
                 "暂无记录，点击首页「立即更换」试一次",
@@ -57,7 +70,11 @@ fun HistoryScreen(vm: MainViewModel) {
                                 "${item.width}×${item.height}"
                             } else "分辨率未知"
                             Text("分辨率: $res · 大小: ${formatFileSize(item.fileSize)}", color = textColor)
-                            Text(fmt.format(Date(item.setAt)), style = MaterialTheme.typography.bodySmall, color = textColor.copy(alpha = 0.75f))
+                            val triggerLabel = when (item.triggerType) {
+                                "manual" -> "手动"
+                                else -> "自动"
+                            }
+                            Text("触发: $triggerLabel · ${fmt.format(Date(item.setAt))}", style = MaterialTheme.typography.bodySmall, color = textColor.copy(alpha = 0.75f))
                         }
                     }
                 }

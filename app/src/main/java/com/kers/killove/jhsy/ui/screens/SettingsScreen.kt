@@ -51,6 +51,7 @@ import com.kers.killove.jhsy.domain.TranslateProvider
 import com.kers.killove.jhsy.domain.WallpaperFitMode
 import com.kers.killove.jhsy.domain.OrientationFilter
 import com.kers.killove.jhsy.domain.WallpaperTarget
+import com.kers.killove.jhsy.domain.CloudBackupProvider
 import com.kers.killove.jhsy.ui.LocalUiTextColor
 import com.kers.killove.jhsy.util.BatteryHelper
 import com.kers.killove.jhsy.util.SuperServiceController
@@ -59,7 +60,7 @@ import com.kers.killove.jhsy.ui.MainViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}) {
+fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLocationAvoid: () -> Unit = {}) {
     val createDocLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
     ) { uri ->
@@ -135,6 +136,19 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}) {
     var localDir by remember(settings.localFallbackDir) {
         mutableStateOf(settings.localFallbackDir)
     }
+    var localFbCache by remember(settings.localFallbackUseCache) { mutableStateOf(settings.localFallbackUseCache) }
+    var localFbSkip by remember(settings.localFallbackCacheSkipNewest) { mutableIntStateOf(settings.localFallbackCacheSkipNewest) }
+    var cloudProv by remember(settings.cloudBackupProvider) { mutableStateOf(settings.cloudBackupProvider) }
+    var cloudUrl by remember(settings.cloudBackupUrl, keysVisible) { mutableStateOf(if (keysVisible) settings.cloudBackupUrl else "") }
+    var cloudUser by remember(settings.cloudBackupUser, keysVisible) { mutableStateOf(if (keysVisible) settings.cloudBackupUser else "") }
+    var cloudPass by remember(settings.cloudBackupPassword, keysVisible) { mutableStateOf(if (keysVisible) settings.cloudBackupPassword else "") }
+    var cloudPath by remember(settings.cloudBackupPath) { mutableStateOf(settings.cloudBackupPath) }
+    var cloudOrient by remember(settings.cloudBackupOrientSplit) { mutableStateOf(settings.cloudBackupOrientSplit) }
+    var cloudWifi by remember(settings.cloudBackupWifiOnly) { mutableStateOf(settings.cloudBackupWifiOnly) }
+    var locAvoid by remember(settings.locationAvoidEnabled) { mutableStateOf(settings.locationAvoidEnabled) }
+    var amapKey by remember(settings.amapApiKey, keysVisible) { mutableStateOf(if (keysVisible) settings.amapApiKey else "") }
+    var locFb by remember(settings.locationFallbackEnabled) { mutableStateOf(settings.locationFallbackEnabled) }
+    var locExtreme by remember(settings.locationExtremeFallbackEnabled) { mutableStateOf(settings.locationExtremeFallbackEnabled) }
 
     var bgApi by remember(settings.bgApiUrl) { mutableStateOf(settings.bgApiUrl) }
     var bgLocal by remember(settings.bgLocalPath) { mutableStateOf(settings.bgLocalPath) }
@@ -563,6 +577,68 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}) {
             placeholder = { Text("/storage/emulated/0/Pictures/Wallpapers") }
         )
         Text("当前：${vm.localFallbackInfo()}", style = MaterialTheme.typography.bodySmall)
+        RowSwitch("本地兜底也使用下载缓存（跳过最新图）", localFbCache) { localFbCache = it }
+        if (localFbCache) {
+            Text("跳过最新 ${localFbSkip} 张缓存", style = MaterialTheme.typography.bodySmall)
+            Slider(
+                value = localFbSkip.toFloat(),
+                onValueChange = { localFbSkip = it.toInt().coerceIn(0, 20) },
+                valueRange = 0f..20f,
+                steps = 19
+            )
+        }
+
+        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+        Text("云备份（WebDAV / OneDrive / Google）", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "OneDrive / Google 请填其 WebDAV 兼容地址或第三方网关；统一走 WebDAV 协议。",
+            style = MaterialTheme.typography.bodySmall
+        )
+        EnumDropdown("云备份提供方", CloudBackupProvider.entries, cloudProv) { cloudProv = it }
+        if (cloudProv != CloudBackupProvider.Off) {
+            if (keysVisible) {
+                OutlinedTextField(value = cloudUrl, onValueChange = { cloudUrl = it }, label = { Text("服务器 URL") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                OutlinedTextField(value = cloudUser, onValueChange = { cloudUser = it }, label = { Text("用户名") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                OutlinedTextField(value = cloudPass, onValueChange = { cloudPass = it }, label = { Text("密码 / Token") }, modifier = Modifier.fillMaxWidth(), singleLine = true, visualTransformation = PasswordVisualTransformation())
+            } else {
+                LockedField("云备份凭据")
+            }
+            OutlinedTextField(value = cloudPath, onValueChange = { cloudPath = it }, label = { Text("远程路径") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+            RowSwitch("仅 WiFi 时备份", cloudWifi) { cloudWifi = it }
+            RowSwitch("横竖屏壁纸分离备份（仅 WiFi）", cloudOrient) { cloudOrient = it }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { vm.cloudUploadConfig() }, modifier = Modifier.weight(1f)) { Text("上传云备份") }
+                OutlinedButton(onClick = { vm.cloudDownloadConfig() }, modifier = Modifier.weight(1f)) { Text("从云恢复") }
+            }
+        }
+
+        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+        Text("定位避让", style = MaterialTheme.typography.titleMedium)
+        RowSwitch("启用定位避让", locAvoid) { locAvoid = it }
+        if (locAvoid) {
+            if (keysVisible) {
+                OutlinedTextField(value = amapKey, onValueChange = { amapKey = it }, label = { Text("高德 Web 服务 Key") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+            } else {
+                LockedField("高德 Key")
+            }
+            RowSwitch("定位回退（区内锁定纯度 R13）", locFb) { locFb = it }
+            RowSwitch("定位极限回退（区内仅本地换壁纸）", locExtreme) { locExtreme = it }
+            Text(
+                "已选 ${settings.avoidanceLocations().size} 个点 · 区内状态: ${if (settings.locationInAvoidZone) "生效中" else "未触发"}",
+                style = MaterialTheme.typography.bodySmall
+            )
+            OutlinedButton(onClick = onOpenLocationAvoid, modifier = Modifier.fillMaxWidth()) {
+                Text("管理避让地点…")
+            }
+        }
+
+        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+        Text("缓存与日志", style = MaterialTheme.typography.titleMedium)
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { vm.clearWallpaperCache() }, modifier = Modifier.weight(1f)) { Text("清空缓存文件") }
+            OutlinedButton(onClick = { vm.clearLogs() }, modifier = Modifier.weight(1f)) { Text("清空更换记录") }
+        }
+
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
         Text("应用黑名单", style = MaterialTheme.typography.titleMedium)
         Text(
@@ -616,6 +692,19 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}) {
                         localFallbackEnabled = localFb,
                         forceLocalMode = forceLocal,
                         localFallbackDir = localDir.trim(),
+                        localFallbackUseCache = localFbCache,
+                        localFallbackCacheSkipNewest = localFbSkip,
+                        cloudBackupProvider = cloudProv,
+                        cloudBackupUrl = if (keysVisible) cloudUrl.trim() else settings.cloudBackupUrl,
+                        cloudBackupUser = if (keysVisible) cloudUser.trim() else settings.cloudBackupUser,
+                        cloudBackupPassword = if (keysVisible) cloudPass else settings.cloudBackupPassword,
+                        cloudBackupPath = cloudPath.trim().ifBlank { "/jhsy_backup/" },
+                        cloudBackupOrientSplit = cloudOrient,
+                        cloudBackupWifiOnly = cloudWifi,
+                        locationAvoidEnabled = locAvoid,
+                        amapApiKey = if (keysVisible) amapKey.trim() else settings.amapApiKey,
+                        locationFallbackEnabled = locFb,
+                        locationExtremeFallbackEnabled = locExtreme,
                         bgApiUrl = bgApi.trim(),
                         bgLocalPath = bgLocal.trim(),
                         bgMode = bgMode
@@ -664,6 +753,7 @@ private fun <T> EnumDropdown(
             is OrientationFilter -> it.label
             is WallpaperFitMode -> it.label
             is TranslateProvider -> it.label
+            is CloudBackupProvider -> it.label
             else -> it.toString()
         }
     },

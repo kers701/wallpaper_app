@@ -27,7 +27,9 @@ data class WallpaperEntity(
     val fileSize: Long = 0L,
     val source: String = "",
     /** 本次搜索使用的关键词（Wallhaven 时有意义） */
-    val keyword: String = ""
+    val keyword: String = "",
+    /** 手动/自动触发 */
+    val triggerType: String = "auto"
 )
 
 @Dao
@@ -65,7 +67,7 @@ interface WallpaperDao {
 
 @Database(
     entities = [WallpaperEntity::class, SearchPageCacheEntity::class],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class WallpaperDatabase : RoomDatabase() {
@@ -104,6 +106,12 @@ abstract class WallpaperDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE wallpaper_records ADD COLUMN triggerType TEXT NOT NULL DEFAULT 'auto'")
+            }
+        }
+
         fun get(context: Context): WallpaperDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -111,7 +119,7 @@ abstract class WallpaperDatabase : RoomDatabase() {
                     WallpaperDatabase::class.java,
                     "wallpaperc.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .fallbackToDestructiveMigration()
                     .build()
                     .also { instance = it }

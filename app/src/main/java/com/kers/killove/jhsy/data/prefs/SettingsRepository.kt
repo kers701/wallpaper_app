@@ -20,6 +20,7 @@ import com.kers.killove.jhsy.domain.OrientationFilter
 import com.kers.killove.jhsy.domain.ResolutionMode
 import com.kers.killove.jhsy.domain.UiTextColor
 import com.kers.killove.jhsy.domain.WallpaperTarget
+import com.kers.killove.jhsy.domain.CloudBackupProvider
 import com.kers.killove.jhsy.util.ProcessBridgePrefs
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -76,6 +77,23 @@ class SettingsRepository(private val context: Context) {
         val BLACKLIST = stringPreferencesKey("blacklist_packages")
         val OVERVIEW_MINIMAL = booleanPreferencesKey("overview_minimal")
         val CHANGE_COUNT = longPreferencesKey("change_count")
+        val LOCAL_FB_CACHE = booleanPreferencesKey("local_fb_use_cache")
+        val LOCAL_FB_SKIP = intPreferencesKey("local_fb_cache_skip")
+        val CLOUD_PROVIDER = stringPreferencesKey("cloud_backup_provider")
+        val CLOUD_URL = stringPreferencesKey("cloud_backup_url")
+        val CLOUD_USER = stringPreferencesKey("cloud_backup_user")
+        val CLOUD_PASS = stringPreferencesKey("cloud_backup_pass")
+        val CLOUD_PATH = stringPreferencesKey("cloud_backup_path")
+        val CLOUD_ORIENT = booleanPreferencesKey("cloud_backup_orient")
+        val CLOUD_WIFI = booleanPreferencesKey("cloud_backup_wifi")
+        val LOC_AVOID = booleanPreferencesKey("location_avoid")
+        val AMAP_KEY = stringPreferencesKey("amap_api_key")
+        val AVOID_LOCS = stringPreferencesKey("avoidance_locations")
+        val LOC_FALLBACK = booleanPreferencesKey("location_fallback")
+        val LOC_EXTREME = booleanPreferencesKey("location_extreme")
+        val LOC_SAVED_PURITY = stringPreferencesKey("location_saved_purity")
+        val LOC_SAVED_FORCE = booleanPreferencesKey("location_saved_force")
+        val LOC_IN_ZONE = booleanPreferencesKey("location_in_zone")
         val LEGACY_API_KEY = stringPreferencesKey("api_key")
         val LEGACY_FALLBACK = booleanPreferencesKey("fallback")
     }
@@ -133,7 +151,24 @@ class SettingsRepository(private val context: Context) {
             pinEnabled = p[Keys.PIN_ENABLED] ?: false,
             blacklistPackages = splitLines(p[Keys.BLACKLIST] ?: ""),
             overviewMinimalMode = p[Keys.OVERVIEW_MINIMAL] ?: false,
-            changeCount = p[Keys.CHANGE_COUNT] ?: 0L
+            changeCount = p[Keys.CHANGE_COUNT] ?: 0L,
+            localFallbackUseCache = p[Keys.LOCAL_FB_CACHE] ?: true,
+            localFallbackCacheSkipNewest = (p[Keys.LOCAL_FB_SKIP] ?: 3).coerceIn(0, 50),
+            cloudBackupProvider = CloudBackupProvider.fromCode(p[Keys.CLOUD_PROVIDER] ?: "off"),
+            cloudBackupUrl = p[Keys.CLOUD_URL] ?: "",
+            cloudBackupUser = p[Keys.CLOUD_USER] ?: "",
+            cloudBackupPassword = p[Keys.CLOUD_PASS] ?: "",
+            cloudBackupPath = p[Keys.CLOUD_PATH] ?: "/jhsy_backup/",
+            cloudBackupOrientSplit = p[Keys.CLOUD_ORIENT] ?: false,
+            cloudBackupWifiOnly = p[Keys.CLOUD_WIFI] ?: true,
+            locationAvoidEnabled = p[Keys.LOC_AVOID] ?: false,
+            amapApiKey = p[Keys.AMAP_KEY] ?: "",
+            avoidanceLocationsJson = p[Keys.AVOID_LOCS] ?: "[]",
+            locationFallbackEnabled = p[Keys.LOC_FALLBACK] ?: true,
+            locationExtremeFallbackEnabled = p[Keys.LOC_EXTREME] ?: false,
+            locationSavedPurity = p[Keys.LOC_SAVED_PURITY] ?: "",
+            locationSavedForceLocal = p[Keys.LOC_SAVED_FORCE] ?: false,
+            locationInAvoidZone = p[Keys.LOC_IN_ZONE] ?: false
         )
     }
 
@@ -186,6 +221,23 @@ class SettingsRepository(private val context: Context) {
             p[Keys.BLACKLIST] = settings.blacklistPackages.joinToString("\n")
             p[Keys.OVERVIEW_MINIMAL] = settings.overviewMinimalMode
             p[Keys.CHANGE_COUNT] = settings.changeCount
+            p[Keys.LOCAL_FB_CACHE] = settings.localFallbackUseCache
+            p[Keys.LOCAL_FB_SKIP] = settings.localFallbackCacheSkipNewest.coerceIn(0, 50)
+            p[Keys.CLOUD_PROVIDER] = settings.cloudBackupProvider.code
+            p[Keys.CLOUD_URL] = settings.cloudBackupUrl
+            p[Keys.CLOUD_USER] = settings.cloudBackupUser
+            p[Keys.CLOUD_PASS] = settings.cloudBackupPassword
+            p[Keys.CLOUD_PATH] = settings.cloudBackupPath
+            p[Keys.CLOUD_ORIENT] = settings.cloudBackupOrientSplit
+            p[Keys.CLOUD_WIFI] = settings.cloudBackupWifiOnly
+            p[Keys.LOC_AVOID] = settings.locationAvoidEnabled
+            p[Keys.AMAP_KEY] = settings.amapApiKey
+            p[Keys.AVOID_LOCS] = settings.avoidanceLocationsJson
+            p[Keys.LOC_FALLBACK] = settings.locationFallbackEnabled
+            p[Keys.LOC_EXTREME] = settings.locationExtremeFallbackEnabled
+            p[Keys.LOC_SAVED_PURITY] = settings.locationSavedPurity
+            p[Keys.LOC_SAVED_FORCE] = settings.locationSavedForceLocal
+            p[Keys.LOC_IN_ZONE] = settings.locationInAvoidZone
         }
         ProcessBridgePrefs.sync(context, settings)
     }

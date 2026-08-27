@@ -11,6 +11,7 @@ import com.kers.killove.jhsy.domain.TranslateProvider
 import com.kers.killove.jhsy.domain.UiTextColor
 import com.kers.killove.jhsy.domain.WallpaperFitMode
 import com.kers.killove.jhsy.domain.WallpaperTarget
+import com.kers.killove.jhsy.domain.CloudBackupProvider
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -67,6 +68,20 @@ object ConfigBackup {
         o.put("localFallbackEnabled", settings.localFallbackEnabled)
         o.put("forceLocalMode", settings.forceLocalMode)
         o.put("localFallbackDir", settings.localFallbackDir)
+        o.put("localFallbackUseCache", settings.localFallbackUseCache)
+        o.put("localFallbackCacheSkipNewest", settings.localFallbackCacheSkipNewest)
+        o.put("cloudBackupProvider", settings.cloudBackupProvider.name)
+        o.put("cloudBackupUrl", settings.cloudBackupUrl)
+        o.put("cloudBackupUser", settings.cloudBackupUser)
+        o.put("cloudBackupPassword", settings.cloudBackupPassword)
+        o.put("cloudBackupPath", settings.cloudBackupPath)
+        o.put("cloudBackupOrientSplit", settings.cloudBackupOrientSplit)
+        o.put("cloudBackupWifiOnly", settings.cloudBackupWifiOnly)
+        o.put("locationAvoidEnabled", settings.locationAvoidEnabled)
+        o.put("amapApiKey", settings.amapApiKey)
+        o.put("avoidanceLocationsJson", settings.avoidanceLocationsJson)
+        o.put("locationFallbackEnabled", settings.locationFallbackEnabled)
+        o.put("locationExtremeFallbackEnabled", settings.locationExtremeFallbackEnabled)
         o.put("bgApiUrl", settings.bgApiUrl)
         o.put("bgLocalPath", settings.bgLocalPath)
         o.put("bgMode", settings.bgMode.name)
@@ -137,6 +152,20 @@ object ConfigBackup {
             localFallbackEnabled = o.optBoolean("localFallbackEnabled", base.localFallbackEnabled),
             forceLocalMode = o.optBoolean("forceLocalMode", base.forceLocalMode),
             localFallbackDir = o.optString("localFallbackDir", base.localFallbackDir),
+            localFallbackUseCache = o.optBoolean("localFallbackUseCache", base.localFallbackUseCache),
+            localFallbackCacheSkipNewest = o.optInt("localFallbackCacheSkipNewest", base.localFallbackCacheSkipNewest).coerceIn(0, 50),
+            cloudBackupProvider = runCatching { CloudBackupProvider.valueOf(o.optString("cloudBackupProvider", base.cloudBackupProvider.name)) }.getOrDefault(base.cloudBackupProvider),
+            cloudBackupUrl = o.optString("cloudBackupUrl", base.cloudBackupUrl),
+            cloudBackupUser = o.optString("cloudBackupUser", base.cloudBackupUser),
+            cloudBackupPassword = o.optString("cloudBackupPassword", base.cloudBackupPassword),
+            cloudBackupPath = o.optString("cloudBackupPath", base.cloudBackupPath),
+            cloudBackupOrientSplit = o.optBoolean("cloudBackupOrientSplit", base.cloudBackupOrientSplit),
+            cloudBackupWifiOnly = o.optBoolean("cloudBackupWifiOnly", base.cloudBackupWifiOnly),
+            locationAvoidEnabled = o.optBoolean("locationAvoidEnabled", base.locationAvoidEnabled),
+            amapApiKey = o.optString("amapApiKey", base.amapApiKey),
+            avoidanceLocationsJson = o.optString("avoidanceLocationsJson", base.avoidanceLocationsJson),
+            locationFallbackEnabled = o.optBoolean("locationFallbackEnabled", base.locationFallbackEnabled),
+            locationExtremeFallbackEnabled = o.optBoolean("locationExtremeFallbackEnabled", base.locationExtremeFallbackEnabled),
             bgApiUrl = o.optString("bgApiUrl", base.bgApiUrl),
             bgLocalPath = o.optString("bgLocalPath", base.bgLocalPath),
             bgMode = enumBg(o.optString("bgMode", base.bgMode.name)),
