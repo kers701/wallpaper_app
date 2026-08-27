@@ -7,6 +7,7 @@ import android.os.BatteryManager
 import android.os.Build
 import android.os.PowerManager
 import com.kers.killove.jhsy.data.local.LocalFallbackStore
+import com.kers.killove.jhsy.data.local.NextWallpaperStore
 import com.kers.killove.jhsy.data.local.WallpaperDao
 import com.kers.killove.jhsy.data.local.WallpaperEntity
 import com.kers.killove.jhsy.data.prefs.SettingsRepository
@@ -16,7 +17,11 @@ import com.kers.killove.jhsy.data.wallpaper.SystemWallpaperSetter
 import com.kers.killove.jhsy.util.ForegroundAppHelper
 import com.kers.killove.jhsy.util.ProcessBridgePrefs
 import com.kers.killove.jhsy.util.LocationHelper
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import java.io.File
 
 class WallpaperChanger(
@@ -29,11 +34,19 @@ class WallpaperChanger(
     private val localStore: LocalFallbackStore = LocalFallbackStore(context)
 ) {
     private val pageCache by lazy { PageCacheStore.from(context) }
+    private val nextStore by lazy { NextWallpaperStore(context) }
+    private val prefetchScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var currentTrigger: TriggerType = TriggerType.Auto
 
     companion object {
         private const val CACHE_LIMIT_BYTES = 10L * 1024 * 1024 * 1024 // 10GB
         private const val HISTORY_KEEP = 77
+    }
+
+    /** FGS 周期调用：处理预下载 5 分钟重试 */
+    suspend fun tickPrefetchMaintenance() {
+        val settings = settingsRepo.settingsFlow.first()
+        processPrefetchRetries(settings)
     }
 
     suspend fun changeOnce(
@@ -81,7 +94,10 @@ class WallpaperChanger(
             return applyLocalFallback(settings, "强制本地模式", settings.target, emptySet())
         }
 
-        // 桌面锁屏隔离：两次下载，各用不同关键词
+        // 到期的预下载失败重试（仅 1 次、间隔 5 分钟）
+        processPrefetchRetries(settings)
+
+        // 桌面锁屏隔离：优先用预下载，各用不同关键词
         if (settings.isolateHomeLock &&
             settings.target == WallpaperTarget.Both &&
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.N
@@ -94,10 +110,22 @@ class WallpaperChanger(
             val lock = changeForTarget(settings, WallpaperTarget.Lock, setOf(homeId), forceKeyword = kwLock)
             // 隔离用了两个词，索引 +2
             advanceKeywordIndex(settings, steps = 2)
-            return combineIsolate(home, lock)
+            val combined = combineIsolate(home, lock)
+            if (combined is ChangeResult.Success) {
+                // 更换成功后再预取下一轮（不阻塞本次返回）
+                schedulePrefetch(
+                    listOf(WallpaperTarget.Home, WallpaperTarget.Lock),
+                    setOf(homeId, (lock as? ChangeResult.Success)?.item?.id ?: "")
+                )
+            }
+            return combined
         }
 
-        return changeForTarget(settings, settings.target, emptySet(), forceKeyword = null)
+        val single = changeForTarget(settings, settings.target, emptySet(), forceKeyword = null)
+        if (single is ChangeResult.Success) {
+            schedulePrefetch(listOf(settings.target), setOf(single.item.id))
+        }
+        return single
     }
 
     private fun combineIsolate(home: ChangeResult, lock: ChangeResult): ChangeResult {
@@ -127,6 +155,22 @@ class WallpaperChanger(
         forceKeyword: String?,
         advanceKeyword: Boolean = true
     ): ChangeResult {
+        // 有预下载则直接设置，本次不发起下载
+        val ready = nextStore.takeReady(target)
+        if (ready != null) {
+            onProgress(0.2f, "使用预下载壁纸…")
+            when (val r = applyReadySlot(ready, settings, target, advanceKeyword)) {
+                is ChangeResult.Success -> {
+                    onProgress(1f, "预下载已应用")
+                    return r
+                }
+                is ChangeResult.Failure -> {
+                    // 文件损坏等：清掉后走在线下载
+                    nextStore.clear(target)
+                }
+            }
+        }
+
         val category = api.nextCategory(settings)
         val keyword = forceKeyword ?: pickKeyword(settings, offset = 0)
         val (dw, dh) = setter.screenSize()
@@ -428,6 +472,213 @@ class WallpaperChanger(
      * 跃迁标签清洗：去空、去重，并忽略与本次搜索词相同的标签（大小写不敏感）。
      * 多词搜索（如 "red car"）时，整句与分词都会排除。
      */
+
+    // ─── 预下载：更换后异步拉下一张（仅 Wallhaven + 兜底 API） ───
+
+    private fun schedulePrefetch(targets: List<WallpaperTarget>, excludeIds: Set<String>) {
+        prefetchScope.launch {
+            runCatching {
+                val settings = settingsRepo.settingsFlow.first()
+                if (settings.forceLocalMode) return@launch
+                for ((i, target) in targets.withIndex()) {
+                    if (nextStore.hasReady(target)) continue
+                    if (nextStore.retriesExhausted(target) && nextStore.failCount(target) >= 2) {
+                        // 上次预取已失败两次，等下次更换触发时再下；此处仍尝试一次新周期
+                        nextStore.clearFail(target)
+                    }
+                    val kw = pickKeyword(settings, offset = i)
+                    prefetchDownload(settings, target, excludeIds, kw)
+                }
+            }
+        }
+    }
+
+    private suspend fun processPrefetchRetries(settings: AppSettings) {
+        if (settings.forceLocalMode) return
+        val targets = if (settings.isolateHomeLock && settings.target == WallpaperTarget.Both) {
+            listOf(WallpaperTarget.Home, WallpaperTarget.Lock)
+        } else {
+            listOf(settings.target)
+        }
+        for ((i, target) in targets.withIndex()) {
+            if (nextStore.shouldRetryOnce(target)) {
+                onProgress(0f, "预下载重试中…")
+                val kw = pickKeyword(settings, offset = i)
+                prefetchDownload(settings, target, emptySet(), kw)
+            }
+        }
+    }
+
+    /**
+     * 搜索并下载到 next_queue，不设置壁纸。
+     * 失败：记 1 次，5 分钟后由 processPrefetchRetries 再试；再失败不再自动重试。
+     */
+    private suspend fun prefetchDownload(
+        settings: AppSettings,
+        target: WallpaperTarget,
+        excludeIds: Set<String>,
+        forceKeyword: String?
+    ) {
+        val category = api.nextCategory(settings)
+        val keyword = forceKeyword ?: pickKeyword(settings, offset = 0)
+        val (dw, dh) = setter.screenSize()
+        var lastError: String? = null
+
+        // Wallhaven
+        try {
+            val pageResult = api.searchRandomCachedPage(settings, category, keyword, dw, dh, pageCache)
+            var candidates = filterOrientation(pageResult.items, settings).filter { it.id !in excludeIds }
+            if (candidates.isEmpty()) {
+                candidates = filterOrientation(
+                    api.searchRandomCachedPage(settings, category, keyword, dw, dh, pageCache).items,
+                    settings
+                ).filter { it.id !in excludeIds }
+            }
+            val item = pickCandidate(candidates, excludeIds)
+            if (item != null) {
+                if (savePrefetchFile(item, target, keyword, category)) return
+                lastError = "预下载写入失败"
+            } else {
+                lastError = "Wallhaven 无候选"
+            }
+        } catch (e: Exception) {
+            lastError = "Wallhaven: ${e.message}"
+        }
+
+        // 兜底 API
+        if (settings.networkFallbackEnabled) {
+            for (url in settings.fallbackApiUrls()) {
+                try {
+                    val fb = api.fetchFallbackApi(url, maxOf(settings.minWidth, dw), maxOf(settings.minHeight, dh))
+                    val unique = fb.copy(id = fb.id + "_pref_${target.name}_${System.nanoTime() % 100000}")
+                    if (savePrefetchFile(unique, target, null, category)) return
+                } catch (_: Exception) {
+                }
+            }
+        }
+
+        nextStore.markFail(target)
+        // lastError 仅用于调试，不打断主流程
+        lastError?.let { /* no-op */ }
+    }
+
+    private suspend fun savePrefetchFile(
+        item: WallpaperItem,
+        target: WallpaperTarget,
+        keyword: String?,
+        category: String
+    ): Boolean {
+        val dest = nextStore.fileFor(target)
+        dest.parentFile?.mkdirs()
+        val ok = if (item.source == "local") {
+            false
+        } else {
+            val prefetched = item.prefetchedBytes
+            if (prefetched != null && prefetched.isNotEmpty()) {
+                runCatching {
+                    dest.writeBytes(prefetched)
+                    true
+                }.getOrDefault(false)
+            } else {
+                api.downloadToFile(item.pathUrl, dest) { read, total ->
+                    val frac = if (total > 0L) (read.toFloat() / total).coerceIn(0f, 0.99f) else 0f
+                    onProgress(frac, "预下载 ${read / 1024}KB")
+                }
+            }
+        }
+        if (!ok || !dest.exists() || dest.length() < 32L) {
+            runCatching { dest.delete() }
+            return false
+        }
+        nextStore.put(
+            NextWallpaperStore.Slot(
+                target = target.name,
+                id = item.id,
+                path = dest.absolutePath,
+                sourceUrl = item.pathUrl,
+                keyword = keyword.orEmpty(),
+                category = item.category.ifBlank { category },
+                purity = item.purity,
+                width = item.width,
+                height = item.height,
+                source = item.source,
+                readyAt = System.currentTimeMillis()
+            )
+        )
+        onProgress(1f, "下一张已预下载")
+        return true
+    }
+
+    private suspend fun applyReadySlot(
+        slot: NextWallpaperStore.Slot,
+        settings: AppSettings,
+        target: WallpaperTarget,
+        advanceKeyword: Boolean
+    ): ChangeResult {
+        val file = slot.file()
+        if (!file.exists() || file.length() < 32L) {
+            return ChangeResult.Failure("预下载文件丢失")
+        }
+        onProgress(0.9f, "正在设置预下载壁纸…")
+        if (!setter.setFromFile(file, target, settings.fitMode)) {
+            return ChangeResult.Failure("系统设置壁纸失败（预下载）")
+        }
+        // 移入正式缓存目录，避免 next_queue 被下次预取覆盖时丢历史
+        val dir = File(context.filesDir, "wallpapers").apply { mkdirs() }
+        val targetSuffix = when (target) {
+            WallpaperTarget.Home -> "home"
+            WallpaperTarget.Lock -> "lock"
+            WallpaperTarget.Both -> "both"
+        }
+        val finalFile = File(dir, "${slot.id.replace(Regex("[^a-zA-Z0-9._-]"), "_")}_$targetSuffix.jpg")
+        runCatching {
+            if (file.absolutePath != finalFile.absolutePath) {
+                file.copyTo(finalFile, overwrite = true)
+            }
+        }
+        val useFile = if (finalFile.exists()) finalFile else file
+        val fileSize = useFile.length()
+        dao.insert(
+            WallpaperEntity(
+                id = "${slot.id}_${target.name}",
+                path = useFile.absolutePath,
+                category = slot.category,
+                purity = slot.purity,
+                sourceUrl = slot.sourceUrl,
+                setAt = System.currentTimeMillis(),
+                width = slot.width,
+                height = slot.height,
+                fileSize = fileSize,
+                source = slot.source,
+                keyword = slot.keyword,
+                triggerType = currentTrigger.code
+            )
+        )
+        dao.trimToKeep(HISTORY_KEEP)
+        if (advanceKeyword && settings.useKeywords && settings.activeKeywords().isNotEmpty()) {
+            advanceKeywordIndex(settings, steps = 1)
+        }
+        settingsRepo.setLastChangeAt(System.currentTimeMillis())
+        ProcessBridgePrefs.setLastChangeAt(context, System.currentTimeMillis())
+        settingsRepo.incrementChangeCount()
+        val item = WallpaperItem(
+            id = slot.id,
+            pathUrl = slot.sourceUrl,
+            thumbsUrl = null,
+            width = slot.width,
+            height = slot.height,
+            purity = slot.purity,
+            category = slot.category,
+            source = slot.source,
+            fileSize = fileSize
+        )
+        return ChangeResult.Success(
+            item,
+            useFile.absolutePath,
+            detail = "${target.label}（预下载）" + if (slot.keyword.isNotBlank()) " · 词:${slot.keyword}" else ""
+        )
+    }
+
     private fun filterJumpTags(tags: List<String>, usedKeyword: String?): List<String> {
         val exclude = mutableSetOf<String>()
         val raw = usedKeyword?.trim().orEmpty()

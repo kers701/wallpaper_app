@@ -169,6 +169,10 @@ class WallpaperForegroundService : Service() {
                 if (tick % 4 == 0) {
                     ensureForegroundAndLoop()
                 }
+                // 预下载失败 5 分钟重试（与更换周期解耦）
+                if (tick % 2 == 0 && changer != null) {
+                    runCatching { changer.tickPrefetchMaintenance() }
+                }
                 val enabled = settingsRepo?.let {
                     runCatching { it.settingsFlow.first().enabled }.getOrNull()
                 } ?: ProcessBridgePrefs.enabled(this)
