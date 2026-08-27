@@ -17,6 +17,7 @@ import com.kers.killove.jhsy.data.translate.KeywordTranslator
 import com.kers.killove.jhsy.domain.WallpaperChanger
 import com.kers.killove.jhsy.domain.WallpaperTarget
 import com.kers.killove.jhsy.domain.WallpaperFitMode
+import com.kers.killove.jhsy.service.ManualChangeService
 import com.kers.killove.jhsy.service.WallpaperForegroundService
 import com.kers.killove.jhsy.util.SuperServiceController
 import com.kers.killove.jhsy.util.ConfigBackup
@@ -36,6 +37,7 @@ import android.content.SharedPreferences
 import android.net.Uri
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -411,23 +413,46 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun changeNow() {
         if (_busy.value) return
         viewModelScope.launch {
+            val ctx = getApplication<Application>()
+            if (ProcessBridgePrefs.isChanging(ctx)) {
+                _status.value = "已有更换在进行中，请稍候"
+                return@launch
+            }
             _busy.value = true
             _downloadProgress.value = 0f
             _downloadLabel.value = ""
-            _status.value = "正在更换…"
-            when (val r = changer.changeOnce(forceIgnoreScreenOff = true, triggerType = TriggerType.Manual)) {
-                is ChangeResult.Success -> {
-                    val res = if (r.item.width > 0) "${r.item.width}×${r.item.height}" else ""
-                    val extra = if (r.item.source == "local" && r.item.category.startsWith("local←")) {
-                        " · 原因：${r.item.category.removePrefix("local←")}"
-                    } else ""
-                    val d = if (r.detail.isNotBlank()) " · ${r.detail}" else ""
-                    _status.value = "已设置 [${r.item.source}] ${r.item.id} $res$extra$d"
+            _status.value = "已交由 :manual 进程当场下载更换…"
+            ProcessBridgePrefs.setStatusHint(ctx, "已交由 :manual 进程当场下载更换…")
+            // 第三进程 :manual：当场下载、不用预缓存、不触发定时，换完即死
+            ManualChangeService.start(ctx)
+            // 轮询 bridge 状态，给 UI 反馈（最长约 3 分钟）
+            val started = System.currentTimeMillis()
+            var lastHint = ""
+            while (System.currentTimeMillis() - started < 180_000L) {
+                delay(500)
+                val hint = ProcessBridgePrefs.statusHint(ctx)
+                if (hint.isNotBlank() && hint != lastHint) {
+                    lastHint = hint
+                    _status.value = hint
+                    if (hint.contains("%") || hint.contains("更换中") || hint.contains("预下载") || hint.contains("下载")) {
+                        // 进度类提示
+                    }
                 }
-                is ChangeResult.Failure ->
-                    _status.value = "失败：${r.message}"
+                if (!ProcessBridgePrefs.isChanging(ctx) &&
+                    ProcessBridgePrefs.statusHintAt(ctx) >= started - 500L &&
+                    hint.isNotBlank() &&
+                    !hint.contains("已交由") &&
+                    !hint.contains("更换中") &&
+                    !hint.contains("%")
+                ) {
+                    // 一轮结束
+                    _status.value = hint
+                    break
+                }
             }
             _busy.value = false
+            _downloadProgress.value = 0f
+            _downloadLabel.value = ""
         }
     }
 

@@ -58,6 +58,18 @@
                 android:value="periodic_wallpaper_change" />
         </service>
 
+        <!-- 第三进程 :manual，仅「立即更换」；换完即死，不跑定时 -->
+        <service
+            android:name=".service.ManualChangeService"
+            android:exported="false"
+            android:process=":manual"
+            android:stopWithTask="true"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="one_shot_manual_wallpaper_change" />
+        </service>
+
         <service
             android:name=".service.KeepAliveAccessibilityService"
             android:exported="true"

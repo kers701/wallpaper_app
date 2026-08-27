@@ -77,17 +77,33 @@ object ProcessBridgePrefs {
                 return false
             }
             if (!force) {
+                // 成功更换后的防抖
                 val last = prefs.getLong("last_change", 0L)
                 if (last > 0L && now - last < AUTO_CHANGE_DEBOUNCE_MS) {
+                    return false
+                }
+                // 失败/进行中也要防抖，避免 30s 一轮死循环狂换
+                val lastAttempt = prefs.getLong("last_attempt", 0L)
+                if (lastAttempt > 0L && now - lastAttempt < AUTO_CHANGE_DEBOUNCE_MS) {
                     return false
                 }
             }
             prefs.edit()
                 .putBoolean("changing", true)
                 .putLong("changing_at", now)
+                .putLong("last_attempt", now)
                 .commit()
             return true
         }
+    }
+
+    fun isChanging(context: Context): Boolean {
+        val prefs = sp(context)
+        val changing = prefs.getBoolean("changing", false)
+        val at = prefs.getLong("changing_at", 0L)
+        if (!changing) return false
+        // 超时视为未占用，避免卡死
+        return System.currentTimeMillis() - at < CHANGING_STALE_MS
     }
 
     fun releaseChange(context: Context) {
@@ -97,6 +113,20 @@ object ProcessBridgePrefs {
                 .commit()
         }
     }
+
+    /** 手动更换等：强制占用锁（仍避开正在进行中的一轮） */
+    fun tryBeginChangeForce(context: Context): Boolean = tryBeginChange(context, force = true)
+
+
+    fun setStatusHint(context: Context, text: String) {
+        sp(context).edit().putString("status_hint", text).putLong("status_hint_at", System.currentTimeMillis()).apply()
+    }
+
+    fun statusHint(context: Context): String =
+        sp(context).getString("status_hint", "") ?: ""
+
+    fun statusHintAt(context: Context): Long =
+        sp(context).getLong("status_hint_at", 0L)
 
     private fun sp(context: Context) =
         context.applicationContext.getSharedPreferences(NAME, Context.MODE_PRIVATE)

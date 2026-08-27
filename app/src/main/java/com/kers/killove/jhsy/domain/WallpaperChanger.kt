@@ -49,9 +49,13 @@ class WallpaperChanger(
         processPrefetchRetries(settings)
     }
 
+    /**
+     * @param liveDownloadOnly 手动立即更换：不用预下载图、成功后不预取下一张、不触发定时相关副作用
+     */
     suspend fun changeOnce(
         forceIgnoreScreenOff: Boolean = false,
-        triggerType: TriggerType = TriggerType.Auto
+        triggerType: TriggerType = TriggerType.Auto,
+        liveDownloadOnly: Boolean = false
     ): ChangeResult {
         currentTrigger = triggerType
         var settings = settingsRepo.settingsFlow.first()
@@ -94,25 +98,33 @@ class WallpaperChanger(
             return applyLocalFallback(settings, "强制本地模式", settings.target, emptySet())
         }
 
-        // 到期的预下载失败重试（仅 1 次、间隔 5 分钟）
-        processPrefetchRetries(settings)
+        // 自动路径才做预下载重试；手动 live 不碰预取队列
+        if (!liveDownloadOnly) {
+            processPrefetchRetries(settings)
+        }
 
-        // 桌面锁屏隔离：优先用预下载，各用不同关键词
+        // 桌面锁屏隔离
         if (settings.isolateHomeLock &&
             settings.target == WallpaperTarget.Both &&
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.N
         ) {
             val kwHome = pickKeyword(settings, offset = 0)
             val kwLock = pickKeyword(settings, offset = 1)
-            val home = changeForTarget(settings, WallpaperTarget.Home, emptySet(), forceKeyword = kwHome)
+            val home = changeForTarget(
+                settings, WallpaperTarget.Home, emptySet(), forceKeyword = kwHome,
+                skipPrefetchUse = liveDownloadOnly
+            )
             if (home is ChangeResult.Failure) return home
             val homeId = (home as ChangeResult.Success).item.id
-            val lock = changeForTarget(settings, WallpaperTarget.Lock, setOf(homeId), forceKeyword = kwLock)
+            val lock = changeForTarget(
+                settings, WallpaperTarget.Lock, setOf(homeId), forceKeyword = kwLock,
+                skipPrefetchUse = liveDownloadOnly
+            )
             // 隔离用了两个词，索引 +2
             advanceKeywordIndex(settings, steps = 2)
             val combined = combineIsolate(home, lock)
-            if (combined is ChangeResult.Success) {
-                // 更换成功后再预取下一轮（不阻塞本次返回）
+            // 仅自动路径预取下一张；手动不触发
+            if (!liveDownloadOnly && combined is ChangeResult.Success) {
                 schedulePrefetch(
                     listOf(WallpaperTarget.Home, WallpaperTarget.Lock),
                     setOf(homeId, (lock as? ChangeResult.Success)?.item?.id ?: "")
@@ -121,8 +133,11 @@ class WallpaperChanger(
             return combined
         }
 
-        val single = changeForTarget(settings, settings.target, emptySet(), forceKeyword = null)
-        if (single is ChangeResult.Success) {
+        val single = changeForTarget(
+            settings, settings.target, emptySet(), forceKeyword = null,
+            skipPrefetchUse = liveDownloadOnly
+        )
+        if (!liveDownloadOnly && single is ChangeResult.Success) {
             schedulePrefetch(listOf(settings.target), setOf(single.item.id))
         }
         return single
@@ -153,20 +168,22 @@ class WallpaperChanger(
         target: WallpaperTarget,
         excludeIds: Set<String>,
         forceKeyword: String?,
-        advanceKeyword: Boolean = true
+        advanceKeyword: Boolean = true,
+        skipPrefetchUse: Boolean = false
     ): ChangeResult {
-        // 有预下载则直接设置，本次不发起下载
-        val ready = nextStore.takeReady(target)
-        if (ready != null) {
-            onProgress(0.2f, "使用预下载壁纸…")
-            when (val r = applyReadySlot(ready, settings, target, advanceKeyword)) {
-                is ChangeResult.Success -> {
-                    onProgress(1f, "预下载已应用")
-                    return r
-                }
-                is ChangeResult.Failure -> {
-                    // 文件损坏等：清掉后走在线下载
-                    nextStore.clear(target)
+        // 手动立即更换：强制当场下载，不消费预下载槽
+        if (!skipPrefetchUse) {
+            val ready = nextStore.takeReady(target)
+            if (ready != null) {
+                onProgress(0.2f, "使用预下载壁纸…")
+                when (val r = applyReadySlot(ready, settings, target, advanceKeyword)) {
+                    is ChangeResult.Success -> {
+                        onProgress(1f, "预下载已应用")
+                        return r
+                    }
+                    is ChangeResult.Failure -> {
+                        nextStore.clear(target)
+                    }
                 }
             }
         }

@@ -22,6 +22,7 @@ import com.kers.killove.jhsy.data.wallpaper.SystemWallpaperSetter
 import com.kers.killove.jhsy.domain.WallpaperChanger
 import com.kers.killove.jhsy.util.ProcessBridgePrefs
 import com.kers.killove.jhsy.worker.ChangeWallpaperWorker
+import com.kers.killove.jhsy.service.ManualChangeService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -57,40 +58,20 @@ class WallpaperForegroundService : Service() {
                 return START_NOT_STICKY
             }
             ACTION_CHANGE_NOW -> {
-                ensureForegroundAndLoop()
-                scope.launch {
-                    // 手动/补换：force 忽略 90s 防抖，但仍避开正在进行中的一轮
-                    if (!ProcessBridgePrefs.tryBeginChange(this@WallpaperForegroundService, force = true)) {
-                        return@launch
-                    }
-                    acquireWake()
-                    try {
-                        val settingsRepo = runCatching { SettingsRepository(applicationContext) }.getOrNull()
-                        val dao = runCatching { WallpaperDatabase.get(applicationContext).dao() }.getOrNull()
-                        if (settingsRepo != null && dao != null) {
-                            val changer = WallpaperChanger(
-                                applicationContext, settingsRepo, WallhavenApi(),
-                                SystemWallpaperSetter(applicationContext), dao,
-                                onProgress = { frac, label ->
-                                    val pct = (frac * 100).toInt().coerceIn(0, 100)
-                                    refreshNotification(if (label.isNotBlank()) "$label · $pct%" else "更换中 $pct%")
-                                }
-                            )
-                            changer.changeOnce(forceIgnoreScreenOff = true)
-                            refreshNotification("后台更换服务运行中（独立进程）")
-                            ProcessBridgePrefs.setLastChangeAt(this@WallpaperForegroundService, System.currentTimeMillis())
-                        }
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    } finally {
-                        ProcessBridgePrefs.releaseChange(this@WallpaperForegroundService)
-                        releaseWake()
-                    }
+                // 兼容旧入口：转交第三进程 :manual
+                ManualChangeService.start(this)
+                // 若本进程本就在跑自动循环则继续；否则不在此做更换
+                if (ProcessBridgePrefs.enabled(this) || ProcessBridgePrefs.superService(this)) {
+                    ensureForegroundAndLoop()
                 }
             }
             else -> ensureForegroundAndLoop()
         }
-        return START_STICKY
+        // 手动一次性：不粘性，换完 stopSelf 后系统不必强拉
+        return if (intent?.action == ACTION_CHANGE_NOW &&
+            !ProcessBridgePrefs.enabled(this) &&
+            !ProcessBridgePrefs.superService(this)
+        ) START_NOT_STICKY else START_STICKY
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
@@ -113,6 +94,45 @@ class WallpaperForegroundService : Service() {
                 System.currentTimeMillis() + 1200L,
                 pi
             )
+        } catch (_: Exception) {
+        }
+    }
+
+
+    /** 仅挂前台通知，不启动自动轮询循环（手动一次性用） */
+    private fun ensureForegroundOnly() {
+        createChannel()
+        val notification = buildNotification("独立进程正在更换…")
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(
+                    NOTIFICATION_ID, notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            try {
+                startForeground(NOTIFICATION_ID, notification)
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    private fun stopForegroundCompat() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            } else {
+                @Suppress("DEPRECATION")
+                stopForeground(true)
+            }
+        } catch (_: Exception) {
+        }
+        try {
+            getSystemService(NotificationManager::class.java)?.cancel(NOTIFICATION_ID)
         } catch (_: Exception) {
         }
     }
@@ -291,7 +311,7 @@ class WallpaperForegroundService : Service() {
         )
         val changeNow = PendingIntent.getService(
             this, 2,
-            Intent(this, WallpaperForegroundService::class.java).setAction(ACTION_CHANGE_NOW),
+            Intent(this, ManualChangeService::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
