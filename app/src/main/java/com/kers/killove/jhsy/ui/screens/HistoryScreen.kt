@@ -1,5 +1,8 @@
 package com.kers.killove.jhsy.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -33,14 +36,24 @@ fun HistoryScreen(vm: MainViewModel) {
             .padding(16.dp)
     ) {
         Text("最近记录", style = MaterialTheme.typography.headlineSmall, color = textColor)
+        val exportLauncher = rememberLauncherForActivityResult(
+            ActivityResultContracts.CreateDocument("text/csv")
+        ) { uri ->
+            if (uri != null) vm.exportHistoryToUri(uri)
+        }
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            androidx.compose.material3.OutlinedButton(onClick = { vm.clearLogs() }) {
+            OutlinedButton(onClick = {
+                exportLauncher.launch("jhsy_history_${System.currentTimeMillis()}.csv")
+            }) {
+                Text("导出记录")
+            }
+            OutlinedButton(onClick = { vm.clearLogs() }) {
                 Text("清空记录")
             }
-            androidx.compose.material3.OutlinedButton(onClick = { vm.clearWallpaperCache() }) {
+            OutlinedButton(onClick = { vm.clearWallpaperCache() }) {
                 Text("清空缓存")
             }
         }

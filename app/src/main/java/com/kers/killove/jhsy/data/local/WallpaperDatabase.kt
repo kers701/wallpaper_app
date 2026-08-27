@@ -55,6 +55,9 @@ interface WallpaperDao {
     @Query("SELECT * FROM wallpaper_records ORDER BY setAt DESC LIMIT :limit")
     fun recent(limit: Int = 77): Flow<List<WallpaperEntity>>
 
+    @Query("SELECT * FROM wallpaper_records ORDER BY setAt DESC LIMIT :limit")
+    suspend fun recentList(limit: Int = 200): List<WallpaperEntity>
+
     @Query("SELECT COUNT(*) FROM wallpaper_records")
     suspend fun count(): Int
 

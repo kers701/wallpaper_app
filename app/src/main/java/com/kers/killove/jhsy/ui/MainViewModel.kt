@@ -27,6 +27,9 @@ import com.kers.killove.jhsy.worker.ChangeWallpaperWorker
 import com.kers.killove.jhsy.util.ForegroundAppHelper
 import android.app.ActivityManager
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import android.content.SharedPreferences
 import android.net.Uri
 import java.io.BufferedReader
@@ -206,6 +209,54 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun restoreConfigFromUriText(text: String) {
         restoreConfigFromJson(text)
     }
+
+    
+    fun exportHistoryToUri(uri: Uri) {
+        viewModelScope.launch {
+            try {
+                val list = dao.recentList(200)
+                val fmt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+                fun esc(s: String): String {
+                    val v = s.replace("\"", "\"\"")
+                    return if (v.contains(',') || v.contains('"') || v.contains('\n')) "\"$v\"" else v
+                }
+                val sb = StringBuilder()
+                sb.append("id,setAt,trigger,source,category,purity,keyword,width,height,fileSizeBytes,path,sourceUrl\n")
+                for (item in list) {
+                    val trigger = when (item.triggerType) {
+                        "manual" -> "手动"
+                        else -> "自动"
+                    }
+                    sb.append(
+                        listOf(
+                            esc(item.id),
+                            esc(fmt.format(Date(item.setAt))),
+                            esc(trigger),
+                            esc(item.source),
+                            esc(item.category),
+                            esc(item.purity),
+                            esc(item.keyword),
+                            item.width.toString(),
+                            item.height.toString(),
+                            item.fileSize.toString(),
+                            esc(item.path),
+                            esc(item.sourceUrl)
+                        ).joinToString(",")
+                    )
+                    sb.append('\n')
+                }
+                getApplication<Application>().contentResolver.openOutputStream(uri)?.use { out ->
+                    // UTF-8 BOM for Excel
+                    out.write(byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()))
+                    out.write(sb.toString().toByteArray(Charsets.UTF_8))
+                } ?: throw IllegalStateException("无法写入所选位置")
+                _status.value = "已导出 ${list.size} 条更换记录到所选文件"
+            } catch (e: Exception) {
+                _status.value = "导出更换记录失败：${e.message}"
+            }
+        }
+    }
+
 
     fun backupFilePath(): String = ConfigBackup.defaultFile(getApplication()).absolutePath
 
