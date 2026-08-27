@@ -8,6 +8,7 @@ import android.location.Location
 import android.location.LocationManager
 import androidx.core.content.ContextCompat
 import com.kers.killove.jhsy.domain.AvoidanceLocation
+import com.kers.killove.jhsy.data.remote.ProxyHttp
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -23,10 +24,7 @@ import kotlin.math.sqrt
  */
 object LocationHelper {
     private const val RADIUS_M = 10.0
-    private val http = OkHttpClient.Builder()
-        .connectTimeout(12, TimeUnit.SECONDS)
-        .readTimeout(12, TimeUnit.SECONDS)
-        .build()
+    
 
     fun hasLocationPermission(context: Context): Boolean {
         val fine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION)
@@ -88,7 +86,7 @@ object LocationHelper {
             "https://restapi.amap.com/v3/place/text?key=$apiKey&keywords=$q&city=$c&offset=20&page=1&extensions=base"
         return try {
             val req = Request.Builder().url(url).get().build()
-            http.newCall(req).execute().use { resp ->
+            ProxyHttp.execute(req).use { resp ->
                 val body = resp.body?.string().orEmpty()
                 val root = JSONObject(body)
                 if (root.optString("status") != "1") return emptyList()

@@ -127,6 +127,19 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
     var fallbackApi by remember(settings.fallbackApiUrl, keysVisible) {
         mutableStateOf(if (keysVisible) settings.fallbackApiUrl else "")
     }
+    var proxyOn by remember(settings.proxyEnabled) { mutableStateOf(settings.proxyEnabled) }
+    var proxyHost by remember(settings.proxyHost, keysVisible) {
+        mutableStateOf(if (keysVisible) settings.proxyHost else "")
+    }
+    var proxyPort by remember(settings.proxyPort, keysVisible) {
+        mutableStateOf(if (keysVisible) settings.proxyPort.let { if (it > 0) it.toString() else "" } else "")
+    }
+    var proxyUser by remember(settings.proxyUser, keysVisible) {
+        mutableStateOf(if (keysVisible) settings.proxyUser else "")
+    }
+    var proxyPass by remember(settings.proxyPassword, keysVisible) {
+        mutableStateOf(if (keysVisible) settings.proxyPassword else "")
+    }
     var localFb by remember(settings.localFallbackEnabled) {
         mutableStateOf(settings.localFallbackEnabled)
     }
@@ -521,6 +534,58 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                 Modifier.padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+        Text("网络代理", style = MaterialTheme.typography.titleMedium)
+        if (keysVisible) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("启用 HTTP 代理")
+                    Text(
+                        "开启且填写地址后走代理；不可用自动回退系统网络",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                Switch(checked = proxyOn, onCheckedChange = { proxyOn = it })
+            }
+            OutlinedTextField(
+                value = proxyHost,
+                onValueChange = { proxyHost = it },
+                label = { Text("服务器地址（如 127.0.0.1 或 host）") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                enabled = proxyOn
+            )
+            OutlinedTextField(
+                value = proxyPort,
+                onValueChange = { proxyPort = it.filter { c -> c.isDigit() }.take(5) },
+                label = { Text("端口号") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                enabled = proxyOn
+            )
+            OutlinedTextField(
+                value = proxyUser,
+                onValueChange = { proxyUser = it },
+                label = { Text("用户名（可空）") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                enabled = proxyOn
+            )
+            OutlinedTextField(
+                value = proxyPass,
+                onValueChange = { proxyPass = it },
+                label = { Text("密码（可空）") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                enabled = proxyOn
+            )
+        } else {
+            LockedField("网络代理（请先解锁 PIN）")
+        }
+
         Text("API 密钥（可多个，每行一个）", style = MaterialTheme.typography.titleMedium)
         if (keysVisible) {
             OutlinedTextField(
@@ -762,7 +827,12 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                         locationExtremeFallbackEnabled = locExtreme,
                         bgApiUrl = bgApi.trim(),
                         bgLocalPath = bgLocal.trim(),
-                        bgMode = bgMode
+                        bgMode = bgMode,
+                        proxyEnabled = proxyOn,
+                        proxyHost = if (keysVisible) proxyHost.trim() else settings.proxyHost,
+                        proxyPort = if (keysVisible) (proxyPort.toIntOrNull() ?: 0) else settings.proxyPort,
+                        proxyUser = if (keysVisible) proxyUser.trim() else settings.proxyUser,
+                        proxyPassword = if (keysVisible) proxyPass else settings.proxyPassword
                     )
                 )
             },

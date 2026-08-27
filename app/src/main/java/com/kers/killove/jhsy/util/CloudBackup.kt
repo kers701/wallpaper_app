@@ -7,6 +7,7 @@ import com.kers.killove.jhsy.domain.AppSettings
 import com.kers.killove.jhsy.domain.CloudBackupProvider
 import okhttp3.Credentials
 import okhttp3.MediaType.Companion.toMediaType
+import com.kers.killove.jhsy.data.remote.ProxyHttp
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -18,11 +19,7 @@ import java.util.concurrent.TimeUnit
  * 横竖屏分离备份：仅在 WiFi 下生效时可上传桌面/锁屏缓存图。
  */
 object CloudBackup {
-    private val http = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .writeTimeout(60, TimeUnit.SECONDS)
-        .build()
+    
 
     fun isWifi(context: Context): Boolean {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
@@ -107,7 +104,7 @@ object CloudBackup {
             val body = bytes.toRequestBody(mime.toMediaType())
             val b = Request.Builder().url(url).put(body)
             authHeader(settings)?.let { b.header("Authorization", it) }
-            http.newCall(b.build()).execute().use { resp ->
+            ProxyHttp.execute(b.build()).use { resp ->
                 if (resp.isSuccessful || resp.code in 200..299) {
                     Result.success("OK ${resp.code}")
                 } else {
@@ -125,7 +122,7 @@ object CloudBackup {
         return try {
             val b = Request.Builder().url(url).get()
             authHeader(settings)?.let { b.header("Authorization", it) }
-            http.newCall(b.build()).execute().use { resp ->
+            ProxyHttp.execute(b.build()).use { resp ->
                 if (!resp.isSuccessful) {
                     Result.failure(IllegalStateException("HTTP ${resp.code}"))
                 } else {

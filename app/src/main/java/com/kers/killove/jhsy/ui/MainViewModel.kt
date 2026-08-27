@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.kers.killove.jhsy.data.local.LocalFallbackStore
 import com.kers.killove.jhsy.data.local.WallpaperDatabase
 import com.kers.killove.jhsy.data.prefs.SettingsRepository
+import com.kers.killove.jhsy.data.remote.ProxyHttp
 import com.kers.killove.jhsy.data.remote.WallhavenApi
 import com.kers.killove.jhsy.data.wallpaper.SystemWallpaperSetter
 import com.kers.killove.jhsy.domain.AppSettings
@@ -72,6 +73,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     init {
         viewModelScope.launch {
             settingsRepo.settingsFlow.collect { s ->
+                ProxyHttp.applySettings(s)
                 refreshJumpTranslation(s)
             }
         }
@@ -425,30 +427,39 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             ProcessBridgePrefs.setStatusHint(ctx, "已交由 :manual 进程当场下载更换…")
             // 第三进程 :manual：当场下载、不用预缓存、不触发定时，换完即死
             ManualChangeService.start(ctx)
-            // 轮询 bridge 状态，给 UI 反馈（最长约 3 分钟）
+            // 轮询跨进程 bridge 文件（最长 3 分钟）
             val started = System.currentTimeMillis()
             var lastHint = ""
+            var sawBusy = false
             while (System.currentTimeMillis() - started < 180_000L) {
-                delay(500)
+                delay(400)
+                val changing = ProcessBridgePrefs.isChanging(ctx)
+                if (changing) sawBusy = true
                 val hint = ProcessBridgePrefs.statusHint(ctx)
                 if (hint.isNotBlank() && hint != lastHint) {
                     lastHint = hint
                     _status.value = hint
-                    if (hint.contains("%") || hint.contains("更换中") || hint.contains("预下载") || hint.contains("下载")) {
-                        // 进度类提示
-                    }
                 }
-                if (!ProcessBridgePrefs.isChanging(ctx) &&
-                    ProcessBridgePrefs.statusHintAt(ctx) >= started - 500L &&
+                // 曾进入更换且已释放锁 → 结束
+                if (sawBusy && !changing) {
+                    val finalHint = ProcessBridgePrefs.statusHint(ctx)
+                    if (finalHint.isNotBlank()) _status.value = finalHint
+                    break
+                }
+                // 未抢到锁但已有终态文案
+                if (!changing &&
+                    ProcessBridgePrefs.statusHintAt(ctx) >= started &&
                     hint.isNotBlank() &&
-                    !hint.contains("已交由") &&
-                    !hint.contains("更换中") &&
-                    !hint.contains("%")
+                    (hint.startsWith("已设置") || hint.startsWith("失败") || hint.contains("已有更换"))
                 ) {
-                    // 一轮结束
                     _status.value = hint
                     break
                 }
+            }
+            if (_status.value.contains("已交由")) {
+                val h = ProcessBridgePrefs.statusHint(ctx)
+                if (h.isNotBlank() && !h.contains("已交由")) _status.value = h
+                else if (_status.value.contains("已交由")) _status.value = "更换流程已结束"
             }
             _busy.value = false
             _downloadProgress.value = 0f

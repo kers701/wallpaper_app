@@ -19,10 +19,9 @@ data class SearchPageResult(
     val currentPage: Int
 )
 
-class WallhavenApi(
-    private val client: OkHttpClient = defaultClient()
-) {
+class WallhavenApi {
     companion object {
+        /** @deprecated 使用 ProxyHttp；保留兼容 */
         fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
@@ -86,7 +85,7 @@ class WallhavenApi(
             .get()
             .build()
 
-        client.newCall(request).execute().use { response ->
+        ProxyHttp.execute(request).use { response ->
             if (!response.isSuccessful) {
                 throw IllegalStateException("Wallhaven HTTP ${response.code}")
             }
@@ -155,7 +154,7 @@ class WallhavenApi(
                 .header("User-Agent", "Wallpaperc/1.3 (Android)")
                 .get()
                 .build()
-            client.newCall(request).execute().use { response ->
+            ProxyHttp.execute(request).use { response ->
                 if (!response.isSuccessful) {
                     throw IllegalStateException("兜底 API HTTP ${response.code}")
                 }
@@ -241,7 +240,7 @@ class WallhavenApi(
                 .header("User-Agent", "Wallpaperc/1.3 (Android)")
                 .get()
                 .build()
-            client.newCall(request).execute().use { response ->
+            ProxyHttp.execute(request).use { response ->
                 val ms = (System.nanoTime() - start) / 1_000_000
                 val type = response.header("Content-Type").orEmpty()
                 // 读一点 body 确认链路完整
@@ -271,7 +270,7 @@ class WallhavenApi(
                 .header("User-Agent", "Wallpaperc/1.3 (Android)")
                 .get()
                 .build()
-            client.newCall(request).execute().use { response ->
+            ProxyHttp.execute(request).use { response ->
                 val ms = (System.nanoTime() - start) / 1_000_000
                 val body = response.body?.string().orEmpty()
                 if (!response.isSuccessful) {
@@ -386,7 +385,7 @@ class WallhavenApi(
             .header("User-Agent", "Wallpaperc/1.3 (Android)")
             .get()
             .build()
-        client.newCall(request).execute().use { response ->
+        ProxyHttp.execute(request).use { response ->
             if (!response.isSuccessful) {
                 throw IllegalStateException("背景 API HTTP ${response.code}")
             }
@@ -415,7 +414,7 @@ class WallhavenApi(
                 .header("User-Agent", "Wallpaperc/1.3 (Android)")
                 .get()
                 .build()
-            client.newCall(request).execute().use { response ->
+            ProxyHttp.execute(request).use { response ->
                 if (!response.isSuccessful) return@withContext false
                 val body = response.body ?: return@withContext false
                 val total = body.contentLength()
@@ -445,7 +444,7 @@ class WallhavenApi(
             .header("User-Agent", "Wallpaperc/1.3 (Android)")
             .get()
             .build()
-        client.newCall(request).execute().use { response ->
+        ProxyHttp.execute(request).use { response ->
             if (!response.isSuccessful) {
                 throw IllegalStateException("关键词列表 HTTP ${response.code}")
             }
@@ -470,7 +469,7 @@ class WallhavenApi(
                 .header("User-Agent", "Wallpaperc/1.3 (Android)")
                 .get()
                 .build()
-            client.newCall(request).execute().use { response ->
+            ProxyHttp.execute(request).use { response ->
                 if (!response.isSuccessful) return@withContext emptyList()
                 val body = response.body?.string().orEmpty()
                 try {

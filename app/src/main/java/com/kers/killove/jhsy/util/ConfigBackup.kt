@@ -80,6 +80,11 @@ object ConfigBackup {
         o.put("cloudBackupOrientSplit", settings.cloudBackupOrientSplit)
         o.put("cloudBackupWifiOnly", settings.cloudBackupWifiOnly)
         o.put("locationAvoidEnabled", settings.locationAvoidEnabled)
+        o.put("proxyEnabled", settings.proxyEnabled)
+        o.put("proxyHost", settings.proxyHost)
+        o.put("proxyPort", settings.proxyPort)
+        o.put("proxyUser", settings.proxyUser)
+        o.put("proxyPassword", settings.proxyPassword)
         o.put("amapApiKey", settings.amapApiKey)
         o.put("avoidanceLocationsJson", settings.avoidanceLocationsJson)
         o.put("locationFallbackEnabled", settings.locationFallbackEnabled)
@@ -165,6 +170,11 @@ object ConfigBackup {
             cloudBackupOrientSplit = o.optBoolean("cloudBackupOrientSplit", base.cloudBackupOrientSplit),
             cloudBackupWifiOnly = o.optBoolean("cloudBackupWifiOnly", base.cloudBackupWifiOnly),
             locationAvoidEnabled = o.optBoolean("locationAvoidEnabled", base.locationAvoidEnabled),
+            proxyEnabled = o.optBoolean("proxyEnabled", base.proxyEnabled),
+            proxyHost = o.optString("proxyHost", base.proxyHost),
+            proxyPort = o.optInt("proxyPort", base.proxyPort),
+            proxyUser = o.optString("proxyUser", base.proxyUser),
+            proxyPassword = o.optString("proxyPassword", base.proxyPassword),
             amapApiKey = o.optString("amapApiKey", base.amapApiKey),
             avoidanceLocationsJson = o.optString("avoidanceLocationsJson", base.avoidanceLocationsJson),
             locationFallbackEnabled = o.optBoolean("locationFallbackEnabled", base.locationFallbackEnabled),

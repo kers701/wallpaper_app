@@ -5,6 +5,7 @@ import com.kers.killove.jhsy.domain.TranslateProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
+import com.kers.killove.jhsy.data.remote.ProxyHttp
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -20,10 +21,7 @@ import java.util.Base64
  * 仅用于展示与日志：把跃迁/关键词译成中文，不参与搜索。
  */
 class KeywordTranslator(
-    private val client: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(12, TimeUnit.SECONDS)
-        .readTimeout(20, TimeUnit.SECONDS)
-        .build()
+    
 ) {
     suspend fun translateList(words: List<String>, settings: AppSettings): Map<String, String> {
         if (settings.translateProvider == TranslateProvider.Off || words.isEmpty()) {
@@ -58,7 +56,7 @@ class KeywordTranslator(
                     "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q=$q"
                 }
                 val req = Request.Builder().url(url).get().build()
-                client.newCall(req).execute().use { resp ->
+                ProxyHttp.execute(req).use { resp ->
                     if (!resp.isSuccessful) return@use
                     val body = resp.body?.string().orEmpty()
                     val zh = if (apiKey.isNotBlank()) {
@@ -94,7 +92,7 @@ class KeywordTranslator(
             .addHeader("Content-Type", "application/json")
             .post(body)
             .build()
-        client.newCall(req).execute().use { resp ->
+        ProxyHttp.execute(req).use { resp ->
             if (!resp.isSuccessful) return@withContext emptyMap()
             val root = JSONArray(resp.body?.string().orEmpty())
             val out = linkedMapOf<String, String>()
@@ -152,7 +150,7 @@ class KeywordTranslator(
                 .addHeader("X-TC-Region", "ap-guangzhou")
                 .post(payload.toRequestBody("application/json; charset=utf-8".toMediaType()))
                 .build()
-            client.newCall(req).execute().use { resp ->
+            ProxyHttp.execute(req).use { resp ->
                 val body = resp.body?.string().orEmpty()
                 val zh = try {
                     JSONObject(body).optJSONObject("Response")?.optString("TargetText")

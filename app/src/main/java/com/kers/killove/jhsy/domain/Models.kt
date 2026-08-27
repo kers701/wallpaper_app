@@ -222,6 +222,13 @@ data class AppSettings(
     val pinHash: String = "",
     val pinEnabled: Boolean = false,
 
+    /** HTTP 代理：开启且填了地址后走代理；失败或未开则系统直连 */
+    val proxyEnabled: Boolean = false,
+    val proxyHost: String = "",
+    val proxyPort: Int = 0,
+    val proxyUser: String = "",
+    val proxyPassword: String = "",
+
     /** 前台黑名单包名：这些应用在前台时休眠不换壁纸 */
     val blacklistPackages: List<String> = emptyList(),
     /** 概览页极简模式：只显示概览，隐藏其它页 */

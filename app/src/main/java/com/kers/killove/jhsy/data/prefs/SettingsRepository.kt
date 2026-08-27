@@ -22,6 +22,7 @@ import com.kers.killove.jhsy.domain.UiTextColor
 import com.kers.killove.jhsy.domain.WallpaperTarget
 import com.kers.killove.jhsy.domain.CloudBackupProvider
 import com.kers.killove.jhsy.domain.CardStyle
+import com.kers.killove.jhsy.data.remote.ProxyHttp
 import com.kers.killove.jhsy.util.ProcessBridgePrefs
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -76,6 +77,11 @@ class SettingsRepository(private val context: Context) {
         val LAST_CHANGE_AT = longPreferencesKey("last_change_at")
         val PIN_HASH = stringPreferencesKey("pin_hash")
         val PIN_ENABLED = booleanPreferencesKey("pin_enabled")
+        val PROXY_ENABLED = booleanPreferencesKey("proxy_enabled")
+        val PROXY_HOST = stringPreferencesKey("proxy_host")
+        val PROXY_PORT = intPreferencesKey("proxy_port")
+        val PROXY_USER = stringPreferencesKey("proxy_user")
+        val PROXY_PASS = stringPreferencesKey("proxy_pass")
         val BLACKLIST = stringPreferencesKey("blacklist_packages")
         val OVERVIEW_MINIMAL = booleanPreferencesKey("overview_minimal")
         val CHANGE_COUNT = longPreferencesKey("change_count")
@@ -152,6 +158,11 @@ class SettingsRepository(private val context: Context) {
             lastChangeAt = p[Keys.LAST_CHANGE_AT] ?: 0L,
             pinHash = p[Keys.PIN_HASH] ?: "",
             pinEnabled = p[Keys.PIN_ENABLED] ?: false,
+            proxyEnabled = p[Keys.PROXY_ENABLED] ?: false,
+            proxyHost = p[Keys.PROXY_HOST] ?: "",
+            proxyPort = p[Keys.PROXY_PORT] ?: 0,
+            proxyUser = p[Keys.PROXY_USER] ?: "",
+            proxyPassword = p[Keys.PROXY_PASS] ?: "",
             blacklistPackages = splitLines(p[Keys.BLACKLIST] ?: ""),
             overviewMinimalMode = p[Keys.OVERVIEW_MINIMAL] ?: false,
             changeCount = p[Keys.CHANGE_COUNT] ?: 0L,
@@ -222,6 +233,11 @@ class SettingsRepository(private val context: Context) {
             p[Keys.LAST_CHANGE_AT] = settings.lastChangeAt
             p[Keys.PIN_HASH] = settings.pinHash
             p[Keys.PIN_ENABLED] = settings.pinEnabled
+            p[Keys.PROXY_ENABLED] = settings.proxyEnabled
+            p[Keys.PROXY_HOST] = settings.proxyHost
+            p[Keys.PROXY_PORT] = settings.proxyPort
+            p[Keys.PROXY_USER] = settings.proxyUser
+            p[Keys.PROXY_PASS] = settings.proxyPassword
             p[Keys.BLACKLIST] = settings.blacklistPackages.joinToString("\n")
             p[Keys.OVERVIEW_MINIMAL] = settings.overviewMinimalMode
             p[Keys.CHANGE_COUNT] = settings.changeCount
@@ -244,6 +260,7 @@ class SettingsRepository(private val context: Context) {
             p[Keys.LOC_IN_ZONE] = settings.locationInAvoidZone
         }
         ProcessBridgePrefs.sync(context, settings)
+            ProxyHttp.applySettings(settings)
     }
 
     suspend fun setLastCategory(code: String) {

@@ -16,6 +16,7 @@ import com.kers.killove.jhsy.MainActivity
 import com.kers.killove.jhsy.R
 import com.kers.killove.jhsy.data.local.WallpaperDatabase
 import com.kers.killove.jhsy.data.prefs.SettingsRepository
+import com.kers.killove.jhsy.data.remote.ProxyHttp
 import com.kers.killove.jhsy.data.remote.WallhavenApi
 import com.kers.killove.jhsy.data.wallpaper.SystemWallpaperSetter
 import com.kers.killove.jhsy.domain.ChangeResult
@@ -26,6 +27,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
@@ -65,6 +67,8 @@ class ManualChangeService : Service() {
             var detail = ""
             try {
                 val settingsRepo = SettingsRepository(applicationContext)
+                val s0 = runCatching { settingsRepo.settingsFlow.first() }.getOrNull()
+                if (s0 != null) ProxyHttp.applySettings(s0)
                 val dao = WallpaperDatabase.get(applicationContext).dao()
                 val changer = WallpaperChanger(
                     applicationContext, settingsRepo, WallhavenApi(),

@@ -17,6 +17,7 @@ import com.kers.killove.jhsy.MainActivity
 import com.kers.killove.jhsy.R
 import com.kers.killove.jhsy.data.local.WallpaperDatabase
 import com.kers.killove.jhsy.data.prefs.SettingsRepository
+import com.kers.killove.jhsy.data.remote.ProxyHttp
 import com.kers.killove.jhsy.data.remote.WallhavenApi
 import com.kers.killove.jhsy.data.wallpaper.SystemWallpaperSetter
 import com.kers.killove.jhsy.domain.WallpaperChanger
@@ -170,6 +171,11 @@ class WallpaperForegroundService : Service() {
         // 优先用 DataStore；失败则用桥接（独立进程）
         val settingsRepo = runCatching { SettingsRepository(applicationContext) }.getOrNull()
         val dao = runCatching { WallpaperDatabase.get(applicationContext).dao() }.getOrNull()
+        if (settingsRepo != null) {
+            runCatching {
+                ProxyHttp.applySettings(settingsRepo.settingsFlow.first())
+            }
+        }
         val changer = if (dao != null && settingsRepo != null) {
             WallpaperChanger(
                 applicationContext, settingsRepo, WallhavenApi(),
