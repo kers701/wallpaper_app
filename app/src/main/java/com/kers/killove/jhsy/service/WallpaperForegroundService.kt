@@ -515,6 +515,8 @@ class WallpaperForegroundService : Service() {
         private const val NOTIFICATION_ID = 1001
         const val ACTION_STOP = "com.kers.killove.jhsy.STOP"
         const val ACTION_CHANGE_NOW = "com.kers.killove.jhsy.CHANGE_NOW"
+        const val ACTION_ADD_AVOID_HERE = "com.kers.killove.jhsy.ADD_AVOID_HERE"
+        const val ACTION_ADD_FG_BLACKLIST = "com.kers.killove.jhsy.ADD_FG_BLACKLIST"
 
         fun start(context: Context) {
             val i = Intent(context, WallpaperForegroundService::class.java)
