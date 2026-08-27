@@ -323,29 +323,41 @@ class WallpaperForegroundService : Service() {
 
     private suspend fun handleAddFgBlacklist() {
         try {
-            val pkg = ForegroundAppHelper.currentForegroundPackage(this)
-            if (pkg.isNullOrBlank()) {
-                refreshNotification("添加黑名单失败：无法识别前台应用（需使用情况访问权限）")
+            if (!ForegroundAppHelper.hasUsageAccess(this)) {
+                // 尽量保持前台通知，避免点按钮后通知被收起且无反馈
+                lastStatusText = "添加黑名单失败：请先授予「使用情况访问」权限"
+                refreshNotification(lastStatusText)
+                ensureForegroundAndLoop()
                 return
             }
-            // 忽略本应用
-            if (pkg == packageName || pkg.startsWith(packageName)) {
-                refreshNotification("当前前台为本应用，已跳过")
+            // 点通知时 UsageStats 常把本应用/系统界面排在最前，取排除后的最近真实应用
+            val candidates = ForegroundAppHelper.recentForegroundCandidates(this, limit = 8)
+            val pkg = candidates.firstOrNull()
+                ?: ForegroundAppHelper.currentForegroundPackage(this, excludeSelf = true)
+            if (pkg.isNullOrBlank()) {
+                lastStatusText = "添加黑名单失败：未识别到其他前台应用（请先打开目标 App 再点通知按钮）"
+                refreshNotification(lastStatusText)
+                ensureForegroundAndLoop()
                 return
             }
             val repo = SettingsRepository(applicationContext)
             val s = repo.settingsFlow.first()
+            val label = ForegroundAppHelper.appLabel(this, pkg)
             if (pkg in s.blacklistPackages) {
-                val label = ForegroundAppHelper.appLabel(this, pkg)
-                refreshNotification("「$label」已在黑名单中")
+                lastStatusText = "「$label」已在黑名单中"
+                refreshNotification(lastStatusText)
+                ensureForegroundAndLoop()
                 return
             }
             val next = s.copy(blacklistPackages = s.blacklistPackages + pkg)
             repo.save(next)
-            val label = ForegroundAppHelper.appLabel(this, pkg)
-            refreshNotification("已将「$label」加入黑名单")
+            lastStatusText = "已将「$label」加入黑名单"
+            refreshNotification(lastStatusText)
+            ensureForegroundAndLoop()
         } catch (e: Exception) {
-            refreshNotification("添加黑名单失败：${e.message}")
+            lastStatusText = "添加黑名单失败：${e.message}"
+            refreshNotification(lastStatusText)
+            ensureForegroundAndLoop()
         }
     }
 
