@@ -5,7 +5,7 @@ import com.kers.killove.jhsy.domain.AppSettings
 
 /**
  * 主进程写、服务进程读的轻量桥接。
- * 独立进程无法安全共用 DataStore，故用 SharedPreferences 同步关键开关。
+ * 独立进程无法安全共用 DataStore，故用 SharedPreferences + 文件同步关键开关。
  *
  * 另提供自动更换互斥：避免 FGS 循环与 WorkManager/亮屏 同时各跑一轮 changeOnce
  * （隔离模式下会变成 4 条记录）。
@@ -33,6 +33,9 @@ object ProcessBridgePrefs {
             .putLong("last_change", s.lastChangeAt)
             .commit()
         if (s.lastChangeAt > 0L) writeClockFile(context, s.lastChangeAt)
+        // 跨进程：黑名单与避让点以文件为准，主进程保存时整表覆盖
+        writeBlacklist(context, s.blacklistPackages)
+        writeAvoidLocationsJson(context, s.avoidanceLocationsJson.ifBlank { "[]" })
     }
 
     fun enabled(context: Context): Boolean =
@@ -94,6 +97,84 @@ object ProcessBridgePrefs {
             if (!f.exists()) 0L else f.readText(Charsets.UTF_8).trim().toLongOrNull() ?: 0L
         } catch (_: Exception) {
             0L
+        }
+    }
+
+    // ── 黑名单跨进程文件桥 ──────────────────────────────────────────
+
+    private fun blacklistFile(context: Context): java.io.File =
+        java.io.File(context.applicationContext.filesDir, "jhsy_blacklist.txt")
+
+    /** 写入黑名单包名列表（每行一个），供 :svc 进程读取 */
+    fun writeBlacklist(context: Context, packages: List<String>) {
+        try {
+            val f = blacklistFile(context)
+            val tmp = java.io.File(f.parentFile, "jhsy_blacklist.txt.tmp")
+            val body = packages
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .distinct()
+                .joinToString("\n")
+            tmp.writeText(body, Charsets.UTF_8)
+            if (!tmp.renameTo(f)) {
+                f.writeText(body, Charsets.UTF_8)
+                tmp.delete()
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    fun readBlacklist(context: Context): List<String> {
+        return try {
+            val f = blacklistFile(context)
+            if (!f.exists()) emptyList()
+            else f.readText(Charsets.UTF_8)
+                .split('\n', ',', ';')
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .distinct()
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    /**
+     * 合并 DataStore 与桥接文件中的黑名单（并集去重）。
+     * 服务进程可能只写了文件，主进程 DataStore 尚未同步。
+     */
+    fun mergeBlacklist(context: Context, fromStore: List<String>): List<String> {
+        val fromFile = readBlacklist(context)
+        if (fromFile.isEmpty()) return fromStore.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        if (fromStore.isEmpty()) return fromFile
+        return (fromStore + fromFile).map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+    }
+
+    // ── 避让点 JSON 跨进程文件桥 ────────────────────────────────────
+
+    private fun avoidFile(context: Context): java.io.File =
+        java.io.File(context.applicationContext.filesDir, "jhsy_avoid_locations.json")
+
+    fun writeAvoidLocationsJson(context: Context, json: String) {
+        try {
+            val body = json.ifBlank { "[]" }
+            val f = avoidFile(context)
+            val tmp = java.io.File(f.parentFile, "jhsy_avoid_locations.json.tmp")
+            tmp.writeText(body, Charsets.UTF_8)
+            if (!tmp.renameTo(f)) {
+                f.writeText(body, Charsets.UTF_8)
+                tmp.delete()
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    fun readAvoidLocationsJson(context: Context): String? {
+        return try {
+            val f = avoidFile(context)
+            if (!f.exists()) null
+            else f.readText(Charsets.UTF_8).trim().ifBlank { null }
+        } catch (_: Exception) {
+            null
         }
     }
 
