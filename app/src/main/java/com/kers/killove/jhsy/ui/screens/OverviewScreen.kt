@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
@@ -62,8 +63,12 @@ fun OverviewScreen(vm: MainViewModel) {
     val cardAlpha = LocalCardAlpha.current
     val fmt = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()) }
 
-    val lastStr = if (settings.lastChangeAt > 0L) fmt.format(Date(settings.lastChangeAt)) else "尚未更换"
-    val nextAt = settings.nextChangeAt()
+    val bridgeLast by vm.bridgeLastChange.collectAsState()
+    // 取 DataStore 与跨进程时钟文件较大者，避免自动换完后概览仍显示旧时间
+    val effectiveLast = maxOf(settings.lastChangeAt, bridgeLast)
+    val lastStr = if (effectiveLast > 0L) fmt.format(Date(effectiveLast)) else "尚未更换"
+    val intervalMs = settings.intervalMinutes.coerceIn(5, 180) * 60_000L
+    val nextAt = if (effectiveLast > 0L) effectiveLast + intervalMs else 0L
     val nextStr = when {
         !settings.enabled -> "自动更换未开启"
         nextAt <= 0L -> "—"
@@ -74,22 +79,36 @@ fun OverviewScreen(vm: MainViewModel) {
     var lockBmp by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
 
     fun reloadMeta() {
-        vm.refreshServiceStatus()
-        vm.refreshCacheSize()
+        vm.refreshOverview()
     }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
-        val obs = LifecycleEventObserver { _, e -> if (e == Lifecycle.Event.ON_RESUME) reloadMeta() }
+        val obs = LifecycleEventObserver { _, e ->
+            if (e == Lifecycle.Event.ON_RESUME) {
+                vm.syncChangeClockFromBridge()
+                vm.refreshServiceStatus()
+                vm.refreshCacheSize()
+            }
+        }
         lifecycleOwner.lifecycle.addObserver(obs)
         onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
     }
 
-    LaunchedEffect(settings.lastChangeAt, settings.changeCount, recent) {
-        reloadMeta()
+    LaunchedEffect(effectiveLast, settings.changeCount, recent) {
+        vm.refreshServiceStatus()
+        vm.refreshCacheSize()
         val (hPath, lPath) = pickHomeLockPaths(recent)
         homeBmp = withContext(Dispatchers.IO) { decodeFileScaled(hPath) }
         lockBmp = withContext(Dispatchers.IO) { decodeFileScaled(lPath) }
+    }
+
+    // 每 20 秒从时钟文件拉一次时间，自动换壁纸后无需杀进程
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(20_000)
+            vm.syncChangeClockFromBridge()
+        }
     }
 
     val statusColor = when (serviceState) {
@@ -121,6 +140,13 @@ fun OverviewScreen(vm: MainViewModel) {
             Spacer(Modifier.height(8.dp))
             Text("下次更换", style = MaterialTheme.typography.labelMedium, color = textColor.copy(alpha = 0.7f))
             Text(nextStr, style = MaterialTheme.typography.titleMedium, color = textColor)
+            Spacer(Modifier.height(10.dp))
+            OutlinedButton(
+                onClick = { vm.refreshOverview() },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("刷新概览时间")
+            }
         }
 
         OverviewCard(cardAlpha) {

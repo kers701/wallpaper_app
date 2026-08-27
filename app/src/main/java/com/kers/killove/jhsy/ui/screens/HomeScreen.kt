@@ -326,12 +326,26 @@ fun HomeScreen(vm: MainViewModel) {
     }
     val jumpZh by vm.jumpKeywordsZh.collectAsState()
 
-    var remainMin by remember { mutableIntStateOf(settings.minutesUntilNext()) }
-    LaunchedEffect(settings.enabled, settings.lastChangeAt, settings.intervalMinutes) {
+    val bridgeLast by vm.bridgeLastChange.collectAsState()
+    fun calcRemain(): Int {
+        if (!settings.enabled) return -2
+        val last = maxOf(settings.lastChangeAt, bridgeLast)
+        if (last <= 0L) return -1
+        val intervalMs = settings.intervalMinutes.coerceIn(5, 180) * 60_000L
+        val remain = last + intervalMs - System.currentTimeMillis()
+        if (remain <= 0L) return 0
+        return ((remain + 59_999L) / 60_000L).toInt().coerceAtLeast(1)
+    }
+    var remainMin by remember { mutableIntStateOf(calcRemain()) }
+    LaunchedEffect(settings.enabled, settings.lastChangeAt, settings.intervalMinutes, bridgeLast) {
         while (true) {
-            remainMin = settings.minutesUntilNext()
-            delay(15_000)
+            remainMin = calcRemain()
+            delay(10_000)
         }
+    }
+    // 进入首页时拉一次时钟文件
+    LaunchedEffect(Unit) {
+        vm.syncChangeClockFromBridge()
     }
 
     Column(
@@ -358,7 +372,7 @@ fun HomeScreen(vm: MainViewModel) {
                 Text("间隔：${settings.intervalMinutes} 分钟", color = textColor)
                 Text(
                     when {
-                        !settings.enabled -> "距下次更换：未开启"
+                        !settings.enabled || remainMin == -2 -> "距下次更换：未开启"
                         remainMin < 0 -> "距下次更换：等待首次更换"
                         remainMin == 0 -> "距下次更换：即将更换 / 已到期"
                         else -> "距下次更换还有 $remainMin 分钟"

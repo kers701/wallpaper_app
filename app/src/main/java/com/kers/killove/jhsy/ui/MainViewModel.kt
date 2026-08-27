@@ -77,33 +77,55 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 refreshJumpTranslation(s)
             }
         }
-        // 定期把 :svc/:manual 写入的 last_change 同步回主进程 DataStore，修正首页/概览倒计时
+        // 定期从时钟文件 / bridge 同步 last_change 回 DataStore（不依赖进程内存联动）
         viewModelScope.launch {
             val app = getApplication<Application>()
             while (true) {
-                runCatching {
-                    val b = ProcessBridgePrefs.lastChangeAt(app)
-                    _bridgeLastChange.value = b
-                    val ds = settings.value.lastChangeAt
-                    if (b > 0L && b > ds + 1_000L) {
-                        settingsRepo.setLastChangeAt(b)
-                    }
-                }
-                kotlinx.coroutines.delay(3_000)
+                runCatching { pullChangeClock(app) }
+                kotlinx.coroutines.delay(2_000)
             }
+        }
+    }
+
+    private suspend fun pullChangeClock(app: Application) {
+        val b = ProcessBridgePrefs.effectiveLastChangeAt(app)
+        _bridgeLastChange.value = b
+        val ds = settings.value.lastChangeAt
+        if (b > 0L && b > ds + 500L) {
+            settingsRepo.setLastChangeAt(b)
         }
     }
 
     /** 界面 resume 时立刻同步一次桥接时间 */
     fun syncChangeClockFromBridge() {
         viewModelScope.launch {
+            pullChangeClock(getApplication())
+        }
+    }
+
+    /**
+     * 概览/首页手动刷新：读时钟文件 → 写回 DataStore，并刷新服务状态与缓存大小。
+     */
+    fun refreshOverview() {
+        viewModelScope.launch {
             val app = getApplication<Application>()
-            val b = ProcessBridgePrefs.lastChangeAt(app)
-            _bridgeLastChange.value = b
-            if (b > 0L && b > settings.value.lastChangeAt + 1_000L) {
-                settingsRepo.setLastChangeAt(b)
+            pullChangeClock(app)
+            refreshServiceStatus()
+            refreshCacheSize()
+            val ts = ProcessBridgePrefs.effectiveLastChangeAt(app)
+            _status.value = if (ts > 0L) {
+                val fmt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+                "已刷新 · 上次更换 ${fmt.format(Date(ts))}"
+            } else {
+                "已刷新 · 尚无更换记录"
             }
         }
+    }
+
+    /** 用于 UI 倒计时：取 DataStore 与时钟文件较大者 */
+    fun effectiveLastChangeAt(): Long {
+        val app = getApplication<Application>()
+        return maxOf(settings.value.lastChangeAt, ProcessBridgePrefs.effectiveLastChangeAt(app))
     }
 
     private suspend fun refreshJumpTranslation(s: AppSettings) {

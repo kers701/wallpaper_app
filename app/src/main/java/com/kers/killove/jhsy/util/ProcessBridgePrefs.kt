@@ -31,7 +31,8 @@ object ProcessBridgePrefs {
             .putInt("power_th", s.powerSaveBatteryThreshold)
             .putInt("interval", s.intervalMinutes)
             .putLong("last_change", s.lastChangeAt)
-            .apply()
+            .commit()
+        if (s.lastChangeAt > 0L) writeClockFile(context, s.lastChangeAt)
     }
 
     fun enabled(context: Context): Boolean =
@@ -56,10 +57,44 @@ object ProcessBridgePrefs {
         sp(context).getLong("last_change", 0L)
 
     fun setLastChangeAt(context: Context, ts: Long) {
+        // SharedPreferences 跨进程不可靠：同时写入 filesDir 时钟文件，主进程直接读文件
         sp(context).edit()
             .putLong("last_change", ts)
             .putBoolean("changing", false)
-            .apply()
+            .commit()
+        writeClockFile(context, ts)
+    }
+
+    /** 读取「真实上次更换时间」：max(Prefs, 时钟文件)，不依赖进程内缓存 */
+    fun effectiveLastChangeAt(context: Context): Long {
+        val fromSp = sp(context).getLong("last_change", 0L)
+        val fromFile = readClockFile(context)
+        return maxOf(fromSp, fromFile)
+    }
+
+    private fun clockFile(context: Context): java.io.File =
+        java.io.File(context.applicationContext.filesDir, "jhsy_last_change.clock")
+
+    private fun writeClockFile(context: Context, ts: Long) {
+        try {
+            val f = clockFile(context)
+            val tmp = java.io.File(f.parentFile, "jhsy_last_change.clock.tmp")
+            tmp.writeText(ts.toString(), Charsets.UTF_8)
+            if (!tmp.renameTo(f)) {
+                f.writeText(ts.toString(), Charsets.UTF_8)
+                tmp.delete()
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun readClockFile(context: Context): Long {
+        return try {
+            val f = clockFile(context)
+            if (!f.exists()) 0L else f.readText(Charsets.UTF_8).trim().toLongOrNull() ?: 0L
+        } catch (_: Exception) {
+            0L
+        }
     }
 
     /**
