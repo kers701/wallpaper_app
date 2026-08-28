@@ -22,6 +22,8 @@ import com.kers.killove.jhsy.domain.UiTextColor
 import com.kers.killove.jhsy.domain.WallpaperTarget
 import com.kers.killove.jhsy.domain.CloudBackupProvider
 import com.kers.killove.jhsy.domain.CardStyle
+import com.kers.killove.jhsy.domain.ProxyType
+import com.kers.killove.jhsy.domain.ProxySelectMode
 import com.kers.killove.jhsy.data.remote.ProxyHttp
 import com.kers.killove.jhsy.util.ProcessBridgePrefs
 import kotlinx.coroutines.flow.Flow
@@ -82,6 +84,13 @@ class SettingsRepository(private val context: Context) {
         val PROXY_PORT = intPreferencesKey("proxy_port")
         val PROXY_USER = stringPreferencesKey("proxy_user")
         val PROXY_PASS = stringPreferencesKey("proxy_pass")
+        val PROXY_TYPE = stringPreferencesKey("proxy_type")
+        val PROXY_SUB = stringPreferencesKey("proxy_sub_url")
+        val PROXY_NODES = stringPreferencesKey("proxy_nodes_json")
+        val PROXY_NODE_ID = stringPreferencesKey("proxy_selected_node")
+        val PROXY_SEL_MODE = stringPreferencesKey("proxy_select_mode")
+        val PROXY_AUTO_IV = intPreferencesKey("proxy_auto_test_interval")
+        val PROXY_LAST_TEST = longPreferencesKey("proxy_last_auto_test")
         val BLACKLIST = stringPreferencesKey("blacklist_packages")
         val OVERVIEW_MINIMAL = booleanPreferencesKey("overview_minimal")
         val CHANGE_COUNT = longPreferencesKey("change_count")
@@ -161,10 +170,17 @@ class SettingsRepository(private val context: Context) {
             pinHash = p[Keys.PIN_HASH] ?: "",
             pinEnabled = p[Keys.PIN_ENABLED] ?: false,
             proxyEnabled = p[Keys.PROXY_ENABLED] ?: false,
+            proxyType = ProxyType.fromCode(p[Keys.PROXY_TYPE] ?: "http"),
             proxyHost = p[Keys.PROXY_HOST] ?: "",
             proxyPort = p[Keys.PROXY_PORT] ?: 0,
             proxyUser = p[Keys.PROXY_USER] ?: "",
             proxyPassword = p[Keys.PROXY_PASS] ?: "",
+            proxySubUrl = p[Keys.PROXY_SUB] ?: "",
+            proxyNodesJson = p[Keys.PROXY_NODES] ?: "[]",
+            proxySelectedNodeId = p[Keys.PROXY_NODE_ID] ?: "",
+            proxySelectMode = ProxySelectMode.fromCode(p[Keys.PROXY_SEL_MODE] ?: "manual"),
+            proxyAutoTestIntervalMinutes = (p[Keys.PROXY_AUTO_IV] ?: 30).coerceIn(5, 180),
+            proxyLastAutoTestAt = p[Keys.PROXY_LAST_TEST] ?: 0L,
             // 黑名单：标记文件存在则只认文件（空文件=空名单）；否则首次用 DataStore 迁移
             blacklistPackages = if (ProcessBridgePrefs.blacklistFileExists(context)) {
                 ProcessBridgePrefs.readBlacklist(context)

@@ -7,6 +7,10 @@ import com.kers.killove.jhsy.data.local.LocalFallbackStore
 import com.kers.killove.jhsy.data.local.WallpaperDatabase
 import com.kers.killove.jhsy.data.prefs.SettingsRepository
 import com.kers.killove.jhsy.data.remote.ProxyHttp
+import com.kers.killove.jhsy.data.remote.ProxySubscription
+import com.kers.killove.jhsy.domain.ProxySelectMode
+import com.kers.killove.jhsy.domain.ProxyType
+import com.kers.killove.jhsy.domain.ProxyNode
 import com.kers.killove.jhsy.data.remote.WallhavenApi
 import com.kers.killove.jhsy.data.wallpaper.SystemWallpaperSetter
 import com.kers.killove.jhsy.domain.AppSettings
@@ -45,7 +49,9 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -215,6 +221,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _cacheBytes = MutableStateFlow(0L)
     val cacheBytes: StateFlow<Long> = _cacheBytes.asStateFlow()
+
+    private val _proxyTestBusy = MutableStateFlow(false)
+    val proxyTestBusy = _proxyTestBusy.asStateFlow()
 
     private val _launcherApps = MutableStateFlow<List<com.kers.killove.jhsy.util.LauncherAppInfo>>(emptyList())
     val launcherApps: StateFlow<List<com.kers.killove.jhsy.util.LauncherAppInfo>> = _launcherApps.asStateFlow()
@@ -942,6 +951,159 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _status.value = "已移除避让点（剩余 ${cur.size}）"
         }
     }
+
+
+    fun importProxySubscription(urlOrBody: String) {
+        viewModelScope.launch {
+            _status.value = "正在解析代理订阅…"
+            val result = withContext(Dispatchers.IO) {
+                ProxySubscription.fetchAndParse(urlOrBody)
+            }
+            if (result.nodes.isEmpty()) {
+                _status.value = result.message
+                return@launch
+            }
+            val json = ProxySubscription.nodesToJson(result.nodes)
+            val first = result.nodes.first()
+            val next = settings.value.copy(
+                proxyEnabled = true,
+                proxySubUrl = urlOrBody.trim().take(2000),
+                proxyNodesJson = json,
+                proxySelectedNodeId = first.id,
+                proxyType = first.type,
+                proxyHost = first.host,
+                proxyPort = first.port,
+                proxyUser = first.user,
+                proxyPassword = first.password
+            )
+            settingsRepo.save(next)
+            ProxyHttp.applySettings(next)
+            _status.value = result.message + "，已选用：${first.name}"
+        }
+    }
+
+    fun setProxySelectMode(mode: ProxySelectMode) {
+        viewModelScope.launch {
+            val next = settings.value.copy(proxySelectMode = mode)
+            settingsRepo.save(next)
+            if (mode == ProxySelectMode.Auto) {
+                autoSelectBestProxyNode()
+            }
+            _status.value = "代理选择模式：${mode.label}"
+        }
+    }
+
+    fun setProxyAutoTestInterval(minutes: Int) {
+        viewModelScope.launch {
+            val m = minutes.coerceIn(5, 180)
+            settingsRepo.save(settings.value.copy(proxyAutoTestIntervalMinutes = m))
+            _status.value = "自动测速间隔：${m} 分钟"
+        }
+    }
+
+    fun selectProxyNode(nodeId: String) {
+        viewModelScope.launch {
+            val list = settings.value.proxyNodes()
+            val node = list.find { it.id == nodeId } ?: return@launch
+            applyProxyNode(node, selectMode = ProxySelectMode.Manual)
+            _status.value = "已选用节点：${node.name}"
+        }
+    }
+
+    private suspend fun applyProxyNode(node: ProxyNode, selectMode: ProxySelectMode? = null) {
+        val base = settings.value
+        val next = base.copy(
+            proxyEnabled = true,
+            proxySelectedNodeId = node.id,
+            proxyType = node.type,
+            proxyHost = node.host,
+            proxyPort = node.port,
+            proxyUser = node.user,
+            proxyPassword = node.password,
+            proxySelectMode = selectMode ?: base.proxySelectMode
+        )
+        settingsRepo.save(next)
+        ProxyHttp.applySettings(next)
+    }
+
+    fun testAllProxyNodes() {
+        viewModelScope.launch {
+            val list = settings.value.proxyNodes()
+            if (list.isEmpty()) {
+                _status.value = "无节点可测"
+                return@launch
+            }
+            _proxyTestBusy.value = true
+            _status.value = "测速中 0/${list.size}…"
+            try {
+                val updated = mutableListOf<ProxyNode>()
+                for ((i, n) in list.withIndex()) {
+                    _status.value = "测速 ${i + 1}/${list.size}：${n.name}"
+                    val ms = withContext(Dispatchers.IO) {
+                        ProxyHttp.measureLatencyMs(
+                            ProxyHttp.Config(
+                                enabled = true,
+                                type = n.type,
+                                host = n.host,
+                                port = n.port,
+                                user = n.user,
+                                password = n.password
+                            )
+                        )
+                    }
+                    updated += n.copy(latencyMs = if (ms < 0) -1L else ms)
+                }
+                val json = ProxySubscription.nodesToJson(updated)
+                settingsRepo.save(settings.value.copy(proxyNodesJson = json, proxyLastAutoTestAt = System.currentTimeMillis()))
+                val ok = updated.count { it.latencyMs >= 0 }
+                _status.value = "测速完成：可用 $ok/${updated.size}"
+            } finally {
+                _proxyTestBusy.value = false
+            }
+        }
+    }
+
+    fun autoSelectBestProxyNode() {
+        viewModelScope.launch {
+            var list = settings.value.proxyNodes()
+            if (list.isEmpty()) {
+                _status.value = "无节点"
+                return@launch
+            }
+            // 若全未测或间隔到了，先测一遍
+            val needTest = list.all { it.latencyMs < 0 } ||
+                (System.currentTimeMillis() - settings.value.proxyLastAutoTestAt) >
+                settings.value.proxyAutoTestIntervalMinutes.coerceIn(5, 180) * 60_000L
+            if (needTest) {
+                testAllProxyNodes()
+                // wait busy
+                while (_proxyTestBusy.value) {
+                    kotlinx.coroutines.delay(200)
+                }
+                list = settings.value.proxyNodes()
+            }
+            val best = list.filter { it.latencyMs >= 0 }.minByOrNull { it.latencyMs }
+            if (best == null) {
+                _status.value = "没有可用节点（全部超时）"
+                return@launch
+            }
+            applyProxyNode(best, selectMode = ProxySelectMode.Auto)
+            _status.value = "自动选用最快：${best.name}（${best.latencyMs}ms）"
+        }
+    }
+
+    /** 更换壁纸前：自动模式且间隔到期则重测并选最快 */
+    fun maybeRefreshAutoProxy() {
+        viewModelScope.launch {
+            val s = settings.value
+            if (!s.proxyEnabled || s.proxySelectMode != ProxySelectMode.Auto) return@launch
+            if (s.proxyNodes().isEmpty()) return@launch
+            val iv = s.proxyAutoTestIntervalMinutes.coerceIn(5, 180) * 60_000L
+            if (s.proxyLastAutoTestAt > 0L && System.currentTimeMillis() - s.proxyLastAutoTestAt < iv) return@launch
+            autoSelectBestProxyNode()
+        }
+    }
+
 
     private fun applySchedule(s: AppSettings) {
         val ctx = getApplication<Application>()

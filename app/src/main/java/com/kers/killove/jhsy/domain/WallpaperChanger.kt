@@ -62,6 +62,24 @@ class WallpaperChanger(
     ): ChangeResult {
         currentTrigger = triggerType
         var settings = settingsRepo.settingsFlow.first()
+        // 自动代理：若已有测速结果，选用延迟最低的可用节点
+        if (settings.proxyEnabled && settings.proxySelectMode == com.kers.killove.jhsy.domain.ProxySelectMode.Auto) {
+            val nodes = settings.proxyNodes().filter { it.latencyMs >= 0 }
+            val best = nodes.minByOrNull { it.latencyMs }
+            if (best != null && (best.host != settings.proxyHost || best.port != settings.proxyPort)) {
+                settings = settings.copy(
+                    proxySelectedNodeId = best.id,
+                    proxyType = best.type,
+                    proxyHost = best.host,
+                    proxyPort = best.port,
+                    proxyUser = best.user,
+                    proxyPassword = best.password
+                )
+                runCatching { settingsRepo.save(settings) }
+                com.kers.killove.jhsy.data.remote.ProxyHttp.applySettings(settings)
+            }
+        }
+
         RunLog.i(context, "changeOnce start trigger=${triggerType.code} force=$forceIgnoreScreenOff")
 
         // 定位避让 / 黑名单：以 filesDir 标记文件为准（:svc DataStore 缓存不可靠）

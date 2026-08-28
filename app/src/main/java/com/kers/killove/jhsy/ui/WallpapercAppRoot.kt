@@ -40,6 +40,7 @@ import com.kers.killove.jhsy.ui.screens.HomeScreen
 import com.kers.killove.jhsy.ui.screens.LocationAvoidListScreen
 import com.kers.killove.jhsy.ui.screens.LocationAvoidScreen
 import com.kers.killove.jhsy.ui.screens.BlacklistSelectedScreen
+import com.kers.killove.jhsy.ui.screens.ProxyNodesScreen
 import com.kers.killove.jhsy.ui.screens.OverviewScreen
 import com.kers.killove.jhsy.ui.screens.PermissionOnboardingScreen
 import com.kers.killove.jhsy.ui.screens.SettingsScreen
@@ -99,8 +100,12 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
                             SettingsScreen(
                                 vm,
                                 onOpenBlacklist = { nav.navigate("blacklist") },
-                                onOpenLocationAvoid = { nav.navigate("location_avoid") }
+                                onOpenLocationAvoid = { nav.navigate("location_avoid") },
+                                onOpenProxyNodes = { nav.navigate("proxy_nodes") }
                             )
+                        }
+                        composable("proxy_nodes") {
+                            ProxyNodesScreen(vm, onBack = { nav.popBackStack() })
                         }
                         composable("history") { HistoryScreen(vm) }
                         composable("blacklist") {

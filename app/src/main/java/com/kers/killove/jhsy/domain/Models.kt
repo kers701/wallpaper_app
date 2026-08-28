@@ -167,6 +167,36 @@ data class AvoidanceLocation(
     val lng: Double
 )
 
+
+enum class ProxyType(val code: String, val label: String) {
+    Http("http", "HTTP"),
+    Socks5("socks5", "SOCKS5");
+    companion object {
+        fun fromCode(c: String) = entries.find { it.code.equals(c, true) } ?: Http
+    }
+}
+
+enum class ProxySelectMode(val code: String, val label: String) {
+    Manual("manual", "手动选择"),
+    Auto("auto", "自动优选");
+    companion object {
+        fun fromCode(c: String) = entries.find { it.code.equals(c, true) } ?: Manual
+    }
+}
+
+/** 代理节点（HTTP / SOCKS5） */
+data class ProxyNode(
+    val id: String,
+    val name: String,
+    val type: ProxyType = ProxyType.Http,
+    val host: String,
+    val port: Int,
+    val user: String = "",
+    val password: String = "",
+    /** -1 未测；-2 失败；>=0 毫秒 */
+    val latencyMs: Long = -1L
+)
+
 data class AppSettings(
     val enabled: Boolean = false,
     val intervalMinutes: Int = 10,
@@ -237,12 +267,21 @@ data class AppSettings(
     val pinHash: String = "",
     val pinEnabled: Boolean = false,
 
-    /** HTTP 代理：开启且填了地址后走代理；失败或未开则系统直连 */
+    /** 代理：HTTP/SOCKS5；开启且填了地址后走代理；失败或未开则系统直连 */
     val proxyEnabled: Boolean = false,
+    val proxyType: ProxyType = ProxyType.Http,
     val proxyHost: String = "",
     val proxyPort: Int = 0,
     val proxyUser: String = "",
     val proxyPassword: String = "",
+    /** 订阅链接（http/https），导入后写入 proxyNodesJson */
+    val proxySubUrl: String = "",
+    val proxyNodesJson: String = "[]",
+    val proxySelectedNodeId: String = "",
+    val proxySelectMode: ProxySelectMode = ProxySelectMode.Manual,
+    /** 自动测速间隔（分钟），5～180 */
+    val proxyAutoTestIntervalMinutes: Int = 30,
+    val proxyLastAutoTestAt: Long = 0L,
 
     /** 前台黑名单包名：这些应用在前台时休眠不换壁纸 */
     val blacklistPackages: List<String> = emptyList(),
@@ -322,6 +361,43 @@ data class AppSettings(
     fun nextChangeAt(): Long {
         if (!enabled || lastChangeAt <= 0L) return 0L
         return lastChangeAt + intervalMinutes.coerceIn(5, 180) * 60_000L
+    }
+
+
+    fun proxyNodes(): List<ProxyNode> {
+        if (proxyNodesJson.isBlank() || proxyNodesJson == "[]") return emptyList()
+        return try {
+            val arr = org.json.JSONArray(proxyNodesJson)
+            val out = mutableListOf<ProxyNode>()
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                val host = o.optString("host")
+                val port = o.optInt("port", 0)
+                if (host.isBlank() || port !in 1..65535) continue
+                out.add(
+                    ProxyNode(
+                        id = o.optString("id").ifBlank { "${host}_$port" },
+                        name = o.optString("name").ifBlank { "$host:$port" },
+                        type = ProxyType.fromCode(o.optString("type", "http")),
+                        host = host,
+                        port = port,
+                        user = o.optString("user"),
+                        password = o.optString("password"),
+                        latencyMs = o.optLong("latencyMs", -1L)
+                    )
+                )
+            }
+            out
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    fun selectedProxyNode(): ProxyNode? {
+        val list = proxyNodes()
+        if (list.isEmpty()) return null
+        val id = proxySelectedNodeId
+        return list.find { it.id == id } ?: list.firstOrNull()
     }
 
     fun avoidanceLocations(): List<AvoidanceLocation> {

@@ -53,6 +53,8 @@ import com.kers.killove.jhsy.domain.WallpaperFitMode
 import com.kers.killove.jhsy.domain.OrientationFilter
 import com.kers.killove.jhsy.domain.WallpaperTarget
 import com.kers.killove.jhsy.domain.CardStyle
+import com.kers.killove.jhsy.domain.ProxyType
+import com.kers.killove.jhsy.domain.ProxySelectMode
 import com.kers.killove.jhsy.ui.LocalUiTextColor
 import com.kers.killove.jhsy.util.BatteryHelper
 import com.kers.killove.jhsy.util.SuperServiceController
@@ -61,7 +63,7 @@ import com.kers.killove.jhsy.ui.MainViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLocationAvoid: () -> Unit = {}) {
+fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLocationAvoid: () -> Unit = {}, onOpenProxyNodes: () -> Unit = {}) {
     val createDocLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
     ) { uri ->
@@ -158,6 +160,10 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
     }
     var proxyPass by remember(settings.proxyPassword, keysVisible) {
         mutableStateOf(if (keysVisible) settings.proxyPassword else "")
+    }
+    var proxyType by remember(settings.proxyType) { mutableStateOf(settings.proxyType) }
+    var proxySub by remember(settings.proxySubUrl, keysVisible) {
+        mutableStateOf(if (keysVisible) settings.proxySubUrl else "")
     }
     var localFb by remember(settings.localFallbackEnabled) {
         mutableStateOf(settings.localFallbackEnabled)
@@ -548,11 +554,16 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             onToggle = { expandProxy = !expandProxy }
         ) {
         if (keysVisible) {
-            RowSwitch("启用 HTTP 代理（不可用自动回退系统网络）", proxyOn) { proxyOn = it }
+            RowSwitch("启用代理（不可用自动回退系统网络）", proxyOn) { proxyOn = it }
+            EnumDropdown("代理类型", ProxyType.entries, proxyType) { proxyType = it }
+            Text(
+                "支持 HTTP 与 SOCKS5。SOCKS5 带认证在部分机型上可能不稳定，优先无认证节点。",
+                style = MaterialTheme.typography.bodySmall
+            )
             OutlinedTextField(
                 value = proxyHost,
                 onValueChange = { proxyHost = it },
-                label = { Text("服务器地址（如 127.0.0.1 或 host）") },
+                label = { Text("服务器地址（手动单节点）") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 enabled = proxyOn
@@ -581,6 +592,37 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                 singleLine = true,
                 enabled = proxyOn
             )
+            OutlinedTextField(
+                value = proxySub,
+                onValueChange = { proxySub = it },
+                label = { Text("订阅链接或节点列表（可粘贴）") },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("https://… 或 socks5://host:port#名") },
+                minLines = 2,
+                maxLines = 5,
+                enabled = proxyOn
+            )
+            Text(
+                "支持：订阅 URL / Base64 列表 / 每行 socks5://、http://、host:port；不支持 ss/vmess/trojan。",
+                style = MaterialTheme.typography.bodySmall
+            )
+            OutlinedButton(
+                onClick = { vm.importProxySubscription(proxySub) },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = proxyOn
+            ) { Text("导入订阅 / 解析节点") }
+            val nodeCount = settings.proxyNodes().size
+            if (nodeCount > 0) {
+                Text(
+                    "已导入 $nodeCount 个节点 · 当前模式：${settings.proxySelectMode.label}" +
+                        (settings.selectedProxyNode()?.let { " · 选用 ${it.name}" } ?: ""),
+                    style = MaterialTheme.typography.bodySmall
+                )
+                OutlinedButton(
+                    onClick = onOpenProxyNodes,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("节点选择（手动 / 自动测速）…") }
+            }
         } else {
             LockedField("网络代理（请先解锁 PIN）")
         }
@@ -822,10 +864,12 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                         bgLocalPath = bgLocal.trim(),
                         bgMode = bgMode,
                         proxyEnabled = proxyOn,
+                        proxyType = if (keysVisible) proxyType else settings.proxyType,
                         proxyHost = if (keysVisible) proxyHost.trim() else settings.proxyHost,
                         proxyPort = if (keysVisible) (proxyPort.toIntOrNull() ?: 0) else settings.proxyPort,
                         proxyUser = if (keysVisible) proxyUser.trim() else settings.proxyUser,
-                        proxyPassword = if (keysVisible) proxyPass else settings.proxyPassword
+                        proxyPassword = if (keysVisible) proxyPass else settings.proxyPassword,
+                        proxySubUrl = if (keysVisible) proxySub.trim() else settings.proxySubUrl
                     )
                 )
             },
@@ -872,6 +916,8 @@ private fun <T> EnumDropdown(
             is WallpaperFitMode -> it.label
             is TranslateProvider -> it.label
             is CardStyle -> it.label
+            is ProxyType -> it.label
+            is ProxySelectMode -> it.label
             else -> it.toString()
         }
     },
