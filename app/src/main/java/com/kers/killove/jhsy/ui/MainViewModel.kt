@@ -955,6 +955,46 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
 
 
+    /** 从 SAF 选择内核文件 → 复制到私有目录并写路径。 */
+    fun importSuperProxyBin(uri: android.net.Uri) {
+        viewModelScope.launch {
+            _status.value = "正在导入内核…"
+            val result = withContext(Dispatchers.IO) {
+                SuperProxyController.importBinFromUri(getApplication(), uri)
+            }
+            if (!result.ok) {
+                _status.value = result.message
+                return@launch
+            }
+            val next = settings.value.copy(
+                superProxyEnabled = true,
+                superProxyBinPath = result.path
+            )
+            withContext(Dispatchers.IO) { settingsRepo.save(next) }
+            _status.value = result.message
+        }
+    }
+
+    /** 从 SAF 选择配置文件 → 复制到私有目录并写路径。 */
+    fun importSuperProxyConfig(uri: android.net.Uri) {
+        viewModelScope.launch {
+            _status.value = "正在导入配置…"
+            val result = withContext(Dispatchers.IO) {
+                SuperProxyController.importConfigFromUri(getApplication(), uri)
+            }
+            if (!result.ok) {
+                _status.value = result.message
+                return@launch
+            }
+            val next = settings.value.copy(
+                superProxyEnabled = true,
+                superProxyConfigPath = result.path
+            )
+            withContext(Dispatchers.IO) { settingsRepo.save(next) }
+            _status.value = result.message
+        }
+    }
+
     /**
      * 启动超级代理内核。
      * @param draft 若传入（设置页当前表单），会先写入 DataStore 再启动，避免「改了没保存点启动无反应」。
@@ -982,7 +1022,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
             if (s.superProxyBinPath.isBlank()) {
-                _status.value = "请填写内核路径（如 /data/adb/mihomo）"
+                _status.value = "请先点「选择内核文件并导入」"
                 return@launch
             }
             _status.value = "正在解析配置并启动超级代理内核…"

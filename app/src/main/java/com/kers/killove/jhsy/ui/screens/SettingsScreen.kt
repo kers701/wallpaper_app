@@ -640,114 +640,126 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                 ) { Text("节点选择（手动 / 自动测速）…") }
             }
 
-            // —— 超级代理（Root + 内核，仅本应用）——
-            Text("超级代理（Root）", style = MaterialTheme.typography.titleSmall)
-            Text(
-                "用 Root 启动自定义内核（推荐 Clash Meta / mihomo），只监听 127.0.0.1，仅本应用走代理，不是全局 VPN。\n" +
-                    "配置优先级：① 自定义配置路径（文件存在）→ ② 订阅链接自动生成 Clash 默认配置。",
-                style = MaterialTheme.typography.bodySmall
-            )
-            val spSt = com.kers.killove.jhsy.util.SuperProxyController.status(
-                context,
-                settings.copy(
-                    superProxyEnabled = superProxyOn,
-                    superProxyBinPath = superBin,
-                    superProxyConfigPath = superCfg,
-                    superProxySubUrl = superSub,
-                    superProxyLocalPort = superPort.toIntOrNull() ?: 17890
-                )
-            )
-            Text(spSt.message, style = MaterialTheme.typography.bodySmall)
-            RowSwitch("启用超级代理（仅本应用）", superProxyOn) { superProxyOn = it }
-            OutlinedTextField(
-                value = superBin,
-                onValueChange = { superBin = it },
-                label = { Text("内核路径（如 /data/adb/clash / mihomo）") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                enabled = superProxyOn
-            )
-            OutlinedTextField(
-                value = superSub,
-                onValueChange = { superSub = it },
-                label = { Text("订阅链接（http/https，可直接用）") },
-                placeholder = { Text("https://example.com/clash.yaml") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                enabled = superProxyOn
-            )
-            Text(
-                "填订阅后无需自备配置：启动时自动生成 Clash Meta 默认 YAML（proxy-providers + 127.0.0.1 本地端口）。",
-                style = MaterialTheme.typography.bodySmall
-            )
-            OutlinedTextField(
-                value = superCfg,
-                onValueChange = { superCfg = it },
-                label = { Text("自定义配置路径（可选，优先于订阅）") },
-                placeholder = { Text("留空则用订阅自动配置") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                enabled = superProxyOn
-            )
-            OutlinedTextField(
-                value = superArgs,
-                onValueChange = { superArgs = it },
-                label = { Text("启动参数（可空=自动猜测）") },
-                placeholder = { Text("-f {config} -d {workdir}  占位符 {bin}{config}{port}{workdir}") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                enabled = superProxyOn
-            )
-            OutlinedTextField(
-                value = superPort,
-                onValueChange = { superPort = it.filter { c -> c.isDigit() }.take(5) },
-                label = { Text("本地 SOCKS 端口（默认 17890）") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                enabled = superProxyOn
-            )
-            val superStatus by vm.status.collectAsState()
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(
-                    onClick = {
-                        // 用当前表单直接启动（内部会先保存），避免「改了没点保存 → 无反应」
-                        vm.startSuperProxy(
-                            settings.copy(
-                                superProxyEnabled = true,
-                                superProxyBinPath = superBin.trim(),
-                                superProxyConfigPath = superCfg.trim(),
-                                superProxySubUrl = superSub.trim(),
-                                superProxyArgs = superArgs.trim(),
-                                superProxyLocalPort = superPort.toIntOrNull()?.coerceIn(1025, 65535)
-                                    ?: 17890
-                            )
-                        )
-                    },
-                    modifier = Modifier.weight(1f),
-                    enabled = superProxyOn
-                ) { Text("启动内核") }
-                OutlinedButton(
-                    onClick = { vm.stopSuperProxy() },
-                    modifier = Modifier.weight(1f)
-                ) { Text("停止内核") }
+            // —— 超级代理：仅 Root 设备显示 ——
+            val hasRoot = remember {
+                com.kers.killove.jhsy.util.RootKeepAlive.hasRoot()
             }
-            if (superStatus.isNotBlank() && (
-                    superStatus.contains("超级代理") ||
-                        superStatus.contains("内核") ||
-                        superStatus.contains("Root") ||
-                        superStatus.contains("配置")
-                    )
-            ) {
+            if (hasRoot) {
+                val pickBinLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.OpenDocument()
+                ) { uri ->
+                    if (uri != null) vm.importSuperProxyBin(uri)
+                }
+                val pickCfgLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.OpenDocument()
+                ) { uri ->
+                    if (uri != null) vm.importSuperProxyConfig(uri)
+                }
+                Text("超级代理（Root）", style = MaterialTheme.typography.titleSmall)
                 Text(
-                    superStatus,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary
+                    "用 Root 启动自定义内核（推荐 mihomo / Clash Meta），只监听 127.0.0.1，仅本应用走代理。\n" +
+                        "请用「选择文件」导入内核/配置到应用私有目录（无需所有文件访问权限）。\n" +
+                        "配置优先级：① 已导入配置 → ② 订阅链接自动生成。",
+                    style = MaterialTheme.typography.bodySmall
                 )
+                val spSt = com.kers.killove.jhsy.util.SuperProxyController.status(
+                    context,
+                    settings.copy(
+                        superProxyEnabled = superProxyOn,
+                        superProxyBinPath = superBin.ifBlank { settings.superProxyBinPath },
+                        superProxyConfigPath = superCfg.ifBlank { settings.superProxyConfigPath },
+                        superProxySubUrl = superSub,
+                        superProxyLocalPort = superPort.toIntOrNull() ?: 17890
+                    )
+                )
+                Text(spSt.message, style = MaterialTheme.typography.bodySmall)
+                RowSwitch("启用超级代理（仅本应用）", superProxyOn) { superProxyOn = it }
+
+                Text(
+                    "内核：${if (settings.superProxyBinPath.isNotBlank()) settings.superProxyBinPath else "未导入"}",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                OutlinedButton(
+                    onClick = { pickBinLauncher.launch(arrayOf("*/*")) },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = superProxyOn
+                ) { Text("选择内核文件并导入…") }
+
+                OutlinedTextField(
+                    value = superSub,
+                    onValueChange = { superSub = it },
+                    label = { Text("订阅链接（可选，无自备配置时用）") },
+                    placeholder = { Text("https://…") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    enabled = superProxyOn
+                )
+                Text(
+                    "配置：${if (settings.superProxyConfigPath.isNotBlank()) settings.superProxyConfigPath else "未导入（可用订阅自动生成）"}",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                OutlinedButton(
+                    onClick = { pickCfgLauncher.launch(arrayOf("application/*", "text/*", "*/*")) },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = superProxyOn
+                ) { Text("选择配置文件并导入…") }
+
+                OutlinedTextField(
+                    value = superArgs,
+                    onValueChange = { superArgs = it },
+                    label = { Text("启动参数（可空=自动猜测）") },
+                    placeholder = { Text("-f {config} -d {workdir}") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    enabled = superProxyOn
+                )
+                OutlinedTextField(
+                    value = superPort,
+                    onValueChange = { superPort = it.filter { c -> c.isDigit() }.take(5) },
+                    label = { Text("本地 SOCKS 端口（默认 17890）") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    enabled = superProxyOn
+                )
+                val superStatus by vm.status.collectAsState()
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            vm.startSuperProxy(
+                                settings.copy(
+                                    superProxyEnabled = true,
+                                    superProxyBinPath = settings.superProxyBinPath.ifBlank { superBin.trim() },
+                                    superProxyConfigPath = settings.superProxyConfigPath.ifBlank { superCfg.trim() },
+                                    superProxySubUrl = superSub.trim(),
+                                    superProxyArgs = superArgs.trim(),
+                                    superProxyLocalPort = superPort.toIntOrNull()?.coerceIn(1025, 65535)
+                                        ?: 17890
+                                )
+                            )
+                        },
+                        modifier = Modifier.weight(1f),
+                        enabled = superProxyOn
+                    ) { Text("启动内核") }
+                    OutlinedButton(
+                        onClick = { vm.stopSuperProxy() },
+                        modifier = Modifier.weight(1f)
+                    ) { Text("停止内核") }
+                }
+                if (superStatus.isNotBlank() && (
+                        superStatus.contains("超级代理") ||
+                            superStatus.contains("内核") ||
+                            superStatus.contains("导入") ||
+                            superStatus.contains("Root") ||
+                            superStatus.contains("配置")
+                        )
+                ) {
+                    Text(
+                        superStatus,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
-            Text(
-                "点「启动内核」会自动保存上方填写内容。需 Root；内核路径与配置/订阅至少填一类。",
-                style = MaterialTheme.typography.bodySmall
-            )
         } else {
             LockedField("网络代理（请先解锁 PIN）")
         }

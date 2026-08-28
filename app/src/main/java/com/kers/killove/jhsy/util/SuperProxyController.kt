@@ -1,25 +1,29 @@
 package com.kers.killove.jhsy.util
 
 import android.content.Context
+import android.net.Uri
 import com.kers.killove.jhsy.domain.AppSettings
 import java.io.DataOutputStream
 import java.io.File
+import java.io.FileOutputStream
 import java.util.concurrent.TimeUnit
 
 /**
  * 超级代理（仅本应用）：
- * - 需 Root 启动用户自定义代理内核（sing-box / Clash Meta / Xray 等）
+ * - 需 Root 启动用户自定义代理内核（sing-box / Clash Meta / mihomo / Xray 等）
  * - 内核只监听 127.0.0.1:本地端口，不开启 TUN / 透明代理 → 不影响其它 App
- * - 本应用通过 ProxyHttp 连接该本地端口即可
+ * - 内核/配置通过系统文件选择器导入到 [filesDir]/super_proxy/，无需「所有文件访问」权限
  *
  * 配置优先级：
- * 1. 用户填写的配置文件路径且文件存在 → 直接使用
- * 2. 否则若填写了订阅链接 → 自动生成默认 Clash Meta 配置（proxy-providers）
+ * 1. 用户导入/指定的配置文件且存在 → 直接使用
+ * 2. 否则若填写了订阅链接 → 自动生成默认 Clash Meta 配置
  * 3. 否则无法启动
  */
 object SuperProxyController {
 
     const val DEFAULT_PORT = 17890
+    const val IMPORTED_BIN_NAME = "core_bin"
+    const val IMPORTED_CFG_NAME = "user_config.yaml"
 
     data class Status(
         val hasRoot: Boolean,
@@ -38,12 +42,91 @@ object SuperProxyController {
         val message: String
     )
 
+    data class ImportResult(
+        val ok: Boolean,
+        val path: String = "",
+        val message: String
+    )
+
     fun workDir(context: Context): File =
         File(context.applicationContext.filesDir, "super_proxy").also { it.mkdirs() }
 
     fun pidFile(context: Context): File = File(workDir(context), "core.pid")
     fun logFile(context: Context): File = File(workDir(context), "core.log")
     fun autoConfigFile(context: Context): File = File(workDir(context), "auto_clash.yaml")
+    fun importedBinFile(context: Context): File = File(workDir(context), IMPORTED_BIN_NAME)
+    fun importedConfigFile(context: Context): File = File(workDir(context), IMPORTED_CFG_NAME)
+
+    /**
+     * 从 SAF Uri 复制内核到私有目录，并 chmod + 尝试 chown 为当前应用。
+     * 不需要 MANAGE_EXTERNAL_STORAGE。
+     */
+    fun importBinFromUri(context: Context, uri: Uri): ImportResult {
+        return try {
+            val out = importedBinFile(context)
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                FileOutputStream(out).use { output -> input.copyTo(output) }
+            } ?: return ImportResult(false, message = "无法读取所选文件")
+            if (out.length() < 1024) {
+                out.delete()
+                return ImportResult(false, message = "文件过小，不像可执行内核（${out.length()} 字节）")
+            }
+            out.setReadable(true, false)
+            out.setExecutable(true, false)
+            fixPermsRoot(context, out, executable = true)
+            ImportResult(
+                true,
+                out.absolutePath,
+                "已导入内核 ${out.length() / 1024} KB → ${out.name}"
+            )
+        } catch (e: Exception) {
+            ImportResult(false, message = "导入内核失败：${e.message}")
+        }
+    }
+
+    /**
+     * 从 SAF Uri 复制配置到私有目录。
+     */
+    fun importConfigFromUri(context: Context, uri: Uri): ImportResult {
+        return try {
+            val out = importedConfigFile(context)
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                FileOutputStream(out).use { output -> input.copyTo(output) }
+            } ?: return ImportResult(false, message = "无法读取所选配置")
+            if (out.length() < 8) {
+                out.delete()
+                return ImportResult(false, message = "配置文件为空")
+            }
+            out.setReadable(true, false)
+            fixPermsRoot(context, out, executable = false)
+            ImportResult(
+                true,
+                out.absolutePath,
+                "已导入配置 ${out.length()} 字节 → ${out.name}"
+            )
+        } catch (e: Exception) {
+            ImportResult(false, message = "导入配置失败：${e.message}")
+        }
+    }
+
+    /** Root 下修正属主与权限，保证 su 启动与 app 可读。 */
+    private fun fixPermsRoot(context: Context, file: File, executable: Boolean) {
+        if (!RootKeepAlive.hasRoot()) return
+        val path = shellQuote(file.absolutePath)
+        val mode = if (executable) "755" else "644"
+        val uid = android.os.Process.myUid()
+        try {
+            val p = Runtime.getRuntime().exec("su")
+            DataOutputStream(p.outputStream).use { os ->
+                os.writeBytes("chown $uid:$uid $path 2>/dev/null\n")
+                os.writeBytes("chmod $mode $path 2>/dev/null\n")
+                os.writeBytes("exit\n")
+                os.flush()
+            }
+            p.waitFor(3, TimeUnit.SECONDS)
+        } catch (_: Exception) {
+        }
+    }
 
     fun status(context: Context, s: AppSettings): Status {
         val root = RootKeepAlive.hasRoot()
