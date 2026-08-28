@@ -955,20 +955,38 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
 
 
-    fun startSuperProxy() {
+    /**
+     * 启动超级代理内核。
+     * @param draft 若传入（设置页当前表单），会先写入 DataStore 再启动，避免「改了没保存点启动无反应」。
+     */
+    fun startSuperProxy(draft: AppSettings? = null) {
         viewModelScope.launch {
-            val s = settings.value
+            val s = if (draft != null) {
+                val merged = settings.value.copy(
+                    superProxyEnabled = draft.superProxyEnabled,
+                    superProxyBinPath = draft.superProxyBinPath,
+                    superProxyConfigPath = draft.superProxyConfigPath,
+                    superProxySubUrl = draft.superProxySubUrl,
+                    superProxyArgs = draft.superProxyArgs,
+                    superProxyLocalPort = draft.superProxyLocalPort
+                )
+                withContext(Dispatchers.IO) {
+                    settingsRepo.save(merged)
+                }
+                merged
+            } else {
+                settings.value
+            }
             if (!s.superProxyEnabled) {
-                _status.value = "请先开启超级代理并保存设置"
+                _status.value = "请先打开「启用超级代理」开关"
+                return@launch
+            }
+            if (s.superProxyBinPath.isBlank()) {
+                _status.value = "请填写内核路径（如 /data/adb/mihomo）"
                 return@launch
             }
             _status.value = "正在解析配置并启动超级代理内核…"
             val err = withContext(Dispatchers.IO) {
-                // resolveConfig：用户配置优先，否则订阅 → 默认 Clash YAML
-                val resolved = SuperProxyController.resolveConfig(getApplication(), s)
-                if (resolved.source == "none") {
-                    return@withContext resolved.message
-                }
                 SuperProxyController.start(getApplication(), s)
             }
             if (err == null) {
@@ -985,7 +1003,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             withContext(Dispatchers.IO) {
                 SuperProxyController.stop(getApplication())
             }
-            // 停止后若仍开超级代理开关，ProxyHttp 会连不上本地端口并回退直连
             ProxyHttp.applySettings(settings.value)
             _status.value = "超级代理内核已停止"
         }

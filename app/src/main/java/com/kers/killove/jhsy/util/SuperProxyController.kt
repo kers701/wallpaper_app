@@ -218,11 +218,18 @@ object SuperProxyController {
             "${shellQuote(bin)} $args"
         }
 
+        // root 写 pid/log 后 chmod，避免 app 读不到；先清空旧日志
         val script = """
             chmod 755 ${shellQuote(bin)} 2>/dev/null
+            mkdir -p ${shellQuote(wd)}
             cd ${shellQuote(wd)} || exit 1
-            nohup $runCmd >${shellQuote(log)} 2>&1 &
+            : > ${shellQuote(log)}
+            chmod 666 ${shellQuote(log)} 2>/dev/null
+            echo "CMD: $runCmd" >> ${shellQuote(log)}
+            nohup $runCmd >>${shellQuote(log)} 2>&1 &
             echo ${'$'}! > ${shellQuote(pidPath)}
+            chmod 666 ${shellQuote(pidPath)} 2>/dev/null
+            chmod 666 ${shellQuote(log)} 2>/dev/null
         """.trimIndent()
 
         return try {
@@ -234,15 +241,19 @@ object SuperProxyController {
                 os.writeBytes("exit\n")
                 os.flush()
             }
-            p.waitFor(5, TimeUnit.SECONDS)
-            Thread.sleep(500)
+            val finished = p.waitFor(8, TimeUnit.SECONDS)
+            if (!finished) {
+                return "su 命令超时（请确认已授权 Root）"
+            }
+            // mihomo 拉订阅可能稍慢，多等一会儿再判定
+            Thread.sleep(1200)
             val pid = readPid(context)
             if (pid != null && isPidAlive(pid)) null
             else {
                 val tail = runCatching {
-                    logFile(context).readText().takeLast(500)
-                }.getOrDefault("")
-                "启动失败或进程已退出（${resolved.source}）。日志：$tail"
+                    logFile(context).readText().takeLast(800)
+                }.getOrDefault("(无日志，可能无 Root 权限或路径不可写)")
+                "启动失败或进程已退出（配置来源=${resolved.source}，cfg=$cfg）。\n$tail"
             }
         } catch (e: Exception) {
             "启动异常：${e.message}"

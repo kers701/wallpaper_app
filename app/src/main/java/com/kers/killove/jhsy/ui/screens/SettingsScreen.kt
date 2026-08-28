@@ -706,9 +706,23 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                 singleLine = true,
                 enabled = superProxyOn
             )
+            val superStatus by vm.status.collectAsState()
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(
-                    onClick = { vm.startSuperProxy() },
+                    onClick = {
+                        // 用当前表单直接启动（内部会先保存），避免「改了没点保存 → 无反应」
+                        vm.startSuperProxy(
+                            settings.copy(
+                                superProxyEnabled = true,
+                                superProxyBinPath = superBin.trim(),
+                                superProxyConfigPath = superCfg.trim(),
+                                superProxySubUrl = superSub.trim(),
+                                superProxyArgs = superArgs.trim(),
+                                superProxyLocalPort = superPort.toIntOrNull()?.coerceIn(1025, 65535)
+                                    ?: 17890
+                            )
+                        )
+                    },
                     modifier = Modifier.weight(1f),
                     enabled = superProxyOn
                 ) { Text("启动内核") }
@@ -717,6 +731,23 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                     modifier = Modifier.weight(1f)
                 ) { Text("停止内核") }
             }
+            if (superStatus.isNotBlank() && (
+                    superStatus.contains("超级代理") ||
+                        superStatus.contains("内核") ||
+                        superStatus.contains("Root") ||
+                        superStatus.contains("配置")
+                    )
+            ) {
+                Text(
+                    superStatus,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            Text(
+                "点「启动内核」会自动保存上方填写内容。需 Root；内核路径与配置/订阅至少填一类。",
+                style = MaterialTheme.typography.bodySmall
+            )
         } else {
             LockedField("网络代理（请先解锁 PIN）")
         }
