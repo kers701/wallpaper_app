@@ -286,10 +286,14 @@ data class AppSettings(
     /**
      * 超级代理（仅本应用）：Root 启动自定义内核，监听 127.0.0.1:superProxyLocalPort。
      * 开启后 ProxyHttp 优先走本地端口，不启用 TUN/全局劫持。
+     * 配置优先级：superProxyConfigPath（存在） > superProxySubUrl 自动生成 Clash 默认配置。
      */
     val superProxyEnabled: Boolean = false,
     val superProxyBinPath: String = "",
+    /** 用户自定义配置路径；文件存在时优先于订阅自动配置 */
     val superProxyConfigPath: String = "",
+    /** 订阅链接（http/https）；无自定义配置时自动生成 Clash Meta 默认 YAML */
+    val superProxySubUrl: String = "",
     /** 启动参数，占位符 {bin} {config} {port} {workdir}；空则按内核名猜测 */
     val superProxyArgs: String = "",
     val superProxyLocalPort: Int = 17890,

@@ -172,6 +172,9 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
     var superCfg by remember(settings.superProxyConfigPath, keysVisible) {
         mutableStateOf(if (keysVisible) settings.superProxyConfigPath else "")
     }
+    var superSub by remember(settings.superProxySubUrl, keysVisible) {
+        mutableStateOf(if (keysVisible) settings.superProxySubUrl else "")
+    }
     var superArgs by remember(settings.superProxyArgs, keysVisible) {
         mutableStateOf(if (keysVisible) settings.superProxyArgs else "")
     }
@@ -640,7 +643,8 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             // —— 超级代理（Root + 内核，仅本应用）——
             Text("超级代理（Root）", style = MaterialTheme.typography.titleSmall)
             Text(
-                "用 Root 启动自定义内核（sing-box / Clash / Xray 等），只监听 127.0.0.1，仅本应用走代理，不是全局 VPN。",
+                "用 Root 启动自定义内核（推荐 Clash Meta / mihomo），只监听 127.0.0.1，仅本应用走代理，不是全局 VPN。\n" +
+                    "配置优先级：① 自定义配置路径（文件存在）→ ② 订阅链接自动生成 Clash 默认配置。",
                 style = MaterialTheme.typography.bodySmall
             )
             val spSt = com.kers.killove.jhsy.util.SuperProxyController.status(
@@ -649,6 +653,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                     superProxyEnabled = superProxyOn,
                     superProxyBinPath = superBin,
                     superProxyConfigPath = superCfg,
+                    superProxySubUrl = superSub,
                     superProxyLocalPort = superPort.toIntOrNull() ?: 17890
                 )
             )
@@ -657,15 +662,29 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             OutlinedTextField(
                 value = superBin,
                 onValueChange = { superBin = it },
-                label = { Text("内核路径（如 /data/adb/sing-box）") },
+                label = { Text("内核路径（如 /data/adb/clash / mihomo）") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 enabled = superProxyOn
             )
             OutlinedTextField(
+                value = superSub,
+                onValueChange = { superSub = it },
+                label = { Text("订阅链接（http/https，可直接用）") },
+                placeholder = { Text("https://example.com/clash.yaml") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                enabled = superProxyOn
+            )
+            Text(
+                "填订阅后无需自备配置：启动时自动生成 Clash Meta 默认 YAML（proxy-providers + 127.0.0.1 本地端口）。",
+                style = MaterialTheme.typography.bodySmall
+            )
+            OutlinedTextField(
                 value = superCfg,
                 onValueChange = { superCfg = it },
-                label = { Text("配置文件路径（内核 JSON/YAML）") },
+                label = { Text("自定义配置路径（可选，优先于订阅）") },
+                placeholder = { Text("留空则用订阅自动配置") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 enabled = superProxyOn
@@ -674,7 +693,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                 value = superArgs,
                 onValueChange = { superArgs = it },
                 label = { Text("启动参数（可空=自动猜测）") },
-                placeholder = { Text("run -c {config}  占位符 {bin}{config}{port}{workdir}") },
+                placeholder = { Text("-f {config} -d {workdir}  占位符 {bin}{config}{port}{workdir}") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 enabled = superProxyOn
@@ -687,7 +706,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                 singleLine = true,
                 enabled = superProxyOn
             )
-            Row(Modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(
                     onClick = { vm.startSuperProxy() },
                     modifier = Modifier.weight(1f),
@@ -944,7 +963,14 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                         proxyPort = if (keysVisible) (proxyPort.toIntOrNull() ?: 0) else settings.proxyPort,
                         proxyUser = if (keysVisible) proxyUser.trim() else settings.proxyUser,
                         proxyPassword = if (keysVisible) proxyPass else settings.proxyPassword,
-                        proxySubUrl = if (keysVisible) proxySub.trim() else settings.proxySubUrl
+                        proxySubUrl = if (keysVisible) proxySub.trim() else settings.proxySubUrl,
+                        superProxyEnabled = superProxyOn,
+                        superProxyBinPath = if (keysVisible) superBin.trim() else settings.superProxyBinPath,
+                        superProxyConfigPath = if (keysVisible) superCfg.trim() else settings.superProxyConfigPath,
+                        superProxySubUrl = if (keysVisible) superSub.trim() else settings.superProxySubUrl,
+                        superProxyArgs = if (keysVisible) superArgs.trim() else settings.superProxyArgs,
+                        superProxyLocalPort = superPort.toIntOrNull()?.coerceIn(1025, 65535)
+                            ?: settings.superProxyLocalPort
                     )
                 )
             },

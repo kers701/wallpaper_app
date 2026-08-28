@@ -962,8 +962,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 _status.value = "请先开启超级代理并保存设置"
                 return@launch
             }
-            _status.value = "正在启动超级代理内核…"
+            _status.value = "正在解析配置并启动超级代理内核…"
             val err = withContext(Dispatchers.IO) {
+                // resolveConfig：用户配置优先，否则订阅 → 默认 Clash YAML
+                val resolved = SuperProxyController.resolveConfig(getApplication(), s)
+                if (resolved.source == "none") {
+                    return@withContext resolved.message
+                }
                 SuperProxyController.start(getApplication(), s)
             }
             if (err == null) {

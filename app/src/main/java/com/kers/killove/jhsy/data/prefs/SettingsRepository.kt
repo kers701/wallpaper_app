@@ -94,6 +94,7 @@ class SettingsRepository(private val context: Context) {
         val SUPER_PROXY = booleanPreferencesKey("super_proxy")
         val SUPER_PROXY_BIN = stringPreferencesKey("super_proxy_bin")
         val SUPER_PROXY_CFG = stringPreferencesKey("super_proxy_cfg")
+        val SUPER_PROXY_SUB = stringPreferencesKey("super_proxy_sub")
         val SUPER_PROXY_ARGS = stringPreferencesKey("super_proxy_args")
         val SUPER_PROXY_PORT = intPreferencesKey("super_proxy_port")
         val BLACKLIST = stringPreferencesKey("blacklist_packages")
@@ -189,6 +190,7 @@ class SettingsRepository(private val context: Context) {
             superProxyEnabled = p[Keys.SUPER_PROXY] ?: false,
             superProxyBinPath = p[Keys.SUPER_PROXY_BIN] ?: "",
             superProxyConfigPath = p[Keys.SUPER_PROXY_CFG] ?: "",
+            superProxySubUrl = p[Keys.SUPER_PROXY_SUB] ?: "",
             superProxyArgs = p[Keys.SUPER_PROXY_ARGS] ?: "",
             superProxyLocalPort = (p[Keys.SUPER_PROXY_PORT] ?: 17890).coerceIn(1025, 65535),
             // 黑名单：标记文件存在则只认文件（空文件=空名单）；否则首次用 DataStore 迁移
@@ -278,6 +280,19 @@ class SettingsRepository(private val context: Context) {
             p[Keys.PROXY_PORT] = settings.proxyPort
             p[Keys.PROXY_USER] = settings.proxyUser
             p[Keys.PROXY_PASS] = settings.proxyPassword
+            p[Keys.PROXY_TYPE] = settings.proxyType.code
+            p[Keys.PROXY_SUB] = settings.proxySubUrl
+            p[Keys.PROXY_NODES] = settings.proxyNodesJson
+            p[Keys.PROXY_NODE_ID] = settings.proxySelectedNodeId
+            p[Keys.PROXY_SEL_MODE] = settings.proxySelectMode.code
+            p[Keys.PROXY_AUTO_IV] = settings.proxyAutoTestIntervalMinutes.coerceIn(5, 180)
+            p[Keys.PROXY_LAST_TEST] = settings.proxyLastAutoTestAt
+            p[Keys.SUPER_PROXY] = settings.superProxyEnabled
+            p[Keys.SUPER_PROXY_BIN] = settings.superProxyBinPath
+            p[Keys.SUPER_PROXY_CFG] = settings.superProxyConfigPath
+            p[Keys.SUPER_PROXY_SUB] = settings.superProxySubUrl
+            p[Keys.SUPER_PROXY_ARGS] = settings.superProxyArgs
+            p[Keys.SUPER_PROXY_PORT] = settings.superProxyLocalPort.coerceIn(1025, 65535)
             p[Keys.BLACKLIST] = settings.blacklistPackages.joinToString("\n")
             p[Keys.OVERVIEW_MINIMAL] = settings.overviewMinimalMode
             p[Keys.CHANGE_COUNT] = settings.changeCount
