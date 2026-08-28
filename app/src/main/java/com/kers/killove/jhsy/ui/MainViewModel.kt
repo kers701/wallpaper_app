@@ -1182,9 +1182,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 )
                 val ok = merged.count { it.latencyMs >= 0 }
                 _status.value = "测速完成：可用 $ok/${merged.size}"
-            } catch (_: kotlinx.coroutines.CancellationException) {
+            } catch (e: kotlinx.coroutines.CancellationException) {
                 _status.value = "测速已中断（已保存已测节点）"
-                throw _
+                throw e
             } finally {
                 _proxyTestBusy.value = false
             }

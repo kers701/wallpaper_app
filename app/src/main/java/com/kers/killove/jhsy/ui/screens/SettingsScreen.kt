@@ -74,8 +74,21 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
     ) { uri ->
         if (uri != null) vm.restoreConfigFromUri(uri)
     }
+    // 必须在 composable 顶层注册，不能放进 if (hasRoot) / if (proxyOn)
+    val pickSuperBinLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) vm.importSuperProxyBin(uri)
+    }
+    val pickSuperCfgLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) vm.importSuperProxyConfig(uri)
+    }
 
     val settings by vm.settings.collectAsState()
+    val superProxyStatus by vm.status.collectAsState()
+    val hasRoot = remember { com.kers.killove.jhsy.util.RootKeepAlive.hasRoot() }
     val context = LocalContext.current
     val textColor = LocalUiTextColor.current
     val unlocked by vm.unlocked.collectAsState()
@@ -643,20 +656,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             }
 
             // —— 超级代理：仅 Root 设备显示 ——
-            val hasRoot = remember {
-                com.kers.killove.jhsy.util.RootKeepAlive.hasRoot()
-            }
             if (hasRoot) {
-                val pickBinLauncher = rememberLauncherForActivityResult(
-                    ActivityResultContracts.OpenDocument()
-                ) { uri ->
-                    if (uri != null) vm.importSuperProxyBin(uri)
-                }
-                val pickCfgLauncher = rememberLauncherForActivityResult(
-                    ActivityResultContracts.OpenDocument()
-                ) { uri ->
-                    if (uri != null) vm.importSuperProxyConfig(uri)
-                }
                 Text("超级代理（Root）", style = MaterialTheme.typography.titleSmall)
                 Text(
                     "用 Root 启动自定义内核（推荐 mihomo / Clash Meta），只监听 127.0.0.1，仅本应用走代理。\n" +
@@ -696,7 +696,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                     style = MaterialTheme.typography.bodySmall
                 )
                 OutlinedButton(
-                    onClick = { pickBinLauncher.launch(arrayOf("*/*")) },
+                    onClick = { pickSuperBinLauncher.launch(arrayOf("*/*")) },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = (superProxyOn && proxyOn)
                 ) { Text("选择内核文件并导入…") }
@@ -715,7 +715,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                     style = MaterialTheme.typography.bodySmall
                 )
                 OutlinedButton(
-                    onClick = { pickCfgLauncher.launch(arrayOf("application/*", "text/*", "*/*")) },
+                    onClick = { pickSuperCfgLauncher.launch(arrayOf("application/*", "text/*", "*/*")) },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = (superProxyOn && proxyOn)
                 ) { Text("选择配置文件并导入…") }
@@ -737,7 +737,6 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                     singleLine = true,
                     enabled = (superProxyOn && proxyOn)
                 )
-                val superStatus by vm.status.collectAsState()
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(
                         onClick = {
@@ -761,16 +760,16 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                         modifier = Modifier.weight(1f)
                     ) { Text("停止内核") }
                 }
-                if (superStatus.isNotBlank() && (
-                        superStatus.contains("超级代理") ||
-                            superStatus.contains("内核") ||
-                            superStatus.contains("导入") ||
-                            superStatus.contains("Root") ||
-                            superStatus.contains("配置")
+                if (superProxyStatus.isNotBlank() && (
+                        superProxyStatus.contains("超级代理") ||
+                            superProxyStatus.contains("内核") ||
+                            superProxyStatus.contains("导入") ||
+                            superProxyStatus.contains("Root") ||
+                            superProxyStatus.contains("配置")
                         )
                 ) {
                     Text(
-                        superStatus,
+                        superProxyStatus,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.primary
                     )
