@@ -908,9 +908,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun addAvoidanceLocation(loc: AvoidanceLocation) {
         viewModelScope.launch {
+            val ctx = getApplication<Application>()
             val cur = settings.value.avoidanceLocations().toMutableList()
             if (cur.none { it.id == loc.id }) cur.add(loc)
             val json = LocationHelper.locationsToJson(cur)
+            // 先写跨进程文件，再写 DataStore，避免合并读回旧列表
+            ProcessBridgePrefs.writeAvoidLocationsJson(ctx, json)
             settingsRepo.save(settings.value.copy(avoidanceLocationsJson = json))
             _status.value = "已加入避让：${loc.name}"
         }
@@ -926,10 +929,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun removeAvoidanceLocation(id: String) {
         viewModelScope.launch {
+            val ctx = getApplication<Application>()
             val cur = settings.value.avoidanceLocations().filter { it.id != id }
             val json = LocationHelper.locationsToJson(cur)
+            // 必须先覆盖桥接文件；否则 settingsFlow 会把文件里的旧点再合并回来，表现为删不掉只换序
+            ProcessBridgePrefs.writeAvoidLocationsJson(ctx, json)
             settingsRepo.save(settings.value.copy(avoidanceLocationsJson = json))
-            _status.value = "已移除避让点"
+            _status.value = "已移除避让点（剩余 ${cur.size}）"
         }
     }
 
