@@ -8,22 +8,106 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.kers.killove.jhsy.BuildConfig
 import com.kers.killove.jhsy.ui.LocalUiTextColor
+import com.kers.killove.jhsy.util.AppUpdateChecker
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
- * 使用说明：功能讲解与配置建议（只读滚动页）。
+ * 使用说明：功能讲解与配置建议（只读滚动页）+ 检查更新。
  */
 @Composable
 fun HelpGuideScreen(onBack: () -> Unit) {
     val textColor = LocalUiTextColor.current
     val scroll = rememberScrollState()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    var updateStatus by remember { mutableStateOf("当前版本 ${BuildConfig.VERSION_NAME}（${BuildConfig.VERSION_CODE}）") }
+    var checking by remember { mutableStateOf(false) }
+    var downloading by remember { mutableStateOf(false) }
+    var progress by remember { mutableFloatStateOf(0f) }
+    var pendingInfo by remember { mutableStateOf<AppUpdateChecker.ReleaseInfo?>(null) }
+
+    fun checkUpdate() {
+        if (checking || downloading) return
+        checking = true
+        updateStatus = "正在查询 GitHub Releases…"
+        pendingInfo = null
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                AppUpdateChecker.checkLatest()
+            }
+            checking = false
+            when (result) {
+                is AppUpdateChecker.CheckResult.UpToDate -> {
+                    updateStatus = "已是最新：本机 ${result.current}，线上 ${result.latest}"
+                }
+                is AppUpdateChecker.CheckResult.UpdateAvailable -> {
+                    pendingInfo = result.info
+                    val sizeMb = if (result.info.apkSize > 0)
+                        String.format("%.1f MB", result.info.apkSize / (1024.0 * 1024.0))
+                    else "未知大小"
+                    updateStatus =
+                        "发现新版本 ${result.info.tag}（$sizeMb）\n${result.info.name}\n点下方「下载并安装」更新"
+                }
+                is AppUpdateChecker.CheckResult.Failed -> {
+                    updateStatus = "检查失败：${result.message}"
+                }
+            }
+        }
+    }
+
+    fun downloadAndInstall(info: AppUpdateChecker.ReleaseInfo) {
+        if (downloading) return
+        if (!AppUpdateChecker.canInstallPackages(context)) {
+            updateStatus = "需要允许「安装未知应用」权限，即将打开系统设置"
+            AppUpdateChecker.openInstallPermissionSettings(context)
+            return
+        }
+        downloading = true
+        progress = 0f
+        updateStatus = "正在下载 ${info.apkName ?: "APK"}…"
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                AppUpdateChecker.downloadApk(context, info) { p ->
+                    progress = p
+                }
+            }
+            downloading = false
+            when (result) {
+                is AppUpdateChecker.DownloadResult.Ok -> {
+                    updateStatus = "下载完成，正在调起安装…"
+                    val ok = AppUpdateChecker.installApk(context, result.file)
+                    if (!ok) {
+                        updateStatus = "无法调起安装，可打开发布页手动下载"
+                        AppUpdateChecker.openReleasePage(context, info.htmlUrl)
+                    }
+                }
+                is AppUpdateChecker.DownloadResult.Failed -> {
+                    updateStatus = "下载失败：${result.message}\n可打开浏览器手动下载"
+                }
+            }
+        }
+    }
 
     Column(
         Modifier
@@ -46,6 +130,65 @@ fun HelpGuideScreen(onBack: () -> Unit) {
             color = textColor.copy(alpha = 0.85f)
         )
 
+        // —— 检查更新 ——
+        GlassCard {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("检查更新", style = MaterialTheme.typography.titleMedium, color = textColor)
+                Text(
+                    "从 GitHub（kers701/wallpaper_app）Releases 查询最新 APK，有新版本可下载安装。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = textColor.copy(alpha = 0.88f)
+                )
+                Text(
+                    updateStatus,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = textColor.copy(alpha = 0.9f)
+                )
+                if (downloading) {
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        "${(progress * 100).toInt()}%",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = textColor.copy(alpha = 0.7f)
+                    )
+                }
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { checkUpdate() },
+                        enabled = !checking && !downloading,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(if (checking) "查询中…" else "检查更新")
+                    }
+                    val info = pendingInfo
+                    if (info != null) {
+                        OutlinedButton(
+                            onClick = { downloadAndInstall(info) },
+                            enabled = !checking && !downloading && info.apkUrl != null,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(if (downloading) "下载中…" else "下载并安装")
+                        }
+                    }
+                }
+                if (pendingInfo != null) {
+                    TextButton(
+                        onClick = {
+                            pendingInfo?.let { AppUpdateChecker.openReleasePage(context, it.htmlUrl) }
+                        }
+                    ) {
+                        Text("在浏览器打开发布页", color = textColor.copy(alpha = 0.85f))
+                    }
+                }
+            }
+        }
+
         GuideSection("一、快速开始（推荐顺序）", """
 1. 打开「配置」填写 Wallhaven API Key（可多行轮换）。
 2. 设置关键词或开启跃迁模式；纯度、类别、分辨率按喜好选择。
@@ -60,7 +203,7 @@ fun HelpGuideScreen(onBack: () -> Unit) {
 • 立即更换：马上执行一轮（仍受省电/黑名单/息屏等规则影响，手动场景下部分规则会放宽）。
 • 网络探测：测试 Wallhaven / 兜底 API 连通与延迟，便于排查「一直本地兜底」。
 • 跃迁关键词：折叠预览；开启跃迁且列表非空时，搜索优先用跃迁词。
-• 使用说明：即本页。
+• 使用说明：即本页（含检查更新）。
 """.trimIndent())
 
         GuideSection("三、概览", """
@@ -101,7 +244,7 @@ fun HelpGuideScreen(onBack: () -> Unit) {
 
         GuideSection("七、定位避让与绿色模式", """
 • 用途：在指定地点附近自动改纯度策略或仅用本地壁纸。
-• 权限：Android 10+ 必须「始终允许」定位，否则后台只能显示「运行中」、无法判定是否在区内。
+• 权限：Android 10+ 建议「始终允许」定位，否则后台难以判定是否在区内。
 • 触发半径：5～500 米可调；页面可看当前位置与距最近避让点距离。
 • 绿色模式：区内纯度在 R13 与「仅 Sketchy」间随机。
 • 极限回退：区内只用本地文件换壁纸；离开后恢复进入前状态。
@@ -151,10 +294,11 @@ fun HelpGuideScreen(onBack: () -> Unit) {
 • 定位后台无效：定位改为「始终允许」。
 • 通知已加黑名单但界面无勾选：已用文件桥同步，请杀进程重进或进设置触发合并。
 • 数据过大：缓存超过约 10GB 会清理下载缓存；更换记录保留最近约 77 条。
+• 检查更新：需联网访问 GitHub；若本机版本号已高于线上 Release，会提示已是最新。
 """.trimIndent())
 
         Text(
-            "版本说明与更新记录见项目 README。",
+            "版本说明与更新记录见 GitHub Releases / README。",
             style = MaterialTheme.typography.bodySmall,
             color = textColor.copy(alpha = 0.65f)
         )
