@@ -317,7 +317,7 @@ class SettingsRepository(private val context: Context) {
             p[Keys.DATA_SAVER] = settings.dataSaverEnabled
         }
         ProcessBridgePrefs.sync(context, settings)
-        ProxyHttp.applySettings(settings)
+        ProxyHttp.applySettings(context, settings)
     }
 
     suspend fun setLastCategory(code: String) {

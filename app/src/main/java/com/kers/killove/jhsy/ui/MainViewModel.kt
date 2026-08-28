@@ -1017,6 +1017,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             } else {
                 settings.value
             }
+            if (!s.proxyEnabled) {
+                _status.value = "请先启用「代理」，再开超级代理"
+                return@launch
+            }
             if (!s.superProxyEnabled) {
                 _status.value = "请先打开「启用超级代理」开关"
                 return@launch
@@ -1030,10 +1034,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 SuperProxyController.start(getApplication(), s)
             }
             if (err == null) {
-                ProxyHttp.applySettings(s)
+                ProxyHttp.applySettings(getApplication(), s)
+                ProxyHttp.setSuperRunning(true)
                 _status.value = SuperProxyController.status(getApplication(), s).message
             } else {
-                _status.value = "超级代理启动失败：$err"
+                ProxyHttp.setSuperRunning(false)
+                ProxyHttp.applySettings(getApplication(), s)
+                _status.value = "超级代理启动失败：$err（已回退普通代理/系统网络）"
             }
         }
     }
@@ -1043,8 +1050,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             withContext(Dispatchers.IO) {
                 SuperProxyController.stop(getApplication())
             }
-            ProxyHttp.applySettings(settings.value)
-            _status.value = "超级代理内核已停止"
+            ProxyHttp.setSuperRunning(false)
+            ProxyHttp.applySettings(getApplication(), settings.value)
+            _status.value = "超级代理内核已停止（已回退普通代理/系统网络）"
         }
     }
 

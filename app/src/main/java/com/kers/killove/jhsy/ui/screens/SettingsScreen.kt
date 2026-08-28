@@ -570,7 +570,14 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             onToggle = { expandProxy = !expandProxy }
         ) {
         if (keysVisible) {
-            RowSwitch("启用代理（不可用自动回退系统网络）", proxyOn) { proxyOn = it }
+            RowSwitch("启用代理（不可用自动回退系统网络）", proxyOn) {
+                proxyOn = it
+                if (!it) superProxyOn = false
+            }
+            Text(
+                "链路：超级代理（可用）→ 普通代理 → 系统网络。须先开代理才能开超级代理。",
+                style = MaterialTheme.typography.bodySmall
+            )
             EnumDropdown("代理类型", ProxyType.entries, proxyType) { proxyType = it }
             Text(
                 "支持 HTTP 与 SOCKS5。SOCKS5 带认证在部分机型上可能不稳定，优先无认证节点。",
@@ -665,7 +672,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                 val spSt = com.kers.killove.jhsy.util.SuperProxyController.status(
                     context,
                     settings.copy(
-                        superProxyEnabled = superProxyOn,
+                        superProxyEnabled = superProxyOn && proxyOn,
                         superProxyBinPath = superBin.ifBlank { settings.superProxyBinPath },
                         superProxyConfigPath = superCfg.ifBlank { settings.superProxyConfigPath },
                         superProxySubUrl = superSub,
@@ -673,7 +680,20 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                     )
                 )
                 Text(spSt.message, style = MaterialTheme.typography.bodySmall)
-                RowSwitch("启用超级代理（仅本应用）", superProxyOn) { superProxyOn = it }
+                if (!proxyOn) {
+                    Text(
+                        "请先启用上方「代理」，超级代理才能开启。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+                RowSwitch(
+                    "启用超级代理（仅本应用）",
+                    superProxyOn && proxyOn
+                ) {
+                    if (proxyOn) superProxyOn = it
+                    else superProxyOn = false
+                }
 
                 Text(
                     "内核：${if (settings.superProxyBinPath.isNotBlank()) settings.superProxyBinPath else "未导入"}",
@@ -682,7 +702,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                 OutlinedButton(
                     onClick = { pickBinLauncher.launch(arrayOf("*/*")) },
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = superProxyOn
+                    enabled = (superProxyOn && proxyOn)
                 ) { Text("选择内核文件并导入…") }
 
                 OutlinedTextField(
@@ -692,7 +712,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                     placeholder = { Text("https://…") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    enabled = superProxyOn
+                    enabled = (superProxyOn && proxyOn)
                 )
                 Text(
                     "配置：${if (settings.superProxyConfigPath.isNotBlank()) settings.superProxyConfigPath else "未导入（可用订阅自动生成）"}",
@@ -701,7 +721,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                 OutlinedButton(
                     onClick = { pickCfgLauncher.launch(arrayOf("application/*", "text/*", "*/*")) },
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = superProxyOn
+                    enabled = (superProxyOn && proxyOn)
                 ) { Text("选择配置文件并导入…") }
 
                 OutlinedTextField(
@@ -711,7 +731,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                     placeholder = { Text("-f {config} -d {workdir}") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    enabled = superProxyOn
+                    enabled = (superProxyOn && proxyOn)
                 )
                 OutlinedTextField(
                     value = superPort,
@@ -719,7 +739,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                     label = { Text("本地 SOCKS 端口（默认 17890）") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    enabled = superProxyOn
+                    enabled = (superProxyOn && proxyOn)
                 )
                 val superStatus by vm.status.collectAsState()
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -738,7 +758,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                             )
                         },
                         modifier = Modifier.weight(1f),
-                        enabled = superProxyOn
+                        enabled = (superProxyOn && proxyOn)
                     ) { Text("启动内核") }
                     OutlinedButton(
                         onClick = { vm.stopSuperProxy() },

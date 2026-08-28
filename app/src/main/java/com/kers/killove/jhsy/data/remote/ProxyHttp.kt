@@ -1,7 +1,9 @@
 package com.kers.killove.jhsy.data.remote
 
+import android.content.Context
 import com.kers.killove.jhsy.domain.AppSettings
 import com.kers.killove.jhsy.domain.ProxyType
+import com.kers.killove.jhsy.util.SuperProxyController
 import okhttp3.Authenticator
 import okhttp3.Credentials
 import okhttp3.OkHttpClient
@@ -15,10 +17,12 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * 全局 HTTP：支持可选 HTTP / SOCKS5 代理；代理不可用时自动回退系统直连。
- * 多进程各自维护内存客户端，通过 [applySettings] 同步配置。
+ * 全局 HTTP 代理链路（仅本应用）：
+ * 1. 超级代理可用（已启用 + 普通代理已开 + 内核在跑）→ 127.0.0.1 SOCKS5
+ * 2. 否则普通代理可用 → HTTP/SOCKS5 节点
+ * 3. 否则系统直连
  *
- * SOCKS5 用户名密码：依赖 JVM 对 SOCKS 的有限支持；无认证节点最稳妥。
+ * 请求失败时按上述顺序自动降级，不抛出「代理挂了整条链路死」的单点故障。
  */
 object ProxyHttp {
 
@@ -34,47 +38,93 @@ object ProxyHttp {
             get() = enabled && host.isNotBlank() && port in 1..65535
 
         companion object {
-            fun from(s: AppSettings): Config {
-                // 超级代理开启时：强制走本机回环端口（仅本应用），忽略普通代理地址
-                if (s.superProxyEnabled) {
-                    val port = s.superProxyLocalPort.coerceIn(1025, 65535)
-                    return Config(
-                        enabled = true,
-                        type = ProxyType.Socks5,
-                        host = "127.0.0.1",
-                        port = port,
-                        user = "",
-                        password = ""
-                    )
-                }
+            /** 普通代理配置（不含超级代理）。 */
+            fun normalFrom(s: AppSettings): Config = Config(
+                enabled = s.proxyEnabled,
+                type = s.proxyType,
+                host = s.proxyHost.trim(),
+                port = s.proxyPort,
+                user = s.proxyUser,
+                password = s.proxyPassword
+            )
+
+            /** 超级代理本地 SOCKS（需内核在跑才真正可用）。 */
+            fun superFrom(s: AppSettings): Config {
+                val port = s.superProxyLocalPort.coerceIn(1025, 65535)
                 return Config(
-                    enabled = s.proxyEnabled,
-                    type = s.proxyType,
-                    host = s.proxyHost.trim(),
-                    port = s.proxyPort,
-                    user = s.proxyUser,
-                    password = s.proxyPassword
+                    enabled = s.proxyEnabled && s.superProxyEnabled,
+                    type = ProxyType.Socks5,
+                    host = "127.0.0.1",
+                    port = port,
+                    user = "",
+                    password = ""
                 )
+            }
+
+            /** 兼容旧调用：优先超级端口展示，否则普通代理。 */
+            fun from(s: AppSettings, superRunning: Boolean = false): Config {
+                val superCfg = superFrom(s)
+                if (superRunning && superCfg.usable) return superCfg
+                return normalFrom(s)
             }
         }
     }
 
-    private val configRef = AtomicReference(Config())
+    private val settingsRef = AtomicReference(AppSettings())
+    private val superRunningRef = AtomicReference(false)
+    private val superClientRef = AtomicReference<OkHttpClient?>(null)
+    private val proxyClientRef = AtomicReference<OkHttpClient?>(null)
     private val directRef = AtomicReference(buildDirect())
-    private val proxyRef = AtomicReference<OkHttpClient?>(null)
 
     fun applySettings(settings: AppSettings) {
-        applyConfig(Config.from(settings))
+        applySettings(null, settings)
+    }
+
+    fun applySettings(context: Context?, settings: AppSettings) {
+        settingsRef.set(settings)
+        val superRunning = if (context != null && settings.proxyEnabled && settings.superProxyEnabled) {
+            SuperProxyController.status(context, settings).running
+        } else {
+            superRunningRef.get() && settings.proxyEnabled && settings.superProxyEnabled
+        }
+        superRunningRef.set(superRunning)
+
+        val superCfg = Config.superFrom(settings)
+        val normalCfg = Config.normalFrom(settings)
+
+        superClientRef.set(
+            if (superRunning && superCfg.usable) buildProxy(superCfg) else null
+        )
+        proxyClientRef.set(
+            if (normalCfg.usable) buildProxy(normalCfg) else null
+        )
+    }
+
+    /** 启动/停止超级内核后调用，刷新是否走本地端口。 */
+    fun setSuperRunning(running: Boolean) {
+        superRunningRef.set(running)
+        val s = settingsRef.get()
+        applySettings(null, s.copy()) // rebuild clients using updated flag
+        // re-apply with explicit running
+        val superCfg = Config.superFrom(s)
+        val normalCfg = Config.normalFrom(s)
+        val useSuper = running && s.proxyEnabled && s.superProxyEnabled && superCfg.usable
+        superRunningRef.set(useSuper)
+        superClientRef.set(if (useSuper) buildProxy(superCfg) else null)
+        proxyClientRef.set(if (normalCfg.usable) buildProxy(normalCfg) else null)
     }
 
     fun applyConfig(cfg: Config) {
-        val old = configRef.get()
-        if (old == cfg) return
-        configRef.set(cfg)
-        proxyRef.set(if (cfg.usable) buildProxy(cfg) else null)
+        // 兼容旧路径：当作普通代理
+        proxyClientRef.set(if (cfg.usable) buildProxy(cfg) else null)
     }
 
-    fun currentConfig(): Config = configRef.get()
+    fun currentConfig(): Config {
+        if (superClientRef.get() != null) {
+            return Config.superFrom(settingsRef.get())
+        }
+        return Config.normalFrom(settingsRef.get())
+    }
 
     private fun baseBuilder(): OkHttpClient.Builder =
         OkHttpClient.Builder()
@@ -122,10 +172,20 @@ object ProxyHttp {
         return buildProxy(cfg)
     }
 
+    /**
+     * 请求执行：超级代理 → 普通代理 → 系统网络。
+     */
     fun execute(request: Request): Response {
-        val cfg = configRef.get()
-        val proxyClient = proxyRef.get()
-        if (cfg.usable && proxyClient != null) {
+        val superClient = superClientRef.get()
+        if (superClient != null) {
+            try {
+                return superClient.newCall(request).execute()
+            } catch (_: IOException) {
+            } catch (_: Exception) {
+            }
+        }
+        val proxyClient = proxyClientRef.get()
+        if (proxyClient != null) {
             try {
                 return proxyClient.newCall(request).execute()
             } catch (_: IOException) {
