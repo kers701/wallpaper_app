@@ -64,6 +64,14 @@ class WallpaperChanger(
         var settings = settingsRepo.settingsFlow.first()
         RunLog.i(context, "changeOnce start trigger=${triggerType.code} force=$forceIgnoreScreenOff")
 
+        // 定位避让 / 黑名单：以 filesDir 标记文件为准（:svc DataStore 缓存不可靠）
+        settings = settings.copy(
+            avoidanceLocationsJson = ProcessBridgePrefs.effectiveAvoidLocationsJson(
+                context, settings.avoidanceLocationsJson
+            ),
+            blacklistPackages = ProcessBridgePrefs.effectiveBlacklist(context)
+        )
+
         // 定位避让：进入/离开避让区时调整纯度与强制本地
         if (settings.locationAvoidEnabled && settings.avoidanceLocations().isNotEmpty()) {
             settings = applyLocationAvoidance(settings)
@@ -84,9 +92,9 @@ class WallpaperChanger(
         }
 
 
-        // 前台黑名单应用：休眠不换（以文件桥+设置合并后的列表为准，避免跨进程勾选状态不一致）
+        // 前台黑名单应用：休眠不换（只读 jhsy_blacklist.txt）
         if (!forceIgnoreScreenOff) {
-            val bl = ProcessBridgePrefs.mergeBlacklist(context, settings.blacklistPackages)
+            val bl = ProcessBridgePrefs.effectiveBlacklist(context)
             if (bl.isNotEmpty() && ForegroundAppHelper.isBlacklistedForeground(context, bl)) {
                 val fg = ForegroundAppHelper.currentForegroundPackage(context) ?: "?"
                 return ChangeResult.Failure("黑名单应用在前台，休眠（$fg）")
@@ -406,9 +414,9 @@ class WallpaperChanger(
             ProcessBridgePrefs.setLastChangeAt(context, System.currentTimeMillis())
         }
         if (countChange) settingsRepo.incrementChangeCount()
-        if (fileSize > 0L) {
-            DataSaverBudget.addBytes(context, fileSize)
-            RunLog.i(context, "wallpaper set id=${slot.id} target=$target size=$fileSize today=${DataSaverBudget.todayBytes(context)}")
+        if (size > 0L) {
+            DataSaverBudget.addBytes(context, size)
+            RunLog.i(context, "wallpaper set id=${item.id} target=$target size=$size today=${DataSaverBudget.todayBytes(context)}")
         }
         return ChangeResult.Success(
             item.copy(fileSize = size, category = "local←$reason"),
@@ -525,7 +533,7 @@ class WallpaperChanger(
         if (countChange) settingsRepo.incrementChangeCount()
         if (fileSize > 0L) {
             DataSaverBudget.addBytes(context, fileSize)
-            RunLog.i(context, "wallpaper set id=${slot.id} target=$target size=$fileSize today=${DataSaverBudget.todayBytes(context)}")
+            RunLog.i(context, "wallpaper set id=${item.id} target=$target size=$fileSize today=${DataSaverBudget.todayBytes(context)}")
         }
         return ChangeResult.Success(
             item.copy(fileSize = fileSize),
@@ -814,7 +822,13 @@ class WallpaperChanger(
 
     /** 定位避让：进入避让区启用绿色模式（R13/仅Sketchy随机）与极限本地；离开后恢复 */
     private suspend fun applyLocationAvoidance(settings: AppSettings): AppSettings {
-        val (inZone, _) = LocationHelper.isInAvoidZone(context, settings.avoidanceLocations(), settings.locationAvoidRadiusMeters.toDouble())
+        // 避让点始终从标记文件读，避免 :svc 内 DataStore 仍持有已删除点
+        val locs = settings.copy(
+            avoidanceLocationsJson = ProcessBridgePrefs.effectiveAvoidLocationsJson(
+                context, settings.avoidanceLocationsJson
+            )
+        ).avoidanceLocations()
+        val (inZone, _) = LocationHelper.isInAvoidZone(context, locs, settings.locationAvoidRadiusMeters.toDouble())
         if (inZone) {
             if (!settings.locationInAvoidZone) {
                 var next = settings.copy(

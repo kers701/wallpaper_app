@@ -738,7 +738,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setBlacklist(packages: List<String>) {
         viewModelScope.launch {
             val list = packages.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
-            // 先覆盖跨进程文件，避免 :svc 仍用旧名单触发休眠
+            // 标记文件为唯一真相源：整表覆盖写，:svc 只读文件
             ProcessBridgePrefs.writeBlacklist(getApplication(), list)
             val next = settings.value.copy(blacklistPackages = list)
             settingsRepo.save(next)
@@ -747,7 +747,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun toggleBlacklistPackage(pkg: String) {
-        val cur = settings.value.blacklistPackages.toMutableList()
+        // 以标记文件当前内容为基准增删，避免 DataStore 缓存里的旧项
+        val cur = ProcessBridgePrefs.effectiveBlacklist(getApplication()).toMutableList()
         if (pkg in cur) cur.remove(pkg) else cur.add(pkg)
         setBlacklist(cur)
     }
@@ -909,10 +910,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun addAvoidanceLocation(loc: AvoidanceLocation) {
         viewModelScope.launch {
             val ctx = getApplication<Application>()
-            val cur = settings.value.avoidanceLocations().toMutableList()
+            // 以标记文件为基准增删
+            val fileJson = ProcessBridgePrefs.effectiveAvoidLocationsJson(ctx, settings.value.avoidanceLocationsJson)
+            val cur = settings.value.copy(avoidanceLocationsJson = fileJson).avoidanceLocations().toMutableList()
             if (cur.none { it.id == loc.id }) cur.add(loc)
             val json = LocationHelper.locationsToJson(cur)
-            // 先写跨进程文件，再写 DataStore，避免合并读回旧列表
             ProcessBridgePrefs.writeAvoidLocationsJson(ctx, json)
             settingsRepo.save(settings.value.copy(avoidanceLocationsJson = json))
             _status.value = "已加入避让：${loc.name}"
@@ -930,9 +932,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun removeAvoidanceLocation(id: String) {
         viewModelScope.launch {
             val ctx = getApplication<Application>()
-            val cur = settings.value.avoidanceLocations().filter { it.id != id }
+            val fileJson = ProcessBridgePrefs.effectiveAvoidLocationsJson(ctx, settings.value.avoidanceLocationsJson)
+            val cur = settings.value.copy(avoidanceLocationsJson = fileJson).avoidanceLocations()
+                .filter { it.id != id }
             val json = LocationHelper.locationsToJson(cur)
-            // 必须先覆盖桥接文件；否则 settingsFlow 会把文件里的旧点再合并回来，表现为删不掉只换序
+            // 整表覆盖写标记文件（空列表写 []），:svc 只读文件
             ProcessBridgePrefs.writeAvoidLocationsJson(ctx, json)
             settingsRepo.save(settings.value.copy(avoidanceLocationsJson = json))
             _status.value = "已移除避让点（剩余 ${cur.size}）"

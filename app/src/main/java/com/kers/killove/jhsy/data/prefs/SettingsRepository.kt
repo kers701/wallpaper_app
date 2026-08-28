@@ -165,7 +165,12 @@ class SettingsRepository(private val context: Context) {
             proxyPort = p[Keys.PROXY_PORT] ?: 0,
             proxyUser = p[Keys.PROXY_USER] ?: "",
             proxyPassword = p[Keys.PROXY_PASS] ?: "",
-            blacklistPackages = ProcessBridgePrefs.mergeBlacklist(context, splitLines(p[Keys.BLACKLIST] ?: "")),
+            // 黑名单：标记文件存在则只认文件（空文件=空名单）；否则首次用 DataStore 迁移
+            blacklistPackages = if (ProcessBridgePrefs.blacklistFileExists(context)) {
+                ProcessBridgePrefs.readBlacklist(context)
+            } else {
+                splitLines(p[Keys.BLACKLIST] ?: "")
+            },
             overviewMinimalMode = p[Keys.OVERVIEW_MINIMAL] ?: false,
             changeCount = p[Keys.CHANGE_COUNT] ?: 0L,
             localFallbackUseCache = p[Keys.LOCAL_FB_CACHE] ?: true,
@@ -180,17 +185,11 @@ class SettingsRepository(private val context: Context) {
             locationAvoidEnabled = p[Keys.LOC_AVOID] ?: false,
             locationAvoidRadiusMeters = (p[Keys.LOC_RADIUS] ?: 10).coerceIn(5, 500),
             amapApiKey = p[Keys.AMAP_KEY] ?: "",
-            // DataStore 为主（删除才能生效）；文件仅在 DataStore 为空时兜底（:svc 写入）
-            // 旧版双向并集会把已删的点从文件再加回来，表现为「只能换顺序删不掉」
-            avoidanceLocationsJson = run {
-                val fromStore = p[Keys.AVOID_LOCS] ?: "[]"
-                val fromFile = ProcessBridgePrefs.readAvoidLocationsJson(context)
-                when {
-                    fromStore.isNotBlank() && fromStore != "[]" -> fromStore
-                    !fromFile.isNullOrBlank() && fromFile != "[]" -> fromFile
-                    else -> fromStore.ifBlank { "[]" }
-                }
-            },
+            // 避让：文件存在则一律以文件为准（含 []），删除立刻对 :svc 生效
+            avoidanceLocationsJson = ProcessBridgePrefs.effectiveAvoidLocationsJson(
+                context,
+                p[Keys.AVOID_LOCS] ?: "[]"
+            ),
             locationFallbackEnabled = p[Keys.LOC_FALLBACK] ?: true,
             locationExtremeFallbackEnabled = p[Keys.LOC_EXTREME] ?: false,
             locationSavedPurity = p[Keys.LOC_SAVED_PURITY] ?: "",

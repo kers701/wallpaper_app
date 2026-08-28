@@ -75,6 +75,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
 
     val settings by vm.settings.collectAsState()
     val context = LocalContext.current
+    val textColor = LocalUiTextColor.current
     val unlocked by vm.unlocked.collectAsState()
     val pinMessage by vm.pinMessage.collectAsState()
     val keysVisible = vm.keysVisible(settings)

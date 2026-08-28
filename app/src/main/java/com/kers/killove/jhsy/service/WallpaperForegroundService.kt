@@ -363,7 +363,9 @@ class WallpaperForegroundService : Service() {
             val name = LocationHelper.reverseGeocode(s.amapApiKey, cur.latitude, cur.longitude)
                 ?: String.format(java.util.Locale.US, "当前位置 %.5f,%.5f", cur.latitude, cur.longitude)
             val id = "cur_${System.currentTimeMillis()}"
-            val list = s.avoidanceLocations().toMutableList()
+            // 避让名单只认标记文件，避免 DataStore 缓存与已删点并集
+            val fileJson = ProcessBridgePrefs.effectiveAvoidLocationsJson(this, s.avoidanceLocationsJson)
+            val list = s.copy(avoidanceLocationsJson = fileJson).avoidanceLocations().toMutableList()
             if (list.any { LocationHelper.distanceMeters(it.lat, it.lng, cur.latitude, cur.longitude) < 15.0 }) {
                 refreshNotification("附近已有避让点，未重复添加")
                 return
@@ -400,21 +402,16 @@ class WallpaperForegroundService : Service() {
             val repo = SettingsRepository(applicationContext)
             val s = repo.settingsFlow.first()
             val label = ForegroundAppHelper.appLabel(this, pkg)
-            if (pkg in s.blacklistPackages) {
+            // 黑名单只认标记文件
+            val current = ProcessBridgePrefs.effectiveBlacklist(this)
+            if (pkg in current) {
                 lastStatusText = "「$label」已在黑名单中"
                 refreshNotification(lastStatusText)
                 ensureForegroundAndLoop()
                 return
             }
-            val merged = ProcessBridgePrefs.mergeBlacklist(this, s.blacklistPackages)
-            if (pkg in merged) {
-                lastStatusText = "「$label」已在黑名单中"
-                refreshNotification(lastStatusText)
-                ensureForegroundAndLoop()
-                return
-            }
-            val nextList = merged + pkg
-            // 先写跨进程文件，再写 DataStore，主进程打开后能合并到
+            val nextList = current + pkg
+            // 先整表覆盖写标记文件，再写 DataStore
             ProcessBridgePrefs.writeBlacklist(this, nextList)
             val next = s.copy(blacklistPackages = nextList)
             repo.save(next)
@@ -435,8 +432,8 @@ class WallpaperForegroundService : Service() {
             val repo = runCatching { SettingsRepository(applicationContext) }.getOrNull()
             val s = repo?.let { runCatching { it.settingsFlow.first() }.getOrNull() }
             if (s != null) {
-                // 应用休眠优先
-                val bl = ProcessBridgePrefs.mergeBlacklist(this, s.blacklistPackages)
+                // 应用休眠优先（只读 jhsy_blacklist.txt）
+                val bl = ProcessBridgePrefs.effectiveBlacklist(this)
                 if (bl.isNotEmpty() &&
                     ForegroundAppHelper.isBlacklistedForeground(this, bl)
                 ) {
@@ -444,10 +441,12 @@ class WallpaperForegroundService : Service() {
                     val label = ForegroundAppHelper.appLabel(this, pkg)
                     return "应用休眠 · 正在使用（$label）"
                 }
-                // 定位休眠：启用避让且在区内
-                if (s.locationAvoidEnabled && s.avoidanceLocations().isNotEmpty()) {
+                // 定位休眠：避让点只认 jhsy_avoid_locations.json
+                val avoidJson = ProcessBridgePrefs.effectiveAvoidLocationsJson(this, s.avoidanceLocationsJson)
+                val avoidLocs = s.copy(avoidanceLocationsJson = avoidJson).avoidanceLocations()
+                if (s.locationAvoidEnabled && avoidLocs.isNotEmpty()) {
                     val (inZone, hit) = LocationHelper.isInAvoidZone(
-                        this, s.avoidanceLocations(), s.locationAvoidRadiusMeters.toDouble()
+                        this, avoidLocs, s.locationAvoidRadiusMeters.toDouble()
                     )
                     if (inZone) {
                         val tag = hit?.name?.ifBlank { null } ?: "避让点"

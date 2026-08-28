@@ -100,30 +100,38 @@ object ProcessBridgePrefs {
         }
     }
 
-    // ── 黑名单跨进程文件桥 ──────────────────────────────────────────
+    // ── 黑名单 / 避让：跨进程唯一真相源 = filesDir 标记文件 ──────────
+    // :svc 与主进程 DataStore 内存缓存不一致；增删一律整表覆盖写文件，识别一律读文件。
 
     private fun blacklistFile(context: Context): java.io.File =
         java.io.File(context.applicationContext.filesDir, "jhsy_blacklist.txt")
 
-    /** 写入黑名单包名列表（每行一个），供 :svc 进程读取 */
+    private fun blacklistRevFile(context: Context): java.io.File =
+        java.io.File(context.applicationContext.filesDir, "jhsy_blacklist.rev")
+
+    /** 整表覆盖写入黑名单（每行一个包名；空列表写空文件）。同时更新 .rev 标记。 */
     fun writeBlacklist(context: Context, packages: List<String>) {
         try {
-            val f = blacklistFile(context)
-            val tmp = java.io.File(f.parentFile, "jhsy_blacklist.txt.tmp")
             val body = packages
                 .map { it.trim() }
                 .filter { it.isNotEmpty() }
                 .distinct()
                 .joinToString("\n")
-            tmp.writeText(body, Charsets.UTF_8)
-            if (!tmp.renameTo(f)) {
-                f.writeText(body, Charsets.UTF_8)
-                tmp.delete()
-            }
+            atomicWrite(blacklistFile(context), body)
+            atomicWrite(blacklistRevFile(context), System.currentTimeMillis().toString())
         } catch (_: Exception) {
         }
     }
 
+    /** 黑名单标记文件是否已建立（空列表也会建文件）。 */
+    fun blacklistFileExists(context: Context): Boolean =
+        try { blacklistFile(context).exists() } catch (_: Exception) { false }
+
+    /** 避让标记文件是否已建立（空列表写 `[]` 也会建文件）。 */
+    fun avoidFileExists(context: Context): Boolean =
+        try { avoidFile(context).exists() } catch (_: Exception) { false }
+
+    /** 仅从标记文件读取黑名单（文件不存在 = 空）。 */
     fun readBlacklist(context: Context): List<String> {
         return try {
             val f = blacklistFile(context)
@@ -139,42 +147,69 @@ object ProcessBridgePrefs {
     }
 
     /**
-     * 合并 DataStore 与桥接文件中的黑名单（并集去重）。
-     * 服务进程可能只写了文件，主进程 DataStore 尚未同步。
+     * 生效黑名单：只认文件，忽略 DataStore 进程内缓存。
+     * @param fromStore 保留参数兼容旧调用，已不再参与合并。
      */
-    fun mergeBlacklist(context: Context, fromStore: List<String>): List<String> {
-        val fromFile = readBlacklist(context)
-        if (fromFile.isEmpty()) return fromStore.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
-        if (fromStore.isEmpty()) return fromFile
-        return (fromStore + fromFile).map { it.trim() }.filter { it.isNotEmpty() }.distinct()
-    }
+    @Suppress("UNUSED_PARAMETER")
+    fun mergeBlacklist(context: Context, fromStore: List<String> = emptyList()): List<String> =
+        readBlacklist(context)
+
+    /** 生效黑名单（推荐新调用点使用此名）。 */
+    fun effectiveBlacklist(context: Context): List<String> = readBlacklist(context)
 
     // ── 避让点 JSON 跨进程文件桥 ────────────────────────────────────
 
     private fun avoidFile(context: Context): java.io.File =
         java.io.File(context.applicationContext.filesDir, "jhsy_avoid_locations.json")
 
+    private fun avoidRevFile(context: Context): java.io.File =
+        java.io.File(context.applicationContext.filesDir, "jhsy_avoid_locations.rev")
+
+    /** 整表覆盖写避让 JSON（空列表写 `[]`）。同时更新 .rev 标记。 */
     fun writeAvoidLocationsJson(context: Context, json: String) {
         try {
             val body = json.ifBlank { "[]" }
-            val f = avoidFile(context)
-            val tmp = java.io.File(f.parentFile, "jhsy_avoid_locations.json.tmp")
-            tmp.writeText(body, Charsets.UTF_8)
-            if (!tmp.renameTo(f)) {
-                f.writeText(body, Charsets.UTF_8)
-                tmp.delete()
-            }
+            atomicWrite(avoidFile(context), body)
+            atomicWrite(avoidRevFile(context), System.currentTimeMillis().toString())
         } catch (_: Exception) {
         }
     }
 
+    /**
+     * 读避让 JSON。文件存在则返回内容（含 `[]`）；不存在返回 null。
+     * 空数组也会返回 `"[]"`，不再把「空」当成缺失而回退到 DataStore。
+     */
     fun readAvoidLocationsJson(context: Context): String? {
         return try {
             val f = avoidFile(context)
             if (!f.exists()) null
-            else f.readText(Charsets.UTF_8).trim().ifBlank { null }
+            else {
+                val t = f.readText(Charsets.UTF_8).trim()
+                if (t.isEmpty()) "[]" else t
+            }
         } catch (_: Exception) {
             null
+        }
+    }
+
+    /** 生效避让 JSON：文件优先；文件不存在时才用 DataStore 兜底（首次迁移）。 */
+    fun effectiveAvoidLocationsJson(context: Context, fromStore: String = "[]"): String {
+        val fromFile = readAvoidLocationsJson(context)
+        return when {
+            fromFile != null -> fromFile
+            fromStore.isNotBlank() -> fromStore
+            else -> "[]"
+        }
+    }
+
+    private fun atomicWrite(target: java.io.File, body: String) {
+        val parent = target.parentFile ?: return
+        parent.mkdirs()
+        val tmp = java.io.File(parent, target.name + ".tmp")
+        tmp.writeText(body, Charsets.UTF_8)
+        if (!tmp.renameTo(target)) {
+            target.writeText(body, Charsets.UTF_8)
+            tmp.delete()
         }
     }
 

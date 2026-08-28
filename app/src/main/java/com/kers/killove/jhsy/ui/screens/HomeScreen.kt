@@ -544,6 +544,43 @@ fun HomeScreen(vm: MainViewModel, onOpenHelp: (() -> Unit)? = null) {
         ) {
             Text(if (busy) "更换中…" else "立即更换一张")
         }
+
+        if (devMode) {
+            var runLogOn by remember { mutableStateOf(RunLog.isLogEnabled(context)) }
+            GlassCard {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("开发者选项", style = MaterialTheme.typography.titleSmall, color = textColor)
+                    RowSwitch(
+                        title = "运行日志",
+                        checked = runLogOn,
+                        onChecked = {
+                            runLogOn = it
+                            RunLog.setLogEnabled(context, it)
+                            Toast.makeText(
+                                context,
+                                if (it) "日志写入 ${RunLog.logFile(context).absolutePath}" else "已关闭运行日志",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    )
+                    Text(
+                        "路径：${RunLog.logFile(context).absolutePath}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = textColor.copy(alpha = 0.7f)
+                    )
+                    OutlinedButton(onClick = {
+                        RunLog.clear(context)
+                        Toast.makeText(context, "已清空 run.log", Toast.LENGTH_SHORT).show()
+                    }) { Text("清空日志") }
+                    OutlinedButton(onClick = {
+                        RunLog.setDeveloperMode(context, false)
+                        runLogOn = false
+                        devMode = false
+                        Toast.makeText(context, "已退出开发者模式", Toast.LENGTH_SHORT).show()
+                    }) { Text("退出开发者模式") }
+                }
+            }
+        }
     }
 }
 
@@ -592,43 +629,5 @@ fun CollapsibleSection(
                 content()
             }
         }
-
-        if (devMode) {
-            var runLogOn by remember { mutableStateOf(RunLog.isLogEnabled(context)) }
-            GlassCard {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("开发者选项", style = MaterialTheme.typography.titleSmall, color = textColor)
-                    RowSwitch(
-                        title = "运行日志",
-                        checked = runLogOn,
-                        onChecked = {
-                            runLogOn = it
-                            RunLog.setLogEnabled(context, it)
-                            Toast.makeText(
-                                context,
-                                if (it) "日志写入 ${RunLog.logFile(context).absolutePath}" else "已关闭运行日志",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                    )
-                    Text(
-                        "路径：${RunLog.logFile(context).absolutePath}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = textColor.copy(alpha = 0.7f)
-                    )
-                    OutlinedButton(onClick = {
-                        RunLog.clear(context)
-                        Toast.makeText(context, "已清空 run.log", Toast.LENGTH_SHORT).show()
-                    }) { Text("清空日志") }
-                    OutlinedButton(onClick = {
-                        RunLog.setDeveloperMode(context, false)
-                        runLogOn = false
-                        devMode = false
-                        Toast.makeText(context, "已退出开发者模式", Toast.LENGTH_SHORT).show()
-                    }) { Text("退出开发者模式") }
-                }
-            }
-        }
-
     }
 }
