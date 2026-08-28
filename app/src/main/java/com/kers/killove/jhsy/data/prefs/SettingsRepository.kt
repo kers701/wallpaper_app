@@ -91,6 +91,11 @@ class SettingsRepository(private val context: Context) {
         val PROXY_SEL_MODE = stringPreferencesKey("proxy_select_mode")
         val PROXY_AUTO_IV = intPreferencesKey("proxy_auto_test_interval")
         val PROXY_LAST_TEST = longPreferencesKey("proxy_last_auto_test")
+        val SUPER_PROXY = booleanPreferencesKey("super_proxy")
+        val SUPER_PROXY_BIN = stringPreferencesKey("super_proxy_bin")
+        val SUPER_PROXY_CFG = stringPreferencesKey("super_proxy_cfg")
+        val SUPER_PROXY_ARGS = stringPreferencesKey("super_proxy_args")
+        val SUPER_PROXY_PORT = intPreferencesKey("super_proxy_port")
         val BLACKLIST = stringPreferencesKey("blacklist_packages")
         val OVERVIEW_MINIMAL = booleanPreferencesKey("overview_minimal")
         val CHANGE_COUNT = longPreferencesKey("change_count")
@@ -181,6 +186,11 @@ class SettingsRepository(private val context: Context) {
             proxySelectMode = ProxySelectMode.fromCode(p[Keys.PROXY_SEL_MODE] ?: "manual"),
             proxyAutoTestIntervalMinutes = (p[Keys.PROXY_AUTO_IV] ?: 30).coerceIn(5, 180),
             proxyLastAutoTestAt = p[Keys.PROXY_LAST_TEST] ?: 0L,
+            superProxyEnabled = p[Keys.SUPER_PROXY] ?: false,
+            superProxyBinPath = p[Keys.SUPER_PROXY_BIN] ?: "",
+            superProxyConfigPath = p[Keys.SUPER_PROXY_CFG] ?: "",
+            superProxyArgs = p[Keys.SUPER_PROXY_ARGS] ?: "",
+            superProxyLocalPort = (p[Keys.SUPER_PROXY_PORT] ?: 17890).coerceIn(1025, 65535),
             // 黑名单：标记文件存在则只认文件（空文件=空名单）；否则首次用 DataStore 迁移
             blacklistPackages = if (ProcessBridgePrefs.blacklistFileExists(context)) {
                 ProcessBridgePrefs.readBlacklist(context)

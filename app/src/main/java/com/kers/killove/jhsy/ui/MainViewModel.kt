@@ -30,6 +30,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import com.kers.killove.jhsy.util.ProcessBridgePrefs
+import com.kers.killove.jhsy.util.SuperProxyController
 import com.kers.killove.jhsy.util.RunLog
 import com.kers.killove.jhsy.util.PinSecurity
 import com.kers.killove.jhsy.worker.ChangeWallpaperWorker
@@ -952,6 +953,38 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+
+
+    fun startSuperProxy() {
+        viewModelScope.launch {
+            val s = settings.value
+            if (!s.superProxyEnabled) {
+                _status.value = "请先开启超级代理并保存设置"
+                return@launch
+            }
+            _status.value = "正在启动超级代理内核…"
+            val err = withContext(Dispatchers.IO) {
+                SuperProxyController.start(getApplication(), s)
+            }
+            if (err == null) {
+                ProxyHttp.applySettings(s)
+                _status.value = SuperProxyController.status(getApplication(), s).message
+            } else {
+                _status.value = "超级代理启动失败：$err"
+            }
+        }
+    }
+
+    fun stopSuperProxy() {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                SuperProxyController.stop(getApplication())
+            }
+            // 停止后若仍开超级代理开关，ProxyHttp 会连不上本地端口并回退直连
+            ProxyHttp.applySettings(settings.value)
+            _status.value = "超级代理内核已停止"
+        }
+    }
 
     fun importProxySubscription(urlOrBody: String) {
         viewModelScope.launch {

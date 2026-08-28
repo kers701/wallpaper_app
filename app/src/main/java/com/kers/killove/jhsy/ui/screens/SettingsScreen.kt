@@ -165,6 +165,19 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
     var proxySub by remember(settings.proxySubUrl, keysVisible) {
         mutableStateOf(if (keysVisible) settings.proxySubUrl else "")
     }
+    var superProxyOn by remember(settings.superProxyEnabled) { mutableStateOf(settings.superProxyEnabled) }
+    var superBin by remember(settings.superProxyBinPath, keysVisible) {
+        mutableStateOf(if (keysVisible) settings.superProxyBinPath else "")
+    }
+    var superCfg by remember(settings.superProxyConfigPath, keysVisible) {
+        mutableStateOf(if (keysVisible) settings.superProxyConfigPath else "")
+    }
+    var superArgs by remember(settings.superProxyArgs, keysVisible) {
+        mutableStateOf(if (keysVisible) settings.superProxyArgs else "")
+    }
+    var superPort by remember(settings.superProxyLocalPort) {
+        mutableStateOf(settings.superProxyLocalPort.toString())
+    }
     var localFb by remember(settings.localFallbackEnabled) {
         mutableStateOf(settings.localFallbackEnabled)
     }
@@ -622,6 +635,68 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                     onClick = onOpenProxyNodes,
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("节点选择（手动 / 自动测速）…") }
+            }
+
+            // —— 超级代理（Root + 内核，仅本应用）——
+            Text("超级代理（Root）", style = MaterialTheme.typography.titleSmall)
+            Text(
+                "用 Root 启动自定义内核（sing-box / Clash / Xray 等），只监听 127.0.0.1，仅本应用走代理，不是全局 VPN。",
+                style = MaterialTheme.typography.bodySmall
+            )
+            val spSt = com.kers.killove.jhsy.util.SuperProxyController.status(
+                context,
+                settings.copy(
+                    superProxyEnabled = superProxyOn,
+                    superProxyBinPath = superBin,
+                    superProxyConfigPath = superCfg,
+                    superProxyLocalPort = superPort.toIntOrNull() ?: 17890
+                )
+            )
+            Text(spSt.message, style = MaterialTheme.typography.bodySmall)
+            RowSwitch("启用超级代理（仅本应用）", superProxyOn) { superProxyOn = it }
+            OutlinedTextField(
+                value = superBin,
+                onValueChange = { superBin = it },
+                label = { Text("内核路径（如 /data/adb/sing-box）") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                enabled = superProxyOn
+            )
+            OutlinedTextField(
+                value = superCfg,
+                onValueChange = { superCfg = it },
+                label = { Text("配置文件路径（内核 JSON/YAML）") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                enabled = superProxyOn
+            )
+            OutlinedTextField(
+                value = superArgs,
+                onValueChange = { superArgs = it },
+                label = { Text("启动参数（可空=自动猜测）") },
+                placeholder = { Text("run -c {config}  占位符 {bin}{config}{port}{workdir}") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                enabled = superProxyOn
+            )
+            OutlinedTextField(
+                value = superPort,
+                onValueChange = { superPort = it.filter { c -> c.isDigit() }.take(5) },
+                label = { Text("本地 SOCKS 端口（默认 17890）") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                enabled = superProxyOn
+            )
+            Row(Modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = { vm.startSuperProxy() },
+                    modifier = Modifier.weight(1f),
+                    enabled = superProxyOn
+                ) { Text("启动内核") }
+                OutlinedButton(
+                    onClick = { vm.stopSuperProxy() },
+                    modifier = Modifier.weight(1f)
+                ) { Text("停止内核") }
             }
         } else {
             LockedField("网络代理（请先解锁 PIN）")

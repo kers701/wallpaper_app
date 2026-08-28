@@ -283,6 +283,17 @@ data class AppSettings(
     val proxyAutoTestIntervalMinutes: Int = 30,
     val proxyLastAutoTestAt: Long = 0L,
 
+    /**
+     * 超级代理（仅本应用）：Root 启动自定义内核，监听 127.0.0.1:superProxyLocalPort。
+     * 开启后 ProxyHttp 优先走本地端口，不启用 TUN/全局劫持。
+     */
+    val superProxyEnabled: Boolean = false,
+    val superProxyBinPath: String = "",
+    val superProxyConfigPath: String = "",
+    /** 启动参数，占位符 {bin} {config} {port} {workdir}；空则按内核名猜测 */
+    val superProxyArgs: String = "",
+    val superProxyLocalPort: Int = 17890,
+
     /** 前台黑名单包名：这些应用在前台时休眠不换壁纸 */
     val blacklistPackages: List<String> = emptyList(),
     /** 概览页极简模式：只显示概览，隐藏其它页 */

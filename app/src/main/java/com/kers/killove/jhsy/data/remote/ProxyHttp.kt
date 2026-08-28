@@ -34,14 +34,28 @@ object ProxyHttp {
             get() = enabled && host.isNotBlank() && port in 1..65535
 
         companion object {
-            fun from(s: AppSettings) = Config(
-                enabled = s.proxyEnabled,
-                type = s.proxyType,
-                host = s.proxyHost.trim(),
-                port = s.proxyPort,
-                user = s.proxyUser,
-                password = s.proxyPassword
-            )
+            fun from(s: AppSettings): Config {
+                // 超级代理开启时：强制走本机回环端口（仅本应用），忽略普通代理地址
+                if (s.superProxyEnabled) {
+                    val port = s.superProxyLocalPort.coerceIn(1025, 65535)
+                    return Config(
+                        enabled = true,
+                        type = ProxyType.Socks5,
+                        host = "127.0.0.1",
+                        port = port,
+                        user = "",
+                        password = ""
+                    )
+                }
+                return Config(
+                    enabled = s.proxyEnabled,
+                    type = s.proxyType,
+                    host = s.proxyHost.trim(),
+                    port = s.proxyPort,
+                    user = s.proxyUser,
+                    password = s.proxyPassword
+                )
+            }
         }
     }
 
