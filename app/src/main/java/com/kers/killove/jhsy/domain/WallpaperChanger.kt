@@ -66,6 +66,9 @@ class WallpaperChanger(
             settings = applyLocationAvoidance(settings)
         }
 
+        // 通知「健康/心跳」运行模式：覆盖用户纯度配置（每次更换重新随机）
+        settings = applyPurityRuntimeMode(settings)
+
         if (!forceIgnoreScreenOff && settings.skipWhenScreenOff && isScreenOff()) {
             return ChangeResult.Failure("息屏已跳过本次更换")
         }
@@ -756,6 +759,29 @@ class WallpaperChanger(
         }
     }
 
+
+
+    /**
+     * 通知栏纯度运行模式（跨进程）：
+     * - health 健康：R8 / R13 / 仅 Sketchy 三选一随机
+     * - heartbeat 心跳：除 R8 外所有纯度随机
+     * - normal：遵循用户设置（本函数不改）
+     */
+    private fun applyPurityRuntimeMode(settings: AppSettings): AppSettings {
+        return when (ProcessBridgePrefs.purityMode(context)) {
+            ProcessBridgePrefs.MODE_HEALTH -> {
+                val p = listOf(Purity.R8, Purity.R13, Purity.Only13).random()
+                settings.copy(purity = p)
+            }
+            ProcessBridgePrefs.MODE_HEARTBEAT -> {
+                val p = listOf(
+                    Purity.R13, Purity.R18, Purity.Only13, Purity.Only18, Purity.R18D
+                ).random()
+                settings.copy(purity = p)
+            }
+            else -> settings
+        }
+    }
 
     /** 定位避让：进入避让区启用绿色模式（R13/仅Sketchy随机）与极限本地；离开后恢复 */
     private suspend fun applyLocationAvoidance(settings: AppSettings): AppSettings {

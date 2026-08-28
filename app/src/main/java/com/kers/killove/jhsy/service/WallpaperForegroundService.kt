@@ -47,6 +47,8 @@ class WallpaperForegroundService : Service() {
     private var loopJob: Job? = null
     private var wakeLock: PowerManager.WakeLock? = null
     @Volatile private var lastStatusText: String = "运行中 · 自动更换已开启"
+    /** none | avoid | blacklist — 通知二次确认 */
+    @Volatile private var pendingConfirm: String = "none"
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -82,17 +84,47 @@ class WallpaperForegroundService : Service() {
                     ensureForegroundAndLoop()
                 }
             }
-            ACTION_ADD_AVOID_HERE -> {
+            ACTION_AVOID_PROMPT -> {
+                pendingConfirm = "avoid"
+                lastStatusText = "确认将「当前位置」加入定位避让？"
+                refreshNotification(lastStatusText)
+                ensureForegroundAndLoop()
+            }
+            ACTION_BLACK_PROMPT -> {
+                pendingConfirm = "blacklist"
+                lastStatusText = "确认将「当前前台应用」加入黑名单？"
+                refreshNotification(lastStatusText)
+                ensureForegroundAndLoop()
+            }
+            ACTION_CONFIRM_PENDING -> {
                 scope.launch {
-                    handleAddAvoidHere()
+                    when (pendingConfirm) {
+                        "avoid" -> handleAddAvoidHere()
+                        "blacklist" -> handleAddFgBlacklist()
+                        else -> refreshNotification("无待确认操作")
+                    }
+                    pendingConfirm = "none"
                     ensureForegroundAndLoop()
                 }
             }
-            ACTION_ADD_FG_BLACKLIST -> {
+            ACTION_CANCEL_PENDING -> {
+                pendingConfirm = "none"
+                lastStatusText = "已取消"
                 scope.launch {
-                    handleAddFgBlacklist()
-                    ensureForegroundAndLoop()
+                    lastStatusText = resolveNotificationText(null)
+                    refreshNotification(lastStatusText)
                 }
+                ensureForegroundAndLoop()
+            }
+            ACTION_CYCLE_PURITY_MODE -> {
+                val next = ProcessBridgePrefs.cyclePurityMode(this)
+                lastStatusText = when (next) {
+                    ProcessBridgePrefs.MODE_HEALTH -> "已切换：健康模式（R8/R13/Sketchy 随机）"
+                    ProcessBridgePrefs.MODE_HEARTBEAT -> "已切换：心跳模式（除 R8 外随机）"
+                    else -> "已切换：普通模式（遵循配置纯度）"
+                }
+                refreshNotification(lastStatusText)
+                ensureForegroundAndLoop()
             }
             else -> ensureForegroundAndLoop()
         }
@@ -540,20 +572,23 @@ class WallpaperForegroundService : Service() {
         )
         val addAvoid = PendingIntent.getService(
             this, 3,
-            Intent(this, WallpaperForegroundService::class.java).setAction(ACTION_ADD_AVOID_HERE),
+            Intent(this, WallpaperForegroundService::class.java).setAction(ACTION_AVOID_PROMPT),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val addBlack = PendingIntent.getService(
             this, 4,
-            Intent(this, WallpaperForegroundService::class.java).setAction(ACTION_ADD_FG_BLACKLIST),
+            Intent(this, WallpaperForegroundService::class.java).setAction(ACTION_BLACK_PROMPT),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+        val mode = ProcessBridgePrefs.purityMode(this)
+        val modeTitle = ProcessBridgePrefs.purityModeTitle(mode)
         val title = when {
-            contentText.startsWith("定位休眠") -> "镜花水月 · 定位休眠"
-            contentText.startsWith("应用休眠") -> "镜花水月 · 应用休眠"
-            contentText.startsWith("省电休眠") -> "镜花水月 · 省电休眠"
-            contentText.contains("更换") || contentText.contains("%") -> "镜花水月 · 更换中"
-            else -> getString(R.string.notification_title)
+            contentText.startsWith("定位休眠") -> "$modeTitle · 定位休眠"
+            contentText.startsWith("应用休眠") -> "$modeTitle · 应用休眠"
+            contentText.startsWith("省电休眠") -> "$modeTitle · 省电休眠"
+            contentText.contains("更换") || contentText.contains("%") -> "$modeTitle · 更换中"
+            contentText.startsWith("确认") -> modeTitle
+            else -> modeTitle
         }
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title)
@@ -568,15 +603,39 @@ class WallpaperForegroundService : Service() {
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+        // 二次确认态：只显示确认/取消
+        if (pendingConfirm == "avoid" || pendingConfirm == "blacklist") {
+            val confirm = PendingIntent.getService(
+                this, 11,
+                Intent(this, WallpaperForegroundService::class.java).setAction(ACTION_CONFIRM_PENDING),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val cancel = PendingIntent.getService(
+                this, 12,
+                Intent(this, WallpaperForegroundService::class.java).setAction(ACTION_CANCEL_PENDING),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            builder.addAction(0, "确认", confirm)
+            builder.addAction(0, "取消", cancel)
+            return builder.build()
+        }
+
+        val cycleMode = PendingIntent.getService(
+            this, 13,
+            Intent(this, WallpaperForegroundService::class.java).setAction(ACTION_CYCLE_PURITY_MODE),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val modeBtn = ProcessBridgePrefs.purityModeNextButtonLabel(mode)
+
         if (sleeping) {
-            // 休眠中仍可停止 / 立即更换
+            // 休眠中：立即更换 + 模式切换（已移除「停止」）
             builder.addAction(0, "立即更换", changeNow)
-            builder.addAction(0, "停止", stop)
+            builder.addAction(0, modeBtn, cycleMode)
         } else {
-            // 正常运行：定位避让 + 应用黑名单
+            // 正常：避让/黑名单需二次确认；模式循环按钮
             builder.addAction(0, "定位避让", addAvoid)
             builder.addAction(0, "应用黑名单", addBlack)
-            builder.addAction(0, "停止", stop)
+            builder.addAction(0, modeBtn, cycleMode)
         }
         return builder.build()
     }
@@ -602,6 +661,11 @@ class WallpaperForegroundService : Service() {
         const val ACTION_CHANGE_NOW = "com.kers.killove.jhsy.CHANGE_NOW"
         const val ACTION_ADD_AVOID_HERE = "com.kers.killove.jhsy.ADD_AVOID_HERE"
         const val ACTION_ADD_FG_BLACKLIST = "com.kers.killove.jhsy.ADD_FG_BLACKLIST"
+        const val ACTION_AVOID_PROMPT = "com.kers.killove.jhsy.AVOID_PROMPT"
+        const val ACTION_BLACK_PROMPT = "com.kers.killove.jhsy.BLACK_PROMPT"
+        const val ACTION_CONFIRM_PENDING = "com.kers.killove.jhsy.CONFIRM_PENDING"
+        const val ACTION_CANCEL_PENDING = "com.kers.killove.jhsy.CANCEL_PENDING"
+        const val ACTION_CYCLE_PURITY_MODE = "com.kers.killove.jhsy.CYCLE_PURITY_MODE"
 
         fun start(context: Context) {
             val i = Intent(context, WallpaperForegroundService::class.java)

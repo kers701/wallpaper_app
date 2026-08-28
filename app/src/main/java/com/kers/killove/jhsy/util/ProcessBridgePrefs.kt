@@ -244,6 +244,52 @@ object ProcessBridgePrefs {
     fun statusHintAt(context: Context): Long =
         sp(context).getLong("status_hint_at", 0L)
 
+
+    // —— 通知纯度运行模式：normal / health / heartbeat ——
+    const val MODE_NORMAL = "normal"
+    const val MODE_HEALTH = "health"
+    const val MODE_HEARTBEAT = "heartbeat"
+
+    fun purityMode(context: Context): String {
+        val m = sp(context).getString("purity_mode", MODE_NORMAL) ?: MODE_NORMAL
+        return when (m) {
+            MODE_HEALTH, MODE_HEARTBEAT -> m
+            else -> MODE_NORMAL
+        }
+    }
+
+    fun setPurityMode(context: Context, mode: String) {
+        val m = when (mode) {
+            MODE_HEALTH, MODE_HEARTBEAT -> mode
+            else -> MODE_NORMAL
+        }
+        sp(context).edit().putString("purity_mode", m).commit()
+    }
+
+    /** 普通 → 健康 → 心跳 → 普通 */
+    fun cyclePurityMode(context: Context): String {
+        val next = when (purityMode(context)) {
+            MODE_NORMAL -> MODE_HEALTH
+            MODE_HEALTH -> MODE_HEARTBEAT
+            else -> MODE_NORMAL
+        }
+        setPurityMode(context, next)
+        return next
+    }
+
+    fun purityModeTitle(mode: String): String = when (mode) {
+        MODE_HEALTH -> "镜花水月·健康模式"
+        MODE_HEARTBEAT -> "镜花水月·心跳模式"
+        else -> "镜花水月·普通模式"
+    }
+
+    /** 按钮显示「下一模式」名称 */
+    fun purityModeNextButtonLabel(mode: String): String = when (mode) {
+        MODE_NORMAL -> "健康模式"
+        MODE_HEALTH -> "心跳模式"
+        else -> "普通模式"
+    }
+
     private fun sp(context: Context) =
         context.applicationContext.getSharedPreferences(NAME, Context.MODE_PRIVATE)
 
