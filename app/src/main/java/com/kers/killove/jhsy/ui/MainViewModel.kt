@@ -51,6 +51,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -225,6 +228,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _proxyTestBusy = MutableStateFlow(false)
     val proxyTestBusy = _proxyTestBusy.asStateFlow()
+    private var proxyTestJob: Job? = null
 
     private val _launcherApps = MutableStateFlow<List<com.kers.killove.jhsy.util.LauncherAppInfo>>(emptyList())
     val launcherApps: StateFlow<List<com.kers.killove.jhsy.util.LauncherAppInfo>> = _launcherApps.asStateFlow()
@@ -1130,7 +1134,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun testAllProxyNodes() {
-        viewModelScope.launch {
+        proxyTestJob?.cancel()
+        proxyTestJob = viewModelScope.launch {
             val list = settings.value.proxyNodes()
             if (list.isEmpty()) {
                 _status.value = "无节点可测"
@@ -1141,8 +1146,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val updated = mutableListOf<ProxyNode>()
                 for ((i, n) in list.withIndex()) {
+                    ensureActive()
+                    if (!isActive) break
                     _status.value = "测速 ${i + 1}/${list.size}：${n.name}"
                     val ms = withContext(Dispatchers.IO) {
+                        ensureActive()
                         ProxyHttp.measureLatencyMs(
                             ProxyHttp.Config(
                                 enabled = true,
@@ -1155,15 +1163,40 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         )
                     }
                     updated += n.copy(latencyMs = if (ms < 0) -1L else ms)
+                    // 边测边写，中断时也保留已测结果
+                    if ((i + 1) % 3 == 0 || i == list.lastIndex) {
+                        val partial = ProxySubscription.nodesToJson(
+                            list.map { old -> updated.find { it.id == old.id } ?: old }
+                        )
+                        settingsRepo.save(settings.value.copy(proxyNodesJson = partial))
+                    }
                 }
-                val json = ProxySubscription.nodesToJson(updated)
-                settingsRepo.save(settings.value.copy(proxyNodesJson = json, proxyLastAutoTestAt = System.currentTimeMillis()))
-                val ok = updated.count { it.latencyMs >= 0 }
-                _status.value = "测速完成：可用 $ok/${updated.size}"
+                ensureActive()
+                val merged = list.map { old -> updated.find { it.id == old.id } ?: old }
+                val json = ProxySubscription.nodesToJson(merged)
+                settingsRepo.save(
+                    settings.value.copy(
+                        proxyNodesJson = json,
+                        proxyLastAutoTestAt = System.currentTimeMillis()
+                    )
+                )
+                val ok = merged.count { it.latencyMs >= 0 }
+                _status.value = "测速完成：可用 $ok/${merged.size}"
+            } catch (_: kotlinx.coroutines.CancellationException) {
+                _status.value = "测速已中断（已保存已测节点）"
+                throw _
             } finally {
                 _proxyTestBusy.value = false
             }
         }
+    }
+
+    /** 强制中断正在进行的节点测速。 */
+    fun cancelProxyTest() {
+        proxyTestJob?.cancel()
+        proxyTestJob = null
+        _proxyTestBusy.value = false
+        _status.value = "测速已中断"
     }
 
     fun autoSelectBestProxyNode() {

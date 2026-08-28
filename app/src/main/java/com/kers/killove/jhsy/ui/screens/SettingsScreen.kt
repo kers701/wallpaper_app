@@ -574,6 +574,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                 proxyOn = it
                 if (!it) superProxyOn = false
             }
+            if (proxyOn) {
             Text(
                 "链路：超级代理（可用）→ 普通代理 → 系统网络。须先开代理才能开超级代理。",
                 style = MaterialTheme.typography.bodySmall
@@ -588,32 +589,28 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                 onValueChange = { proxyHost = it },
                 label = { Text("服务器地址（手动单节点）") },
                 modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                enabled = proxyOn
+                singleLine = true
             )
             OutlinedTextField(
                 value = proxyPort,
                 onValueChange = { proxyPort = it.filter { c -> c.isDigit() }.take(5) },
                 label = { Text("端口号") },
                 modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                enabled = proxyOn
+                singleLine = true
             )
             OutlinedTextField(
                 value = proxyUser,
                 onValueChange = { proxyUser = it },
                 label = { Text("用户名（可空）") },
                 modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                enabled = proxyOn
+                singleLine = true
             )
             OutlinedTextField(
                 value = proxyPass,
                 onValueChange = { proxyPass = it },
                 label = { Text("密码（可空）") },
                 modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                enabled = proxyOn
+                singleLine = true
             )
             OutlinedTextField(
                 value = proxySub,
@@ -622,8 +619,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = { Text("https://… 或 socks5://host:port#名") },
                 minLines = 2,
-                maxLines = 5,
-                enabled = proxyOn
+                maxLines = 5
             )
             Text(
                 "支持：订阅 URL / Base64 列表 / 每行 socks5://、http://、host:port；不支持 ss/vmess/trojan。",
@@ -631,8 +627,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             )
             OutlinedButton(
                 onClick = { vm.importProxySubscription(proxySub) },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = proxyOn
+                modifier = Modifier.fillMaxWidth()
             ) { Text("导入订阅 / 解析节点") }
             val nodeCount = settings.proxyNodes().size
             if (nodeCount > 0) {
@@ -694,6 +689,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                     if (proxyOn) superProxyOn = it
                     else superProxyOn = false
                 }
+                if (superProxyOn && proxyOn) {
 
                 Text(
                     "内核：${if (settings.superProxyBinPath.isNotBlank()) settings.superProxyBinPath else "未导入"}",
@@ -779,7 +775,9 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
+                } // end if (superProxyOn && proxyOn)
             }
+            } // end if (proxyOn)
         } else {
             LockedField("网络代理（请先解锁 PIN）")
         }
@@ -811,6 +809,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             onToggle = { expandKw = !expandKw }
         ) {
         RowSwitch("启用关键词搜索", useKeywords) { useKeywords = it }
+        if (useKeywords) {
         RowSwitch("跃迁模式（用上次成功标签覆盖跃迁列表）", jumpMode) { jumpMode = it }
         Text(
             "Wallhaven 成功后会用该壁纸标签覆盖跃迁列表；开启且列表非空时优先用跃迁词搜索",
@@ -867,6 +866,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
         } else {
             LockedField("本地关键词 / 远程地址")
         }
+        } // end if (useKeywords)
 
         }
 
@@ -876,6 +876,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             onToggle = { expandFb = !expandFb }
         ) {
         RowSwitch("网络兜底（Wallhaven 失败 → 备用 API）", netFb) { netFb = it }
+        if (netFb) {
         if (keysVisible) {
             OutlinedTextField(
                 value = fallbackApi,
@@ -893,8 +894,10 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
         } else {
             LockedField("兜底 API URL")
         }
+        }
 
         RowSwitch("本地兜底（无网/失败时从目录随机）", localFb) { localFb = it }
+        if (localFb) {
         RowSwitch("强制本地模式（不访问网络）", forceLocal) { forceLocal = it }
         OutlinedTextField(
             value = localDir,
@@ -913,6 +916,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                 valueRange = 0f..20f,
                 steps = 19
             )
+        }
         }
 
         }

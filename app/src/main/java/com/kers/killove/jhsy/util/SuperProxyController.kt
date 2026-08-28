@@ -99,32 +99,154 @@ object SuperProxyController {
             }
             out.setReadable(true, false)
             fixPermsRoot(context, out, executable = false)
+            // 导入时先按默认端口改成本地专用（启动时会再按用户端口改一次）
+            adaptConfigForAppLocal(out, DEFAULT_PORT, workDir(context))
             ImportResult(
                 true,
                 out.absolutePath,
-                "已导入配置 ${out.length()} 字节 → ${out.name}"
+                "已导入配置并改写为仅本机端口 $DEFAULT_PORT → ${out.name}"
             )
         } catch (e: Exception) {
             ImportResult(false, message = "导入配置失败：${e.message}")
         }
     }
 
-    /** Root 下修正属主与权限，保证 su 启动与 app 可读。 */
+    /** Root 下修正属主与权限，保证 su 启动与 app 可读可执行。 */
     private fun fixPermsRoot(context: Context, file: File, executable: Boolean) {
+        // 先尽量用 API 改权限（无 root 时也生效）
+        try {
+            file.setReadable(true, false)
+            file.setWritable(true, true)
+            if (executable) {
+                file.setExecutable(true, false)
+            }
+        } catch (_: Exception) {
+        }
         if (!RootKeepAlive.hasRoot()) return
         val path = shellQuote(file.absolutePath)
-        val mode = if (executable) "755" else "644"
+        val dir = shellQuote(file.parentFile?.absolutePath ?: workDir(context).absolutePath)
+        val mode = if (executable) "0755" else "0644"
         val uid = android.os.Process.myUid()
         try {
             val p = Runtime.getRuntime().exec("su")
             DataOutputStream(p.outputStream).use { os ->
-                os.writeBytes("chown $uid:$uid $path 2>/dev/null\n")
+                os.writeBytes("mkdir -p $dir\n")
+                os.writeBytes("chown -R $uid:$uid $dir 2>/dev/null\n")
                 os.writeBytes("chmod $mode $path 2>/dev/null\n")
+                // 去掉可能阻碍执行的上下文（部分 ROM）
+                os.writeBytes("chcon u:object_r:system_file:s0 $path 2>/dev/null\n")
                 os.writeBytes("exit\n")
                 os.flush()
             }
-            p.waitFor(3, TimeUnit.SECONDS)
+            p.waitFor(5, TimeUnit.SECONDS)
         } catch (_: Exception) {
+        }
+    }
+
+    /** 启动前整目录权限加固。 */
+    fun ensureWorkDirPerms(context: Context) {
+        val wd = workDir(context)
+        val bin = importedBinFile(context)
+        try {
+            wd.mkdirs()
+            wd.setReadable(true, false)
+            wd.setWritable(true, true)
+            wd.setExecutable(true, false)
+        } catch (_: Exception) {
+        }
+        if (bin.exists()) fixPermsRoot(context, bin, executable = true)
+        importedConfigFile(context).takeIf { it.exists() }?.let { fixPermsRoot(context, it, false) }
+        if (!RootKeepAlive.hasRoot()) return
+        val uid = android.os.Process.myUid()
+        val dir = shellQuote(wd.absolutePath)
+        try {
+            val p = Runtime.getRuntime().exec("su")
+            DataOutputStream(p.outputStream).use { os ->
+                os.writeBytes("chown -R $uid:$uid $dir 2>/dev/null\n")
+                os.writeBytes("chmod 755 $dir 2>/dev/null\n")
+                if (bin.exists()) {
+                    os.writeBytes("chmod 755 ${shellQuote(bin.absolutePath)} 2>/dev/null\n")
+                }
+                os.writeBytes("exit\n")
+                os.flush()
+            }
+            p.waitFor(5, TimeUnit.SECONDS)
+        } catch (_: Exception) {
+        }
+    }
+
+    /**
+     * 把用户配置改成「仅本应用」：mixed-port/bind 与 App 端口一致，关 TUN。
+     * 避免配置里仍是 7890 或 0.0.0.0 导致端口冲突/全局监听。
+     */
+    fun adaptConfigForAppLocal(configFile: File, localPort: Int, workDir: File): Boolean {
+        if (!configFile.exists()) return false
+        return try {
+            var text = configFile.readText()
+            // mixed-port / port / socks-port
+            text = text.replace(Regex("""(?m)^mixed-port:\s*\d+"""), "mixed-port: $localPort")
+            text = text.replace(Regex("""(?m)^port:\s*\d+"""), "port: $localPort")
+            text = text.replace(Regex("""(?m)^socks-port:\s*\d+"""), "socks-port: $localPort")
+            if (!Regex("""(?m)^mixed-port:\s*""").containsMatchIn(text) &&
+                !Regex("""(?m)^port:\s*""").containsMatchIn(text)
+            ) {
+                text = "mixed-port: $localPort\n" + text
+            }
+            // bind
+            if (Regex("""(?m)^bind-address:\s*""").containsMatchIn(text)) {
+                text = text.replace(Regex("""(?m)^bind-address:\s*.*"""), "bind-address: 127.0.0.1")
+            } else {
+                text = text.replace(
+                    Regex("""(?m)^mixed-port:\s*\d+"""),
+                    "mixed-port: $localPort\nbind-address: 127.0.0.1"
+                )
+            }
+            text = text.replace(Regex("""(?m)^allow-lan:\s*true"""), "allow-lan: false")
+            // tun enable false（简单替换常见写法）
+            text = text.replace(
+                Regex("""(?m)^(\s*)enable:\s*true(\s*#.*)?$"""),
+                "$1enable: false$2"
+            )
+            // 仅在 tun: 块附近误伤风险：再保险把 tun.enable 写死不完美，用户精简配置已是 false
+            // external-controller 仅本机
+            text = text.replace(
+                Regex("""(?m)^external-controller:\s*0\.0\.0\.0:\d+"""),
+                "external-controller: 127.0.0.1:0"
+            )
+            configFile.writeText(text)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /** 探测内核类型：mihomo/clash / sing-box / xray */
+    fun detectCoreKind(binPath: String): String {
+        val name = File(binPath).name.lowercase()
+        when {
+            name.contains("sing-box") || name == "singbox" -> return "sing-box"
+            name.contains("xray") -> return "xray"
+            name.contains("v2ray") -> return "v2ray"
+            name.contains("mihomo") || name.contains("clash") -> return "mihomo"
+            name == IMPORTED_BIN_NAME.lowercase() || name == "core_bin" -> {
+                // 跑 -v / -h 看输出
+                return try {
+                    val p = Runtime.getRuntime().exec(arrayOf(binPath, "-v"))
+                    val out = p.inputStream.bufferedReader().readText() +
+                        p.errorStream.bufferedReader().readText()
+                    p.waitFor(2, TimeUnit.SECONDS)
+                    val all = out.lowercase()
+                    when {
+                        "mihomo" in all || "clash" in all || "metacubex" in all -> "mihomo"
+                        "sing-box" in all -> "sing-box"
+                        "xray" in all -> "xray"
+                        else -> "mihomo" // 本功能默认按 mihomo
+                    }
+                } catch (_: Exception) {
+                    "mihomo"
+                }
+            }
+            else -> return "mihomo"
         }
     }
 
@@ -282,13 +404,29 @@ object SuperProxyController {
         if (!File(cfg).exists()) return "配置文件不存在：$cfg"
 
         val port = s.superProxyLocalPort.coerceIn(1025, 65535)
-        val wd = workDir(context).absolutePath
+        val wdFile = workDir(context)
+        val wd = wdFile.absolutePath
         val log = logFile(context).absolutePath
         val pidPath = pidFile(context).absolutePath
 
+        // 配置改写：强制 mixed-port / bind 127.0.0.1，避免仍用 7890 冲突
+        adaptConfigForAppLocal(File(cfg), port, wdFile)
+        ensureWorkDirPerms(context)
+        fixPermsRoot(context, File(bin), executable = true)
+
         stop(context)
 
-        val argsTemplate = s.superProxyArgs.ifBlank { defaultArgsFor(bin) }
+        val kind = detectCoreKind(bin)
+        // 用户若误填 mihomo 不支持的 -c，自动改回 -f/-d
+        val rawArgs = s.superProxyArgs.trim()
+        val argsTemplate = when {
+            rawArgs.isBlank() -> defaultArgsFor(bin, kind)
+            kind == "mihomo" && rawArgs.contains("-c") && !rawArgs.contains("-f") ->
+                defaultArgsFor(bin, kind)
+            kind == "mihomo" && !rawArgs.contains("-d") && rawArgs.contains("-f") ->
+                rawArgs + " -d {workdir}"
+            else -> rawArgs
+        }
         val args = argsTemplate
             .replace("{bin}", shellQuote(bin))
             .replace("{config}", shellQuote(cfg))
@@ -301,14 +439,19 @@ object SuperProxyController {
             "${shellQuote(bin)} $args"
         }
 
-        // root 写 pid/log 后 chmod，避免 app 读不到；先清空旧日志
+        // HOME/XDG 指到工作目录，避免写到 /.config/mihomo（只读根分区）
         val script = """
             chmod 755 ${shellQuote(bin)} 2>/dev/null
             mkdir -p ${shellQuote(wd)}
+            chown ${android.os.Process.myUid()}:${android.os.Process.myUid()} ${shellQuote(wd)} 2>/dev/null
             cd ${shellQuote(wd)} || exit 1
+            export HOME=${shellQuote(wd)}
+            export XDG_CONFIG_HOME=${shellQuote(wd)}
             : > ${shellQuote(log)}
             chmod 666 ${shellQuote(log)} 2>/dev/null
+            echo "KIND: $kind" >> ${shellQuote(log)}
             echo "CMD: $runCmd" >> ${shellQuote(log)}
+            echo "PORT: $port CFG: $cfg" >> ${shellQuote(log)}
             nohup $runCmd >>${shellQuote(log)} 2>&1 &
             echo ${'$'}! > ${shellQuote(pidPath)}
             chmod 666 ${shellQuote(pidPath)} 2>/dev/null
@@ -373,22 +516,12 @@ object SuperProxyController {
         }
     }
 
-    /** 根据二进制名猜默认参数 */
-    fun defaultArgsFor(binPath: String): String {
-        val name = File(binPath).name.lowercase()
-        return when {
-            name.contains("sing-box") || name == "singbox" ->
-                "run -c {config}"
-            name.contains("xray") ->
-                "run -c {config}"
-            name.contains("clash") ->
-                "-f {config} -d {workdir}"
-            name.contains("mihomo") ->
-                "-f {config} -d {workdir}"
-            name.contains("v2ray") ->
-                "run -c {config}"
-            else ->
-                "-c {config}"
+    /** 根据二进制名 / 探测结果猜默认参数（导入的 core_bin 默认按 mihomo） */
+    fun defaultArgsFor(binPath: String, kind: String = detectCoreKind(binPath)): String {
+        return when (kind) {
+            "sing-box" -> "run -c {config}"
+            "xray", "v2ray" -> "run -c {config}"
+            else -> "-f {config} -d {workdir}" // mihomo / Clash Meta
         }
     }
 

@@ -36,6 +36,7 @@ import com.kers.killove.jhsy.ui.MainViewModel
 fun ProxyNodesScreen(vm: MainViewModel, onBack: () -> Unit) {
     val settings by vm.settings.collectAsState()
     val busy by vm.proxyTestBusy.collectAsState()
+    val status by vm.status.collectAsState()
     val textColor = LocalUiTextColor.current
     val nodes = settings.proxyNodes()
     val selectedId = settings.proxySelectedNodeId
@@ -54,7 +55,7 @@ fun ProxyNodesScreen(vm: MainViewModel, onBack: () -> Unit) {
         }
 
         Text(
-            "共 ${nodes.size} 个节点。手动点选立即生效；自动模式按间隔测 Wallhaven 延迟并选用最快可用节点。",
+            "共 ${nodes.size} 个节点。手动点选立即生效；自动模式按间隔测延迟并选用最快可用节点。",
             style = MaterialTheme.typography.bodySmall,
             color = textColor.copy(alpha = 0.75f)
         )
@@ -97,12 +98,17 @@ fun ProxyNodesScreen(vm: MainViewModel, onBack: () -> Unit) {
                     )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(
-                        onClick = { vm.testAllProxyNodes() },
-                        enabled = !busy && nodes.isNotEmpty(),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(if (busy) "测速中…" else "立即测速")
+                    if (busy) {
+                        OutlinedButton(
+                            onClick = { vm.cancelProxyTest() },
+                            modifier = Modifier.weight(1f)
+                        ) { Text("强制中断测速") }
+                    } else {
+                        OutlinedButton(
+                            onClick = { vm.testAllProxyNodes() },
+                            enabled = nodes.isNotEmpty(),
+                            modifier = Modifier.weight(1f)
+                        ) { Text("立即测速") }
                     }
                     if (settings.proxySelectMode == ProxySelectMode.Auto) {
                         Button(
@@ -117,7 +123,11 @@ fun ProxyNodesScreen(vm: MainViewModel, onBack: () -> Unit) {
                         CircularProgressIndicator(
                             modifier = Modifier.height(18.dp).padding(end = 8.dp)
                         )
-                        Text("正在测试 Wallhaven 延迟…", color = textColor, style = MaterialTheme.typography.bodySmall)
+                        Text(
+                            status.ifBlank { "正在测速…" },
+                            color = textColor,
+                            style = MaterialTheme.typography.bodySmall
+                        )
                     }
                 }
             }
