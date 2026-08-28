@@ -404,10 +404,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val sb = StringBuilder()
                 sb.append("id,setAt,trigger,source,category,purity,keyword,width,height,fileSizeBytes,path,sourceUrl\n")
                 for (item in list) {
-                    val trigger = when (item.triggerType) {
-                        "manual" -> "手动"
-                        else -> "自动"
-                    }
+                    val trigger = com.kers.killove.jhsy.domain.TriggerType.fromCode(item.triggerType).label
                     sb.append(
                         listOf(
                             esc(item.id),

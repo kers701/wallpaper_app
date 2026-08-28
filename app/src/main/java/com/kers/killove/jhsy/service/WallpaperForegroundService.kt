@@ -20,6 +20,7 @@ import com.kers.killove.jhsy.data.prefs.SettingsRepository
 import com.kers.killove.jhsy.data.remote.ProxyHttp
 import com.kers.killove.jhsy.data.remote.WallhavenApi
 import com.kers.killove.jhsy.data.wallpaper.SystemWallpaperSetter
+import com.kers.killove.jhsy.domain.TriggerType
 import com.kers.killove.jhsy.domain.WallpaperChanger
 import com.kers.killove.jhsy.util.ProcessBridgePrefs
 import com.kers.killove.jhsy.util.LocationHelper
@@ -63,7 +64,20 @@ class WallpaperForegroundService : Service() {
                 return START_NOT_STICKY
             }
             ACTION_CHANGE_NOW -> {
-                ManualChangeService.start(this)
+                val triggerCode = intent.getStringExtra(EXTRA_TRIGGER) ?: TriggerType.Manual.code
+                when (triggerCode) {
+                    TriggerType.Manual.code -> {
+                        // 真正的用户手动：走 :manual 进程当场下载
+                        ManualChangeService.start(this)
+                    }
+                    else -> {
+                        // 亮屏/Worker 等自动补换：在 :svc 内以对应触发类型执行，勿标成「手动」
+                        val tt = TriggerType.fromCode(triggerCode)
+                        scope.launch {
+                            runForcedChange(tt)
+                        }
+                    }
+                }
                 if (ProcessBridgePrefs.enabled(this) || ProcessBridgePrefs.superService(this)) {
                     ensureForegroundAndLoop()
                 }
@@ -252,7 +266,7 @@ class WallpaperForegroundService : Service() {
                     acquireWake()
                     try {
                         // changeOnce 内已含黑名单判断
-                        changer.changeOnce(forceIgnoreScreenOff = false)
+                        changer.changeOnce(forceIgnoreScreenOff = false, triggerType = TriggerType.Auto)
                         ProcessBridgePrefs.setLastChangeAt(this, System.currentTimeMillis())
                         lastStatusText = resolveNotificationText(null)
                         refreshNotification(lastStatusText)
@@ -427,6 +441,46 @@ class WallpaperForegroundService : Service() {
         }
     }
 
+
+    /** 亮屏/Worker 到期补换：在本进程执行，触发类型细分，不走 ManualChangeService */
+    private suspend fun runForcedChange(triggerType: TriggerType) {
+        if (!ProcessBridgePrefs.tryBeginChange(this, force = true)) {
+            refreshNotification("已有更换在进行中")
+            return
+        }
+        acquireWake()
+        try {
+            val settingsRepo = runCatching { SettingsRepository(applicationContext) }.getOrNull()
+            val dao = runCatching { WallpaperDatabase.get(applicationContext).dao() }.getOrNull()
+            if (settingsRepo == null || dao == null) {
+                refreshNotification("补换失败：组件未就绪")
+                return
+            }
+            runCatching { ProxyHttp.applySettings(settingsRepo.settingsFlow.first()) }
+            val changer = WallpaperChanger(
+                applicationContext, settingsRepo, WallhavenApi(),
+                SystemWallpaperSetter(applicationContext), dao,
+                onProgress = { frac, label ->
+                    val pct = (frac * 100).toInt().coerceIn(0, 100)
+                    refreshNotification(if (label.isNotBlank()) "$label · $pct%" else "更换中 $pct%")
+                }
+            )
+            changer.changeOnce(
+                forceIgnoreScreenOff = true,
+                triggerType = triggerType,
+                liveDownloadOnly = false
+            )
+            ProcessBridgePrefs.setLastChangeAt(this, System.currentTimeMillis())
+            lastStatusText = resolveNotificationText(null)
+            refreshNotification(lastStatusText)
+        } catch (e: Exception) {
+            refreshNotification("补换失败：${e.message}")
+        } finally {
+            ProcessBridgePrefs.releaseChange(this)
+            releaseWake()
+        }
+    }
+
         private fun acquireWake() {
         try {
             if (wakeLock?.isHeld != true) wakeLock?.acquire(3 * 60_000L)
@@ -562,10 +616,16 @@ class WallpaperForegroundService : Service() {
             }
         }
 
-        /** 拉起 FGS 并立即换一次（刷新通知 + :svc 执行） */
-        fun startChangeNow(context: Context) {
+        const val EXTRA_TRIGGER = "trigger_type"
+
+        /**
+         * 拉起 FGS 并立即换一次。
+         * @param trigger [TriggerType.Manual] 走 :manual；其它类型在 :svc 内执行并正确记入记录
+         */
+        fun startChangeNow(context: Context, trigger: TriggerType = TriggerType.Manual) {
             val i = Intent(context, WallpaperForegroundService::class.java)
                 .setAction(ACTION_CHANGE_NOW)
+                .putExtra(EXTRA_TRIGGER, trigger.code)
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     context.startForegroundService(i)

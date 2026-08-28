@@ -108,12 +108,27 @@ enum class UiTextColor(val code: String, val label: String, val argb: Long) {
 
 /** 更换触发方式 */
 enum class TriggerType(val code: String, val label: String) {
+    /** App 内「立即更换」或通知「立即更换」 */
     Manual("manual", "手动"),
-    Auto("auto", "自动");
+    /** 前台服务周期到期自动更换 */
+    Auto("auto", "定时"),
+    /** 亮屏 / 解锁时发现已到期补换 */
+    ScreenOn("screen_on", "亮屏补换"),
+    /** WorkManager 单次调度补跑 */
+    Worker("worker", "调度补跑"),
+    /** 开机 / 包替换后调度拉起 */
+    Boot("boot", "开机"),
+    /** 其它或旧数据 */
+    Unknown("unknown", "其它");
 
     companion object {
         fun fromCode(code: String): TriggerType =
-            entries.find { it.code == code } ?: Auto
+            entries.find { it.code == code }
+                ?: when (code) {
+                    "manual" -> Manual
+                    "auto" -> Auto
+                    else -> Unknown
+                }
     }
 }
 

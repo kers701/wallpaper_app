@@ -9,6 +9,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.kers.killove.jhsy.data.prefs.SettingsRepository
+import com.kers.killove.jhsy.domain.TriggerType
 import com.kers.killove.jhsy.service.WallpaperForegroundService
 import kotlinx.coroutines.flow.first
 import java.util.concurrent.TimeUnit
@@ -38,7 +39,7 @@ class ChangeWallpaperWorker(
         return try {
             if (forceNow) {
                 // 亮屏补换 / 单次任务：刷新通知并让 :svc 执行更换
-                WallpaperForegroundService.startChangeNow(applicationContext)
+                WallpaperForegroundService.startChangeNow(applicationContext, TriggerType.Worker)
             } else {
                 // 周期兜底：只保证 FGS 在跑，到期由 FGS runLoop 判断
                 WallpaperForegroundService.start(applicationContext)

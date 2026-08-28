@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.kers.killove.jhsy.data.prefs.SettingsRepository
+import com.kers.killove.jhsy.domain.TriggerType
 import com.kers.killove.jhsy.service.WallpaperForegroundService
 import com.kers.killove.jhsy.util.ProcessBridgePrefs
 import kotlinx.coroutines.CoroutineScope
@@ -37,7 +38,7 @@ class ScreenOnReceiver : BroadcastReceiver() {
                 ChangeWallpaperWorker.enqueue(context, settings.intervalMinutes)
 
                 if (due) {
-                    WallpaperForegroundService.startChangeNow(context)
+                    WallpaperForegroundService.startChangeNow(context, TriggerType.ScreenOn)
                 } else {
                     WallpaperForegroundService.start(context)
                 }

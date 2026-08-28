@@ -83,10 +83,7 @@ fun HistoryScreen(vm: MainViewModel) {
                                 "${item.width}×${item.height}"
                             } else "分辨率未知"
                             Text("分辨率: $res · 大小: ${formatFileSize(item.fileSize)}", color = textColor)
-                            val triggerLabel = when (item.triggerType) {
-                                "manual" -> "手动"
-                                else -> "自动"
-                            }
+                            val triggerLabel = com.kers.killove.jhsy.domain.TriggerType.fromCode(item.triggerType).label
                             Text("触发: $triggerLabel · ${fmt.format(Date(item.setAt))}", style = MaterialTheme.typography.bodySmall, color = textColor.copy(alpha = 0.75f))
                         }
                     }
