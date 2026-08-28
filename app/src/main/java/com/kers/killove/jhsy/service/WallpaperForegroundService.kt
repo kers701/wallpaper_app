@@ -23,6 +23,8 @@ import com.kers.killove.jhsy.data.wallpaper.SystemWallpaperSetter
 import com.kers.killove.jhsy.domain.TriggerType
 import com.kers.killove.jhsy.domain.WallpaperChanger
 import com.kers.killove.jhsy.util.ProcessBridgePrefs
+import com.kers.killove.jhsy.util.DataSaverBudget
+import com.kers.killove.jhsy.util.RunLog
 import com.kers.killove.jhsy.util.LocationHelper
 import com.kers.killove.jhsy.util.ForegroundAppHelper
 import com.kers.killove.jhsy.domain.AvoidanceLocation
@@ -274,18 +276,27 @@ class WallpaperForegroundService : Service() {
                     break
                 }
 
-                val intervalMin = settingsRepo?.let {
-                    runCatching { it.settingsFlow.first().intervalMinutes }.getOrNull()
-                } ?: ProcessBridgePrefs.intervalMinutes(this)
+                val sNow = settingsRepo?.let { runCatching { it.settingsFlow.first() }.getOrNull() }
+                val baseInterval = sNow?.intervalMinutes
+                    ?: ProcessBridgePrefs.intervalMinutes(this)
+                val dataSaverOn = sNow?.dataSaverEnabled == true
+                val intervalMin = DataSaverBudget.effectiveIntervalMinutes(
+                    this, baseInterval, dataSaverOn
+                )
 
                 // 优先 bridge（跨进程一致），DataStore 仅作回退
                 val lastBridge = ProcessBridgePrefs.lastChangeAt(this)
-                val lastDs = settingsRepo?.let {
-                    runCatching { it.settingsFlow.first().lastChangeAt }.getOrNull()
-                } ?: 0L
+                val lastDs = sNow?.lastChangeAt ?: 0L
                 val last = maxOf(lastBridge, lastDs)
 
-                val intervalMs = intervalMin.coerceIn(5, 180) * 60_000L
+                if (dataSaverOn && DataSaverBudget.shouldStopToday(this, true)) {
+                    lastStatusText = DataSaverBudget.statusLine(this, true, baseInterval)
+                    refreshNotification(lastStatusText)
+                    delay(60_000L)
+                    continue
+                }
+
+                val intervalMs = intervalMin.coerceIn(5, 240) * 60_000L
                 val due = last <= 0L || System.currentTimeMillis() - last >= intervalMs
                 if (due && changer != null) {
                     // 自动轮询：90s 防抖 + changing 锁，避免与 Worker/亮屏 双开

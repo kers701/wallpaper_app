@@ -92,6 +92,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
     var fitMode by remember(settings.fitMode) { mutableStateOf(settings.fitMode) }
     var isolate by remember(settings.isolateHomeLock) { mutableStateOf(settings.isolateHomeLock) }
     var powerSave by remember(settings.powerSaveEnabled) { mutableStateOf(settings.powerSaveEnabled) }
+    var dataSaver by remember(settings.dataSaverEnabled) { mutableStateOf(settings.dataSaverEnabled) }
     var superSvc by remember(settings.superServiceEnabled) { mutableStateOf(settings.superServiceEnabled) }
     var restoreJson by remember { mutableStateOf("") }
     var showRestoreField by remember { mutableStateOf(false) }
@@ -296,6 +297,14 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
         Text("填充=等比铺满；适应=完整显示留边；居中=原图居中裁多余；拉伸=强制变形铺满。修改后保存会用当前壁纸重设（不重新下载）", style = MaterialTheme.typography.bodySmall)
         RowSwitch("桌面锁屏隔离（两次下载，可用不同关键词）", isolate) { isolate = it }
         RowSwitch("省电模式", powerSave) { powerSave = it }
+        RowSwitch("省流量模式", dataSaver) { dataSaver = it }
+        if (dataSaver) {
+            Text(
+                "当日写入缓存：≥1GB 间隔+5 分钟；≥10GB 再+5；≥20GB 今日停换。手动更换不受限。",
+                style = MaterialTheme.typography.bodySmall,
+                color = textColor.copy(alpha = 0.75f)
+            )
+        }
         if (powerSave) {
             Text("电量低于 ${powerTh}% 时休眠，充电忽略，恢复后继续", style = MaterialTheme.typography.bodySmall)
             Slider(
@@ -779,6 +788,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                         fitMode = fitMode,
                         isolateHomeLock = isolate,
                         powerSaveEnabled = powerSave,
+                        dataSaverEnabled = dataSaver,
                         powerSaveBatteryThreshold = powerTh.coerceIn(5, 50),
                         superServiceEnabled = superSvc,
                         translateProvider = transProv,

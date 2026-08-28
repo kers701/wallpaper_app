@@ -17,6 +17,8 @@ import com.kers.killove.jhsy.data.local.PageCacheStore
 import com.kers.killove.jhsy.data.wallpaper.SystemWallpaperSetter
 import com.kers.killove.jhsy.util.ForegroundAppHelper
 import com.kers.killove.jhsy.util.ProcessBridgePrefs
+import com.kers.killove.jhsy.util.DataSaverBudget
+import com.kers.killove.jhsy.util.RunLog
 import com.kers.killove.jhsy.util.LocationHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -60,6 +62,7 @@ class WallpaperChanger(
     ): ChangeResult {
         currentTrigger = triggerType
         var settings = settingsRepo.settingsFlow.first()
+        RunLog.i(context, "changeOnce start trigger=${triggerType.code} force=$forceIgnoreScreenOff")
 
         // 定位避让：进入/离开避让区时调整纯度与强制本地
         if (settings.locationAvoidEnabled && settings.avoidanceLocations().isNotEmpty()) {
@@ -88,6 +91,20 @@ class WallpaperChanger(
                 val fg = ForegroundAppHelper.currentForegroundPackage(context) ?: "?"
                 return ChangeResult.Failure("黑名单应用在前台，休眠（$fg）")
             }
+        }
+
+        // 省流量：当日缓存写入 ≥20GB 则今日自动停换（手动仍可 force）
+        if (!forceIgnoreScreenOff && settings.dataSaverEnabled &&
+            DataSaverBudget.shouldStopToday(context, true)
+        ) {
+            RunLog.i(context, "data_saver stop today bytes=${DataSaverBudget.todayBytes(context)}")
+            return ChangeResult.Failure(
+                String.format(
+                    java.util.Locale.CHINA,
+                    "省流量：今日缓存已约 %.1f GB≥20，今日不再自动更换",
+                    DataSaverBudget.todayGb(context)
+                )
+            )
         }
 
         maybeClearCacheIfHuge()
@@ -389,6 +406,10 @@ class WallpaperChanger(
             ProcessBridgePrefs.setLastChangeAt(context, System.currentTimeMillis())
         }
         if (countChange) settingsRepo.incrementChangeCount()
+        if (fileSize > 0L) {
+            DataSaverBudget.addBytes(context, fileSize)
+            RunLog.i(context, "wallpaper set id=${slot.id} target=$target size=$fileSize today=${DataSaverBudget.todayBytes(context)}")
+        }
         return ChangeResult.Success(
             item.copy(fileSize = size, category = "local←$reason"),
             file.absolutePath,
@@ -502,6 +523,10 @@ class WallpaperChanger(
             ProcessBridgePrefs.setLastChangeAt(context, System.currentTimeMillis())
         }
         if (countChange) settingsRepo.incrementChangeCount()
+        if (fileSize > 0L) {
+            DataSaverBudget.addBytes(context, fileSize)
+            RunLog.i(context, "wallpaper set id=${slot.id} target=$target size=$fileSize today=${DataSaverBudget.todayBytes(context)}")
+        }
         return ChangeResult.Success(
             item.copy(fileSize = fileSize),
             finalFile.absolutePath,
@@ -708,6 +733,10 @@ class WallpaperChanger(
             ProcessBridgePrefs.setLastChangeAt(context, System.currentTimeMillis())
         }
         if (countChange) settingsRepo.incrementChangeCount()
+        if (fileSize > 0L) {
+            DataSaverBudget.addBytes(context, fileSize)
+            RunLog.i(context, "wallpaper set id=${slot.id} target=$target size=$fileSize today=${DataSaverBudget.todayBytes(context)}")
+        }
         val item = WallpaperItem(
             id = slot.id,
             pathUrl = slot.sourceUrl,

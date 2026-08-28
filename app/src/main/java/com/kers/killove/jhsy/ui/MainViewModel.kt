@@ -26,6 +26,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import com.kers.killove.jhsy.util.ProcessBridgePrefs
+import com.kers.killove.jhsy.util.RunLog
 import com.kers.killove.jhsy.util.PinSecurity
 import com.kers.killove.jhsy.worker.ChangeWallpaperWorker
 import com.kers.killove.jhsy.util.ForegroundAppHelper
@@ -249,6 +250,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 )
             } else s
             settingsRepo.save(final)
+            RunLog.i(getApplication(), "settings saved enabled=${final.enabled} interval=${final.intervalMinutes} dataSaver=${final.dataSaverEnabled}")
             applySchedule(final)
             if (final.fitMode != oldFit) {
                 reapplyCurrentWallpapers(final)
@@ -496,6 +498,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             settingsRepo.save(current)
             applySchedule(current)
             _status.value = if (enabled) "已开启自动更换" else "已停止"
+            RunLog.i(getApplication(), "enabled=$enabled")
         }
     }
 

@@ -279,7 +279,10 @@ data class AppSettings(
     /** 进入避让区前保存的纯度 code，离开后恢复；空表示未锁定 */
     val locationSavedPurity: String = "",
     val locationSavedForceLocal: Boolean = false,
-    val locationInAvoidZone: Boolean = false
+    val locationInAvoidZone: Boolean = false,
+
+    /** 省流量：按当日缓存增量抬高间隔，≥20GB 今日停换 */
+    val dataSaverEnabled: Boolean = false
 ) {
     fun nextApiKey(): String? {
         val keys = apiKeys.map { it.trim() }.filter { it.isNotEmpty() }

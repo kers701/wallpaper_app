@@ -103,6 +103,7 @@ class SettingsRepository(private val context: Context) {
         val LOC_SAVED_PURITY = stringPreferencesKey("location_saved_purity")
         val LOC_SAVED_FORCE = booleanPreferencesKey("location_saved_force")
         val LOC_IN_ZONE = booleanPreferencesKey("location_in_zone")
+        val DATA_SAVER = booleanPreferencesKey("data_saver")
         val LEGACY_API_KEY = stringPreferencesKey("api_key")
         val LEGACY_FALLBACK = booleanPreferencesKey("fallback")
     }
@@ -194,7 +195,8 @@ class SettingsRepository(private val context: Context) {
             locationExtremeFallbackEnabled = p[Keys.LOC_EXTREME] ?: false,
             locationSavedPurity = p[Keys.LOC_SAVED_PURITY] ?: "",
             locationSavedForceLocal = p[Keys.LOC_SAVED_FORCE] ?: false,
-            locationInAvoidZone = p[Keys.LOC_IN_ZONE] ?: false
+            locationInAvoidZone = p[Keys.LOC_IN_ZONE] ?: false,
+            dataSaverEnabled = p[Keys.DATA_SAVER] ?: false
         )
     }
 
@@ -272,6 +274,7 @@ class SettingsRepository(private val context: Context) {
             p[Keys.LOC_SAVED_PURITY] = settings.locationSavedPurity
             p[Keys.LOC_SAVED_FORCE] = settings.locationSavedForceLocal
             p[Keys.LOC_IN_ZONE] = settings.locationInAvoidZone
+            p[Keys.DATA_SAVER] = settings.dataSaverEnabled
         }
         ProcessBridgePrefs.sync(context, settings)
         ProxyHttp.applySettings(settings)

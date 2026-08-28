@@ -58,6 +58,9 @@ import com.kers.killove.jhsy.ui.LocalBackdropBitmap
 import com.kers.killove.jhsy.ui.LocalCardAlpha
 import com.kers.killove.jhsy.ui.LocalCardStyle
 import com.kers.killove.jhsy.ui.LocalUiTextColor
+import com.kers.killove.jhsy.util.RunLog
+import com.kers.killove.jhsy.util.DataSaverBudget
+import android.widget.Toast
 import com.kers.killove.jhsy.ui.MainViewModel
 import kotlinx.coroutines.delay
 import kotlin.math.PI
@@ -322,6 +325,8 @@ fun HomeScreen(vm: MainViewModel, onOpenHelp: (() -> Unit)? = null) {
     val probing by vm.probing.collectAsState()
     val textColor = LocalUiTextColor.current
     val context = LocalContext.current
+    var titleClicks by remember { mutableIntStateOf(0) }
+    var devMode by remember { mutableStateOf(RunLog.isDeveloperMode(context)) }
     val deviceRes = remember {
         val (w, h) = SystemWallpaperSetter(context).screenSize()
         "${w}×${h}"
@@ -364,9 +369,23 @@ fun HomeScreen(vm: MainViewModel, onOpenHelp: (() -> Unit)? = null) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f)) {
-                Text("镜花水月", style = MaterialTheme.typography.headlineMedium, color = textColor)
                 Text(
-                    "自动更换壁纸",
+                    "镜花水月",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = textColor,
+                    modifier = Modifier.clickable {
+                        titleClicks += 1
+                        if (titleClicks >= 7) {
+                            titleClicks = 0
+                            RunLog.setDeveloperMode(context, true)
+                            devMode = true
+                            Toast.makeText(context, "已进入开发者模式", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                )
+                Text(
+                    if (devMode) "自动更换壁纸 · 开发者模式"
+                    else "自动更换壁纸",
                     style = MaterialTheme.typography.bodyMedium,
                     color = textColor.copy(alpha = 0.8f)
                 )
@@ -386,6 +405,13 @@ fun HomeScreen(vm: MainViewModel, onOpenHelp: (() -> Unit)? = null) {
                     onChecked = { vm.setEnabled(it) }
                 )
                 Text("间隔：${settings.intervalMinutes} 分钟", color = textColor)
+                if (settings.dataSaverEnabled) {
+                    Text(
+                        DataSaverBudget.statusLine(context, true, settings.intervalMinutes),
+                        color = textColor.copy(alpha = 0.85f),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
                 Text(
                     when {
                         !settings.enabled || remainMin == -2 -> "距下次更换：未开启"
@@ -566,5 +592,43 @@ fun CollapsibleSection(
                 content()
             }
         }
+
+        if (devMode) {
+            var runLogOn by remember { mutableStateOf(RunLog.isLogEnabled(context)) }
+            GlassCard {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("开发者选项", style = MaterialTheme.typography.titleSmall, color = textColor)
+                    RowSwitch(
+                        title = "运行日志",
+                        checked = runLogOn,
+                        onChecked = {
+                            runLogOn = it
+                            RunLog.setLogEnabled(context, it)
+                            Toast.makeText(
+                                context,
+                                if (it) "日志写入 ${RunLog.logFile(context).absolutePath}" else "已关闭运行日志",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    )
+                    Text(
+                        "路径：${RunLog.logFile(context).absolutePath}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = textColor.copy(alpha = 0.7f)
+                    )
+                    OutlinedButton(onClick = {
+                        RunLog.clear(context)
+                        Toast.makeText(context, "已清空 run.log", Toast.LENGTH_SHORT).show()
+                    }) { Text("清空日志") }
+                    OutlinedButton(onClick = {
+                        RunLog.setDeveloperMode(context, false)
+                        runLogOn = false
+                        devMode = false
+                        Toast.makeText(context, "已退出开发者模式", Toast.LENGTH_SHORT).show()
+                    }) { Text("退出开发者模式") }
+                }
+            }
+        }
+
     }
 }
