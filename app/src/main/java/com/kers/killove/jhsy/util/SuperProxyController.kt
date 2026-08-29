@@ -258,7 +258,8 @@ object SuperProxyController {
         val resolved = resolveConfig(context, s)
         val configOk = resolved.source != "none" && File(resolved.configPath).exists()
         val pid = readPid(context)
-        val running = pid != null && isPidAlive(pid)
+        // 端口可连即视为运行中（比 PID 更可靠）
+        val running = isLocalPortOpen(port) || (pid != null && isPidAlive(pid))
         val msg = when {
             !s.superProxyEnabled -> "超级代理：未启用（仅本应用，需 Root + 内核）"
             !root -> "超级代理：无 Root，无法启动内核"
@@ -367,24 +368,79 @@ object SuperProxyController {
 
     fun isPidAlive(pid: Int): Boolean {
         if (pid <= 0) return false
+        // 内核由 su 启动、属主多为 root：普通 kill -0 会失败，优先用 su 探测
+        if (RootKeepAlive.hasRoot()) {
+            try {
+                val p = Runtime.getRuntime().exec("su")
+                DataOutputStream(p.outputStream).use { os ->
+                    os.writeBytes("kill -0 $pid >/dev/null 2>&1\n")
+                    os.writeBytes("echo __ALIVE_\$?\n")
+                    os.writeBytes("exit\n")
+                    os.flush()
+                }
+                val out = p.inputStream.bufferedReader().readText()
+                p.waitFor(3, TimeUnit.SECONDS)
+                if (out.contains("__ALIVE_0")) return true
+            } catch (_: Exception) {
+            }
+        }
         return try {
             val p = Runtime.getRuntime().exec(arrayOf("sh", "-c", "kill -0 $pid 2>/dev/null"))
             val ok = p.waitFor(1, TimeUnit.SECONDS) && p.exitValue() == 0
             p.destroy()
             ok
         } catch (_: Exception) {
+            false
+        }
+    }
+
+    /** 本机端口是否已监听（判定内核真正可用）。 */
+    fun isLocalPortOpen(port: Int): Boolean {
+        if (port !in 1..65535) return false
+        try {
+            java.net.Socket().use { s ->
+                s.connect(java.net.InetSocketAddress("127.0.0.1", port), 500)
+                return true
+            }
+        } catch (_: Exception) {
+        }
+        if (RootKeepAlive.hasRoot()) {
             try {
                 val p = Runtime.getRuntime().exec("su")
                 DataOutputStream(p.outputStream).use { os ->
-                    os.writeBytes("kill -0 $pid 2>/dev/null\n")
+                    os.writeBytes("ss -lnt 2>/dev/null | grep -E ':$port\\s' >/dev/null && echo __PORT_OK\n")
                     os.writeBytes("exit\n")
                     os.flush()
                 }
-                p.waitFor(2, TimeUnit.SECONDS) && p.exitValue() == 0
+                val out = p.inputStream.bufferedReader().readText()
+                p.waitFor(3, TimeUnit.SECONDS)
+                if (out.contains("__PORT_OK")) return true
             } catch (_: Exception) {
-                false
             }
         }
+        return false
+    }
+
+    fun logLooksRunning(context: Context): Boolean {
+        val log = runCatching { logFile(context).readText() }.getOrDefault("")
+        if (log.contains("level=fatal", ignoreCase = true)) return false
+        if (log.contains("address already in use", ignoreCase = true)) return false
+        return log.contains("Initial configuration complete", ignoreCase = true) ||
+            log.contains("listening", ignoreCase = true)
+    }
+
+    /** 轮询：端口可连优先，其次 PID + 日志。 */
+    fun waitUntilRunning(context: Context, port: Int, timeoutMs: Long = 6000L): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (isLocalPortOpen(port)) return true
+            val pid = readPid(context)
+            if (pid != null && isPidAlive(pid) && logLooksRunning(context)) return true
+            Thread.sleep(400)
+        }
+        if (isLocalPortOpen(port)) return true
+        val pid = readPid(context)
+        return pid != null && isPidAlive(pid)
     }
 
     /**
@@ -414,7 +470,9 @@ object SuperProxyController {
         ensureWorkDirPerms(context)
         fixPermsRoot(context, File(bin), executable = true)
 
+        // 启动前必杀旧进程（含双开残留），再稍等端口释放
         stop(context)
+        Thread.sleep(400)
 
         val kind = detectCoreKind(bin)
         // 用户若误填 mihomo 不支持的 -c，自动改回 -f/-d
@@ -453,7 +511,13 @@ object SuperProxyController {
             echo "CMD: $runCmd" >> ${shellQuote(log)}
             echo "PORT: $port CFG: $cfg" >> ${shellQuote(log)}
             nohup $runCmd >>${shellQuote(log)} 2>&1 &
-            echo ${'$'}! > ${shellQuote(pidPath)}
+            BPID=${'$'}!
+            echo ${'$'}BPID > ${shellQuote(pidPath)}
+            sleep 0.3
+            # 兜底：若 $! 不准，用进程名再找一次
+            if ! kill -0 ${'$'}BPID 2>/dev/null; then
+              pgrep -f ${shellQuote(bin)} | head -1 > ${shellQuote(pidPath)} 2>/dev/null
+            fi
             chmod 666 ${shellQuote(pidPath)} 2>/dev/null
             chmod 666 ${shellQuote(log)} 2>/dev/null
         """.trimIndent()
@@ -471,23 +535,30 @@ object SuperProxyController {
             if (!finished) {
                 return "su 命令超时（请确认已授权 Root）"
             }
-            // mihomo 拉订阅可能稍慢，多等一会儿再判定
-            Thread.sleep(1200)
-            val pid = readPid(context)
-            if (pid != null && isPidAlive(pid)) null
-            else {
+            // 以本地端口可连为主；root 进程对普通 kill -0 常误判失败
+            if (waitUntilRunning(context, port, timeoutMs = 6000L)) {
+                null
+            } else {
+                val pid = readPid(context)
+                val portOk = isLocalPortOpen(port)
+                val alive = pid != null && isPidAlive(pid)
                 val tail = runCatching {
                     logFile(context).readText().takeLast(800)
-                }.getOrDefault("(无日志，可能无 Root 权限或路径不可写)")
-                "启动失败或进程已退出（配置来源=${resolved.source}，cfg=$cfg）。\n$tail"
+                }.getOrDefault("(无日志)")
+                "启动失败或未监听端口（pid=$pid alive=$alive portOpen=$portOk source=${resolved.source}）。\n$tail"
             }
         } catch (e: Exception) {
             "启动异常：${e.message}"
         }
     }
 
+    /**
+     * 停止内核：按上次 PID 杀，并按工作目录/二进制名兜底杀掉残留，避免点两次启动出现双进程。
+     */
     fun stop(context: Context): Boolean {
         val pid = readPid(context)
+        val wd = workDir(context).absolutePath
+        val bin = importedBinFile(context).absolutePath
         if (!RootKeepAlive.hasRoot()) {
             if (pid != null) {
                 try {
@@ -501,14 +572,23 @@ object SuperProxyController {
         return try {
             val p = Runtime.getRuntime().exec("su")
             DataOutputStream(p.outputStream).use { os ->
+                // 1) 上次记录的 PID
                 if (pid != null) {
                     os.writeBytes("kill $pid 2>/dev/null\n")
                     os.writeBytes("kill -9 $pid 2>/dev/null\n")
                 }
+                // 2) 兜底：本应用 private 目录下的 core_bin / 带 super_proxy 工作目录的进程
+                os.writeBytes("pkill -9 -f ${shellQuote(bin)} 2>/dev/null\n")
+                os.writeBytes("pkill -9 -f ${shellQuote("$wd/")} 2>/dev/null\n")
+                // 3) 再按进程名扫一遍（仅匹配我们导入的 core_bin 路径，避免误杀系统其它 mihomo）
+                os.writeBytes(
+                    "for x in \$(pgrep -f ${shellQuote(bin)} 2>/dev/null); do kill -9 \$x 2>/dev/null; done\n"
+                )
                 os.writeBytes("exit\n")
                 os.flush()
             }
-            p.waitFor(3, TimeUnit.SECONDS)
+            p.waitFor(4, TimeUnit.SECONDS)
+            Thread.sleep(200)
             runCatching { pidFile(context).delete() }
             true
         } catch (_: Exception) {

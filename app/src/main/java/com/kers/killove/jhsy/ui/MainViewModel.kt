@@ -263,7 +263,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     jumpKeywords = settings.value.jumpKeywords
                 )
             } else s
+            val wasSuper = settings.value.superProxyEnabled && settings.value.proxyEnabled
+            val nowSuper = final.superProxyEnabled && final.proxyEnabled
             settingsRepo.save(final)
+            if (wasSuper && !nowSuper) {
+                withContext(Dispatchers.IO) {
+                    SuperProxyController.stop(getApplication())
+                }
+                ProxyHttp.setSuperRunning(false)
+                ProxyHttp.applySettings(getApplication(), final)
+            }
             RunLog.i(getApplication(), "settings saved enabled=${final.enabled} interval=${final.intervalMinutes} dataSaver=${final.dataSaverEnabled}")
             applySchedule(final)
             if (final.fitMode != oldFit) {

@@ -585,7 +585,10 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
         if (keysVisible) {
             RowSwitch("启用代理（不可用自动回退系统网络）", proxyOn) {
                 proxyOn = it
-                if (!it) superProxyOn = false
+                if (!it) {
+                    superProxyOn = false
+                    vm.stopSuperProxy()
+                }
             }
             if (proxyOn) {
             Text(
@@ -686,8 +689,13 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                     "启用超级代理（仅本应用）",
                     superProxyOn && proxyOn
                 ) {
-                    if (proxyOn) superProxyOn = it
-                    else superProxyOn = false
+                    if (proxyOn) {
+                        superProxyOn = it
+                        if (!it) vm.stopSuperProxy()
+                    } else {
+                        superProxyOn = false
+                        vm.stopSuperProxy()
+                    }
                 }
                 if (superProxyOn && proxyOn) {
 
