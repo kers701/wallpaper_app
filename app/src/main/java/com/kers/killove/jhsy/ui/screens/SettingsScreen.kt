@@ -288,7 +288,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             checked = accelOn,
             enabled = !proxyOn,
             onChecked = { want ->
-                if (proxyOn) return@RowSwitch
+                if (proxyOn) return@onChecked
                 if (want) {
                     showAccelDialog = true
                     accelCountdown = 10
@@ -476,7 +476,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                 checked = proxyOn && !accelOn,
                 enabled = !accelOn,
                 onChecked = { it ->
-                    if (accelOn) return@RowSwitch
+                    if (accelOn) return@onChecked
                     proxyOn = it
                     if (!it) {
                         superProxyOn = false
