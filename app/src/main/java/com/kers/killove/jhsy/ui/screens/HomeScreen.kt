@@ -592,8 +592,8 @@ fun HomeScreen(vm: MainViewModel, onOpenHelp: (() -> Unit)? = null) {
 fun RowSwitch(
     title: String,
     checked: Boolean,
-    onChecked: (Boolean) -> Unit,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    onChecked: (Boolean) -> Unit
 ) {
     val textColor = LocalUiTextColor.current
     Row(
