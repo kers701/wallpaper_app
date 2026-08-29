@@ -73,8 +73,24 @@ class WallpaperChanger(
         )
 
         // 定位避让：进入/离开避让区时调整纯度与强制本地
+        // 无避让点或功能关闭时：若仍残留「在区内」标记则清掉（否则首页会一直显示绿色模式）
         if (settings.locationAvoidEnabled && settings.avoidanceLocations().isNotEmpty()) {
             settings = applyLocationAvoidance(settings)
+        } else if (settings.locationInAvoidZone) {
+            val restoredPurity = if (settings.locationSavedPurity.isNotBlank()) {
+                Purity.fromCode(settings.locationSavedPurity)
+            } else {
+                settings.purity
+            }
+            settings = settings.copy(
+                locationInAvoidZone = false,
+                purity = restoredPurity,
+                forceLocalMode = settings.locationSavedForceLocal,
+                locationSavedPurity = "",
+                locationSavedForceLocal = false
+            )
+            settingsRepo.save(settings)
+            RunLog.i(context, "cleared stale locationInAvoidZone (no avoid points or disabled)")
         }
 
         // 通知「健康/心跳」运行模式：覆盖用户纯度配置（每次更换重新随机）

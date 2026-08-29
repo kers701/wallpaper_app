@@ -433,7 +433,10 @@ fun HomeScreen(vm: MainViewModel, onOpenHelp: (() -> Unit)? = null) {
                         com.kers.killove.jhsy.util.ProcessBridgePrefs.MODE_HEARTBEAT -> "心跳模式"
                         else -> "普通模式"
                     }
-                    val green = settings.locationInAvoidZone && settings.locationFallbackEnabled
+                    val green = settings.locationAvoidEnabled &&
+                        settings.locationFallbackEnabled &&
+                        settings.locationInAvoidZone &&
+                        settings.avoidanceLocations().isNotEmpty()
                     Text(
                         "运行模式：" + modeLabel + if (green) " · 绿色模式（定位避让）" else "",
                         color = textColor
