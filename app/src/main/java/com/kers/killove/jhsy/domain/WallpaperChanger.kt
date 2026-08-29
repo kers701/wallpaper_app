@@ -62,24 +62,6 @@ class WallpaperChanger(
     ): ChangeResult {
         currentTrigger = triggerType
         var settings = settingsRepo.settingsFlow.first()
-        // 自动代理：若已有测速结果，选用延迟最低的可用节点
-        if (settings.proxyEnabled && settings.proxySelectMode == com.kers.killove.jhsy.domain.ProxySelectMode.Auto) {
-            val nodes = settings.proxyNodes().filter { it.latencyMs >= 0 }
-            val best = nodes.minByOrNull { it.latencyMs }
-            if (best != null && (best.host != settings.proxyHost || best.port != settings.proxyPort)) {
-                settings = settings.copy(
-                    proxySelectedNodeId = best.id,
-                    proxyType = best.type,
-                    proxyHost = best.host,
-                    proxyPort = best.port,
-                    proxyUser = best.user,
-                    proxyPassword = best.password
-                )
-                runCatching { settingsRepo.save(settings) }
-                com.kers.killove.jhsy.data.remote.ProxyHttp.applySettings(settings)
-            }
-        }
-
         RunLog.i(context, "changeOnce start trigger=${triggerType.code} force=$forceIgnoreScreenOff")
 
         // 定位避让 / 黑名单：以 filesDir 标记文件为准（:svc DataStore 缓存不可靠）
@@ -531,10 +513,27 @@ class WallpaperChanger(
                 }.getOrDefault(emptyList())
             }
             val cleaned = filterJumpTags(tags, usedKeyword)
-            if (cleaned.isNotEmpty()) {
-                settingsRepo.setJumpKeywords(cleaned)
+            var forJump = cleaned
+            if (settings.jumpModeEnabled && settings.annihilationModeEnabled && cleaned.isNotEmpty()) {
+                val (filtered, newEpoch) = com.kers.killove.jhsy.util.AnnihilationStore.filterForJump(context, cleaned)
+                forJump = filtered
+                if (newEpoch) {
+                    settingsRepo.setAnnihilationEpoch(settings.annihilationEpoch + 1)
+                    RunLog.i(context, "annihilation epoch -> ${settings.annihilationEpoch + 1} (all hit, cache cleared)")
+                }
+            }
+            if (forJump.isNotEmpty()) {
+                settingsRepo.setJumpKeywords(forJump)
             }
             // 若过滤后为空：不覆盖旧跃迁列表，避免被清空后无法继续跃迁
+            // 湮灭：记录本次使用的关键词
+            if (settings.jumpModeEnabled && settings.annihilationModeEnabled) {
+                val forced = com.kers.killove.jhsy.util.AnnihilationStore.recordUsed(context, usedKeyword)
+                if (forced) {
+                    settingsRepo.setAnnihilationEpoch(settings.annihilationEpoch + 1)
+                    RunLog.i(context, "annihilation force clear at 777, epoch -> ${settings.annihilationEpoch + 1}")
+                }
+            }
         }
 
         // 非隔离路径才在这里 +1；隔离在外层 +2

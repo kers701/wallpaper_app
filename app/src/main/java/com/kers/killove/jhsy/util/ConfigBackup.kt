@@ -85,6 +85,8 @@ object ConfigBackup {
         o.put("jumpModeEnabled", settings.jumpModeEnabled)
         o.put("jumpKeywords", JSONArray(settings.jumpKeywords))
         o.put("jumpKeywordIndex", settings.jumpKeywordIndex)
+        o.put("annihilationModeEnabled", settings.annihilationModeEnabled)
+        o.put("annihilationEpoch", settings.annihilationEpoch)
         o.put("blacklistPackages", JSONArray(settings.blacklistPackages))
 
         // —— 兜底 ——
@@ -205,6 +207,8 @@ object ConfigBackup {
             keywordsRemoteUrl = o.optString("keywordsRemoteUrl", base.keywordsRemoteUrl),
             useKeywords = o.optBoolean("useKeywords", base.useKeywords),
             jumpModeEnabled = o.optBoolean("jumpModeEnabled", base.jumpModeEnabled),
+            annihilationModeEnabled = o.optBoolean("annihilationModeEnabled", base.annihilationModeEnabled),
+            annihilationEpoch = o.optInt("annihilationEpoch", base.annihilationEpoch).coerceAtLeast(1),
             jumpKeywords = strList("jumpKeywords") ?: base.jumpKeywords,
             jumpKeywordIndex = o.optInt("jumpKeywordIndex", base.jumpKeywordIndex).coerceAtLeast(0),
             blacklistPackages = strList("blacklistPackages") ?: base.blacklistPackages,

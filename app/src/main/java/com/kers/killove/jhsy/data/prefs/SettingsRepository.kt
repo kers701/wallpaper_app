@@ -66,6 +66,8 @@ class SettingsRepository(private val context: Context) {
         val JUMP_MODE = booleanPreferencesKey("jump_mode")
         val JUMP_KEYWORDS = stringPreferencesKey("jump_keywords")
         val JUMP_KEYWORD_INDEX = intPreferencesKey("jump_keyword_index")
+        val ANNIHILATION_MODE = booleanPreferencesKey("annihilation_mode")
+        val ANNIHILATION_EPOCH = intPreferencesKey("annihilation_epoch")
         val NET_FALLBACK = booleanPreferencesKey("network_fallback")
         val FALLBACK_API = stringPreferencesKey("fallback_api_url")
         val LOCAL_FALLBACK = booleanPreferencesKey("local_fallback")
@@ -165,6 +167,8 @@ class SettingsRepository(private val context: Context) {
             jumpModeEnabled = p[Keys.JUMP_MODE] ?: false,
             jumpKeywords = splitLines(p[Keys.JUMP_KEYWORDS] ?: ""),
             jumpKeywordIndex = p[Keys.JUMP_KEYWORD_INDEX] ?: 0,
+            annihilationModeEnabled = p[Keys.ANNIHILATION_MODE] ?: false,
+            annihilationEpoch = (p[Keys.ANNIHILATION_EPOCH] ?: 1).coerceAtLeast(1),
             networkFallbackEnabled = p[Keys.NET_FALLBACK] ?: p[Keys.LEGACY_FALLBACK] ?: true,
             fallbackApiUrl = p[Keys.FALLBACK_API] ?: "",
             localFallbackEnabled = p[Keys.LOCAL_FALLBACK] ?: true,
@@ -268,6 +272,8 @@ class SettingsRepository(private val context: Context) {
             p[Keys.JUMP_MODE] = settings.jumpModeEnabled
             p[Keys.JUMP_KEYWORDS] = settings.jumpKeywords.joinToString("\n")
             p[Keys.JUMP_KEYWORD_INDEX] = settings.jumpKeywordIndex
+            p[Keys.ANNIHILATION_MODE] = settings.annihilationModeEnabled
+            p[Keys.ANNIHILATION_EPOCH] = settings.annihilationEpoch.coerceAtLeast(1)
             p[Keys.NET_FALLBACK] = settings.networkFallbackEnabled
             p[Keys.FALLBACK_API] = settings.fallbackApiUrl
             p[Keys.LOCAL_FALLBACK] = settings.localFallbackEnabled
@@ -339,6 +345,10 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setJumpKeywordIndex(index: Int) {
         context.dataStore.edit { it[Keys.JUMP_KEYWORD_INDEX] = index }
+    }
+
+    suspend fun setAnnihilationEpoch(epoch: Int) {
+        context.dataStore.edit { it[Keys.ANNIHILATION_EPOCH] = epoch.coerceAtLeast(1) }
     }
 
     suspend fun setJumpKeywords(list: List<String>) {

@@ -146,6 +146,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
     }
     var useKeywords by remember(settings.useKeywords) { mutableStateOf(settings.useKeywords) }
     var jumpMode by remember(settings.jumpModeEnabled) { mutableStateOf(settings.jumpModeEnabled) }
+    var annihilMode by remember(settings.annihilationModeEnabled) { mutableStateOf(settings.annihilationModeEnabled) }
 
     var netFb by remember(settings.networkFallbackEnabled) {
         mutableStateOf(settings.networkFallbackEnabled)
@@ -358,11 +359,23 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
         ) {
         RowSwitch("启用关键词搜索", useKeywords) { useKeywords = it }
         if (useKeywords) {
-        RowSwitch("跃迁模式（用上次成功标签覆盖跃迁列表）", jumpMode) { jumpMode = it }
+        RowSwitch("跃迁模式（用上次成功标签覆盖跃迁列表）", jumpMode) {
+            jumpMode = it
+            if (!it) annihilMode = false
+        }
         Text(
             "Wallhaven 成功后会用该壁纸标签覆盖跃迁列表；开启且列表非空时优先用跃迁词搜索",
             style = MaterialTheme.typography.bodySmall
         )
+        if (jumpMode) {
+            RowSwitch("湮灭模式（用过的词不进入跃迁；全命中则新纪元）", annihilMode) { annihilMode = it }
+            if (annihilMode) {
+                Text(
+                    "正在湮灭 · 第 ${settings.annihilationEpoch} 纪元 · 缓存 ${com.kers.killove.jhsy.util.AnnihilationStore.size(context)} 条（满 777 强制清空）",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
         if (settings.jumpKeywords.isEmpty()) {
             Text(
                 "跃迁列表：空（尚未从 Wallhaven 成功写入）",
@@ -1126,6 +1139,8 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                         keywordsRemoteUrl = kwUrl,
                         useKeywords = useKeywords,
                         jumpModeEnabled = jumpMode,
+                        annihilationModeEnabled = annihilMode && jumpMode,
+                        annihilationEpoch = settings.annihilationEpoch,
                         networkFallbackEnabled = netFb,
                         fallbackApiUrl = fbUrl,
                         localFallbackEnabled = localFb,

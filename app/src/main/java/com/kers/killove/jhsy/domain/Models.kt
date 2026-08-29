@@ -248,6 +248,10 @@ data class AppSettings(
     val jumpModeEnabled: Boolean = false,
     val jumpKeywords: List<String> = emptyList(),
     val jumpKeywordIndex: Int = 0,
+    /** 湮灭模式（仅跃迁开启时有效）：用过的词写入缓存，跃迁提取时排除 */
+    val annihilationModeEnabled: Boolean = false,
+    /** 当前湮灭纪元（从 1 起；全部命中清空或强制清空时 +1） */
+    val annihilationEpoch: Int = 1,
 
     val networkFallbackEnabled: Boolean = true,
     val fallbackApiUrl: String = "",
