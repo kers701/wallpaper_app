@@ -78,7 +78,13 @@ class WallpaperChanger(
         }
 
         // 通知「健康/心跳」运行模式：覆盖用户纯度配置（每次更换重新随机）
+        // 模式从 filesDir 读取，保证 :svc / :manual 一致
+        val runtimeMode = ProcessBridgePrefs.purityMode(context)
         settings = applyPurityRuntimeMode(settings)
+        RunLog.i(
+            context,
+            "purity runtime mode=$runtimeMode effective=${settings.purity.code}/${settings.purity.label} trigger=${triggerType.code}"
+        )
 
         if (!forceIgnoreScreenOff && settings.skipWhenScreenOff && isScreenOff()) {
             return ChangeResult.Failure("息屏已跳过本次更换")

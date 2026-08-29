@@ -281,12 +281,29 @@ object ProcessBridgePrefs {
 
 
     // —— 通知纯度运行模式：normal / health / heartbeat ——
+    // 必须 filesDir 跨进程同步：:svc 点通知改模式，:manual 当场下载必须读到同一值。
+    // SharedPreferences 在多进程下各自缓存，不可靠（与 lastChange 时钟文件同理）。
     const val MODE_NORMAL = "normal"
     const val MODE_HEALTH = "health"
     const val MODE_HEARTBEAT = "heartbeat"
 
+    private fun purityModeFile(context: Context): java.io.File =
+        java.io.File(context.applicationContext.filesDir, "jhsy_purity_mode.txt")
+
     fun purityMode(context: Context): String {
-        val m = sp(context).getString("purity_mode", MODE_NORMAL) ?: MODE_NORMAL
+        val fromFile = try {
+            val f = purityModeFile(context)
+            if (f.exists()) f.readText(Charsets.UTF_8).trim() else ""
+        } catch (_: Exception) {
+            ""
+        }
+        val fromSp = sp(context).getString("purity_mode", MODE_NORMAL) ?: MODE_NORMAL
+        // 文件优先；无文件时回退 SP（兼容旧安装）
+        val m = when {
+            fromFile in listOf(MODE_HEALTH, MODE_HEARTBEAT, MODE_NORMAL) -> fromFile
+            fromSp in listOf(MODE_HEALTH, MODE_HEARTBEAT) -> fromSp
+            else -> MODE_NORMAL
+        }
         return when (m) {
             MODE_HEALTH, MODE_HEARTBEAT -> m
             else -> MODE_NORMAL
@@ -299,6 +316,16 @@ object ProcessBridgePrefs {
             else -> MODE_NORMAL
         }
         sp(context).edit().putString("purity_mode", m).commit()
+        try {
+            val f = purityModeFile(context)
+            val tmp = java.io.File(f.parentFile, "jhsy_purity_mode.txt.tmp")
+            tmp.writeText(m, Charsets.UTF_8)
+            if (!tmp.renameTo(f)) {
+                f.writeText(m, Charsets.UTF_8)
+                tmp.delete()
+            }
+        } catch (_: Exception) {
+        }
     }
 
     /** 普通 → 健康 → 心跳 → 普通 */
