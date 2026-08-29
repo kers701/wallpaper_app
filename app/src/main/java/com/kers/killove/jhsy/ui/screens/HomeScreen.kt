@@ -422,6 +422,10 @@ fun HomeScreen(vm: MainViewModel, onOpenHelp: (() -> Unit)? = null) {
                     color = textColor,
                     style = MaterialTheme.typography.titleSmall
                 )
+                Text(
+                    com.kers.killove.jhsy.util.AccessMode.line(context, settings),
+                    color = textColor
+                )
                 Text("纯度：${settings.purity.label} · 类别：${settings.categoryMode.label}", color = textColor)
                 Text("目标：${settings.target.label}" + if (settings.isolateHomeLock) " · 桌面锁屏隔离" else "", color = textColor)
                 Text(
@@ -585,15 +589,25 @@ fun HomeScreen(vm: MainViewModel, onOpenHelp: (() -> Unit)? = null) {
 }
 
 @Composable
-fun RowSwitch(title: String, checked: Boolean, onChecked: (Boolean) -> Unit) {
+fun RowSwitch(
+    title: String,
+    checked: Boolean,
+    onChecked: (Boolean) -> Unit,
+    enabled: Boolean = true
+) {
     val textColor = LocalUiTextColor.current
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f), color = textColor)
-        Switch(checked = checked, onCheckedChange = onChecked)
+        Text(
+            title,
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.weight(1f),
+            color = textColor.copy(alpha = if (enabled) 1f else 0.45f)
+        )
+        Switch(checked = checked, onCheckedChange = onChecked, enabled = enabled)
     }
 }
 

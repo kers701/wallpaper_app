@@ -592,13 +592,13 @@ class WallpaperForegroundService : Service() {
         )
         val mode = ProcessBridgePrefs.purityMode(this)
         val modeTitle = ProcessBridgePrefs.purityModeTitle(mode)
+        val accessLabel = currentAccessLabel()
         val title = when {
             contentText.startsWith("定位休眠") -> "$modeTitle · 定位休眠"
             contentText.startsWith("应用休眠") -> "$modeTitle · 应用休眠"
             contentText.startsWith("省电休眠") -> "$modeTitle · 省电休眠"
-            contentText.contains("更换") || contentText.contains("%") -> "$modeTitle · 更换中"
             contentText.startsWith("确认") -> modeTitle
-            else -> modeTitle
+            else -> "$modeTitle · $accessLabel"
         }
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title)
@@ -649,6 +649,15 @@ class WallpaperForegroundService : Service() {
         }
         return builder.build()
     }
+
+    private fun currentAccessLabel(): String = runCatching {
+        kotlinx.coroutines.runBlocking {
+            val s = SettingsRepository(applicationContext).settingsFlow.first()
+            com.kers.killove.jhsy.util.AccessMode.label(
+                com.kers.killove.jhsy.util.AccessMode.kind(applicationContext, s)
+            )
+        }
+    }.getOrDefault("系统直连")
 
     override fun onDestroy() {
         loopJob?.cancel()

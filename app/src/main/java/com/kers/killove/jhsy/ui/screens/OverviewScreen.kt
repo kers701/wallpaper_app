@@ -56,6 +56,7 @@ import java.util.Locale
 
 @Composable
 fun OverviewScreen(vm: MainViewModel) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val settings by vm.settings.collectAsState()
     val serviceState by vm.serviceStatus.collectAsState()
     val cacheBytes by vm.cacheBytes.collectAsState()
@@ -172,6 +173,10 @@ fun OverviewScreen(vm: MainViewModel) {
                 },
                 color = textColor,
                 style = MaterialTheme.typography.titleSmall
+            )
+            Text(
+                com.kers.killove.jhsy.util.AccessMode.line(context, settings),
+                color = textColor
             )
             Text("纯度：${settings.purity.label} · 类别：${settings.categoryMode.label}", color = textColor)
             Text(

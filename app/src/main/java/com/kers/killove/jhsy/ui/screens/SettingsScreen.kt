@@ -283,13 +283,25 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             "从内置/配置的中转节点随机下载。开启前须阅读安全与隐私声明。",
             style = MaterialTheme.typography.bodySmall
         )
-        RowSwitch("启用加速模式", accelOn) { want ->
-            if (want) {
-                showAccelDialog = true
-                accelCountdown = 10
-            } else {
-                accelOn = false
+        RowSwitch(
+            title = "启用加速模式",
+            checked = accelOn,
+            enabled = !proxyOn,
+            onChecked = { want ->
+                if (proxyOn) return@RowSwitch
+                if (want) {
+                    showAccelDialog = true
+                    accelCountdown = 10
+                } else {
+                    accelOn = false
+                }
             }
+        )
+        if (proxyOn) {
+            Text(
+                "网络代理已启用，加速模式已禁用",
+                style = MaterialTheme.typography.bodySmall
+            )
         }
         if (accelOn) {
             Text(
@@ -453,18 +465,26 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             onToggle = { toggleSection("proxy") }
         ) {
         if (keysVisible) {
-            RowSwitch("启用代理（不可用自动回退系统网络）", proxyOn) {
-                if (it && accelOn) {
-                    // 与加速模式互斥
-                    accelOn = false
-                }
-                proxyOn = it
-                if (!it) {
-                    superProxyOn = false
-                    vm.stopSuperProxy()
-                }
+            if (accelOn) {
+                Text(
+                    "加速模式已启用，网络代理已禁用，无法操作",
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
-            if (proxyOn) {
+            RowSwitch(
+                title = "启用代理（不可用自动回退系统网络）",
+                checked = proxyOn && !accelOn,
+                enabled = !accelOn,
+                onChecked = { it ->
+                    if (accelOn) return@RowSwitch
+                    proxyOn = it
+                    if (!it) {
+                        superProxyOn = false
+                        vm.stopSuperProxy()
+                    }
+                }
+            )
+            if (proxyOn && !accelOn) {
             Text(
                 "链路：超级代理（可用）→ 普通代理 → 系统网络。须先开代理才能开超级代理。",
                 style = MaterialTheme.typography.bodySmall
@@ -1096,10 +1116,10 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                         bgApiUrl = bgApi.trim(),
                         bgLocalPath = bgLocal.trim(),
                         bgMode = bgMode,
-                        accelModeEnabled = accelOn,
+                        accelModeEnabled = accelOn && !proxyOn,
                         accelPrivacyAccepted = accelPrivacy,
                         accelNodesRemoteUrl = accelNodesUrl.trim(),
-                        proxyEnabled = proxyOn,
+                        proxyEnabled = proxyOn && !accelOn,
                         proxyType = if (keysVisible) proxyType else settings.proxyType,
                         proxyHost = if (keysVisible) proxyHost.trim() else settings.proxyHost,
                         proxyPort = if (keysVisible) (proxyPort.toIntOrNull() ?: 0) else settings.proxyPort,
