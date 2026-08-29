@@ -111,6 +111,8 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
     var dataSaver by remember(settings.dataSaverEnabled) { mutableStateOf(settings.dataSaverEnabled) }
     var superSvc by remember(settings.superServiceEnabled) { mutableStateOf(settings.superServiceEnabled) }
     var restoreJson by remember { mutableStateOf("") }
+    var remoteConfigUrl by remember { mutableStateOf("") }
+    var showRemoteConfig by remember { mutableStateOf(false) }
     var showRestoreField by remember { mutableStateOf(false) }
     // 配置页各板块折叠：默认只显示标题
     var expandBasic by remember { mutableStateOf(false) }
@@ -524,13 +526,16 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             onToggle = { expandBackup = !expandBackup }
         ) {
         if (keysVisible) {
-            Text("备份不含 PIN；恢复后保留本机 PIN 设置", style = MaterialTheme.typography.bodySmall)
             Text(
-                "默认文件：${vm.backupFilePath()}",
+                "备份除 PIN 外全部配置（含代理节点、超级代理订阅/端口、云备份、避让点等）。恢复始终保留本机 PIN。",
                 style = MaterialTheme.typography.bodySmall
             )
             Text(
-                "若无反应请先「备份配置」生成文件，或看顶部状态提示",
+                "超级代理内核/配置路径为本机私有路径，换机后请重新选择文件导入。",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Text(
+                "默认文件：${vm.backupFilePath()}",
                 style = MaterialTheme.typography.bodySmall
             )
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -570,6 +575,28 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                     onClick = { vm.restoreConfigFromJson(restoreJson) },
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("确认恢复") }
+            }
+
+            OutlinedButton(
+                onClick = { showRemoteConfig = !showRemoteConfig },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text(if (showRemoteConfig) "收起远程配置" else "从远程 URL 导入配置") }
+            if (showRemoteConfig) {
+                OutlinedTextField(
+                    value = remoteConfigUrl,
+                    onValueChange = { remoteConfigUrl = it },
+                    label = { Text("远程配置 JSON 地址 (http/https)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                Button(
+                    onClick = { vm.importRemoteConfig(remoteConfigUrl) },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("拉取并恢复") }
+                Text(
+                    "远程文件须为备份导出的 JSON 对象；不会覆盖本机 PIN。",
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
         } else {
             LockedField("配置备份 / 恢复（请先解锁 PIN）")

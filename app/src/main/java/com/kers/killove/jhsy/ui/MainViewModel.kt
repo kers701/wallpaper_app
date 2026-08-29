@@ -381,11 +381,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     _status.value = "备份文件不存在\n${file.absolutePath}\n请先点「备份配置」或使用「从 JSON 恢复」"
                     return@launch
                 }
-                val base = settings.value
-                val restored = ConfigBackup.readFromFile(ctx, base, file)
-                settingsRepo.save(restored)
-                applySchedule(restored)
-                _status.value = "配置已从文件恢复（PIN 未改动）\n${file.absolutePath}"
+                val restored = ConfigBackup.readFromFile(ctx, settings.value, file)
+                applyRestored(restored, "默认文件")
             } catch (e: Exception) {
                 e.printStackTrace()
                 _status.value = "恢复失败：${e.message ?: e.javaClass.simpleName}"
@@ -403,9 +400,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     return@launch
                 }
                 val restored = ConfigBackup.fromJson(f.readText(Charsets.UTF_8), settings.value)
-                settingsRepo.save(restored)
-                applySchedule(restored)
-                _status.value = "已从所选文件恢复（PIN 未改动）"
+                applyRestored(restored, "所选路径")
             } catch (e: Exception) {
                 _status.value = "恢复失败：${e.message}"
             }
@@ -486,9 +481,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     BufferedReader(InputStreamReader(ins, Charsets.UTF_8)).readText()
                 } ?: throw IllegalStateException("无法读取所选文件")
                 val restored = ConfigBackup.fromJson(text, settings.value)
-                settingsRepo.save(restored)
-                applySchedule(restored)
-                _status.value = "已从所选文件恢复（PIN 未改动）"
+                applyRestored(restored, "所选文件")
             } catch (e: Exception) {
                 _status.value = "恢复失败：${e.message}"
             }
@@ -504,15 +497,48 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         viewModelScope.launch {
             try {
-                val base = settings.value
-                val restored = ConfigBackup.fromJson(json, base)
-                settingsRepo.save(restored)
-                applySchedule(restored)
-                _status.value = "配置已从 JSON 恢复（PIN 未改动）"
+                applyRestored(ConfigBackup.fromJson(json, settings.value), "JSON")
             } catch (e: Exception) {
                 _status.value = "恢复失败：${e.message}"
             }
         }
+    }
+
+    /**
+     * 从远程 URL 导入完整配置备份（JSON）。
+     * 不含 PIN；超级代理本机路径换机后需重新选择文件。
+     */
+    fun importRemoteConfig(url: String) {
+        val u = url.trim()
+        if (u.isEmpty()) {
+            _status.value = "请填写远程配置 URL"
+            return
+        }
+        viewModelScope.launch {
+            try {
+                _status.value = "正在拉取远程配置…"
+                val json = withContext(Dispatchers.IO) {
+                    ConfigBackup.fetchRemoteJson(u)
+                }
+                applyRestored(ConfigBackup.fromJson(json, settings.value), "远程配置")
+            } catch (e: Exception) {
+                _status.value = "远程配置导入失败：${e.message}"
+            }
+        }
+    }
+
+    private suspend fun applyRestored(restored: AppSettings, source: String) {
+        // 关闭超级代理开关时若内核在跑，先停（路径可能已变）
+        if (!restored.superProxyEnabled || !restored.proxyEnabled) {
+            withContext(Dispatchers.IO) {
+                SuperProxyController.stop(getApplication())
+            }
+            ProxyHttp.setSuperRunning(false)
+        }
+        settingsRepo.save(restored)
+        applySchedule(restored)
+        ProxyHttp.applySettings(getApplication(), restored)
+        _status.value = "已从${source}恢复（不含 PIN；本机 PIN 未改动）"
     }
 
     fun setEnabled(enabled: Boolean) {
