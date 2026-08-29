@@ -426,6 +426,20 @@ fun HomeScreen(vm: MainViewModel, onOpenHelp: (() -> Unit)? = null) {
                     com.kers.killove.jhsy.util.AccessMode.line(context, settings),
                     color = textColor
                 )
+                run {
+                    val mode = com.kers.killove.jhsy.util.ProcessBridgePrefs.purityMode(context)
+                    val modeLabel = when (mode) {
+                        com.kers.killove.jhsy.util.ProcessBridgePrefs.MODE_HEALTH -> "健康模式"
+                        com.kers.killove.jhsy.util.ProcessBridgePrefs.MODE_HEARTBEAT -> "心跳模式"
+                        else -> "普通模式"
+                    }
+                    val green = settings.locationInAvoidZone && settings.locationFallbackEnabled
+                    Text(
+                        "运行模式：" + modeLabel + if (green) " · 绿色模式（定位避让）" else "",
+                        color = textColor
+                    )
+                }
+
                 if (settings.jumpModeEnabled && settings.annihilationModeEnabled) {
                     Text(
                         "正在湮灭 · 第 ${settings.annihilationEpoch} 纪元",

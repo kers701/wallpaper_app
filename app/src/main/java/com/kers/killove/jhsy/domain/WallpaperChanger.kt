@@ -215,14 +215,23 @@ class WallpaperChanger(
         if (!skipPrefetchUse) {
             val ready = nextStore.takeReady(target)
             if (ready != null) {
-                onProgress(0.2f, "使用预下载壁纸…")
-                when (val r = applyReadySlot(ready, settings, target, advanceKeyword, countChange, touchScheduleClock)) {
-                    is ChangeResult.Success -> {
-                        onProgress(1f, "预下载已应用")
-                        return r
-                    }
-                    is ChangeResult.Failure -> {
-                        nextStore.clear(target)
+                // 健康/绿色运行时不允许消费 NSFW 预下载（旧槽可能在普通纯度下缓存）
+                val mode = ProcessBridgePrefs.purityMode(context)
+                val rejectNsfw = mode == ProcessBridgePrefs.MODE_HEALTH ||
+                    (settings.locationInAvoidZone && settings.locationFallbackEnabled)
+                if (rejectNsfw && ready.purity.equals("nsfw", ignoreCase = true)) {
+                    RunLog.i(context, "discard prefetched nsfw under health/green id=${ready.id}")
+                    nextStore.clear(target)
+                } else {
+                    onProgress(0.2f, "使用预下载壁纸…")
+                    when (val r = applyReadySlot(ready, settings, target, advanceKeyword, countChange, touchScheduleClock)) {
+                        is ChangeResult.Success -> {
+                            onProgress(1f, "预下载已应用")
+                            return r
+                        }
+                        is ChangeResult.Failure -> {
+                            nextStore.clear(target)
+                        }
                     }
                 }
             }
@@ -570,8 +579,9 @@ class WallpaperChanger(
     private fun schedulePrefetch(targets: List<WallpaperTarget>, excludeIds: Set<String>) {
         prefetchScope.launch {
             runCatching {
-                val settings = settingsRepo.settingsFlow.first()
-                if (settings.forceLocalMode) return@launch
+                val base = settingsRepo.settingsFlow.first()
+                if (base.forceLocalMode) return@launch
+                val settings = settingsForPrefetch(base)
                 for ((i, target) in targets.withIndex()) {
                     if (nextStore.hasReady(target)) continue
                     if (nextStore.retriesExhausted(target) && nextStore.failCount(target) >= 2) {
@@ -585,8 +595,9 @@ class WallpaperChanger(
         }
     }
 
-    private suspend fun processPrefetchRetries(settings: AppSettings) {
-        if (settings.forceLocalMode) return
+    private suspend fun processPrefetchRetries(settingsIn: AppSettings) {
+        if (settingsIn.forceLocalMode) return
+        val settings = settingsForPrefetch(settingsIn)
         val targets = if (settings.isolateHomeLock && settings.target == WallpaperTarget.Both) {
             listOf(WallpaperTarget.Home, WallpaperTarget.Lock)
         } else {
@@ -835,6 +846,31 @@ class WallpaperChanger(
             }
             else -> settings
         }
+    }
+
+    /**
+     * 预下载用：与 changeOnce 一致的运行时纯度，但不写回 DataStore。
+     * 若在避让区且开启绿色模式，纯度限制为 R13 / 仅 Sketchy。
+     * （原先预取直接读用户设置，健康模式下仍可能预下 nsfw，历史里就会出现 NSFW。）
+     */
+    private suspend fun settingsForPrefetch(base: AppSettings): AppSettings {
+        var s = base.copy(
+            avoidanceLocationsJson = ProcessBridgePrefs.effectiveAvoidLocationsJson(
+                context, base.avoidanceLocationsJson
+            ),
+            blacklistPackages = ProcessBridgePrefs.effectiveBlacklist(context)
+        )
+        if (s.locationAvoidEnabled && s.avoidanceLocations().isNotEmpty()) {
+            val locs = s.avoidanceLocations()
+            val (inZone, _) = LocationHelper.isInAvoidZone(
+                context, locs, s.locationAvoidRadiusMeters.toDouble()
+            )
+            if (inZone && s.locationFallbackEnabled) {
+                val green = listOf(Purity.R13, Purity.Only13).random()
+                s = s.copy(purity = green, locationInAvoidZone = true)
+            }
+        }
+        return applyPurityRuntimeMode(s)
     }
 
     /** 定位避让：进入避让区启用绿色模式（R13/仅Sketchy随机）与极限本地；离开后恢复 */
