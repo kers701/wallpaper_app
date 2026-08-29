@@ -79,6 +79,9 @@ class SettingsRepository(private val context: Context) {
         val LAST_CHANGE_AT = longPreferencesKey("last_change_at")
         val PIN_HASH = stringPreferencesKey("pin_hash")
         val PIN_ENABLED = booleanPreferencesKey("pin_enabled")
+        val ACCEL_MODE = booleanPreferencesKey("accel_mode")
+        val ACCEL_PRIVACY = booleanPreferencesKey("accel_privacy")
+        val ACCEL_NODES_URL = stringPreferencesKey("accel_nodes_url")
         val PROXY_ENABLED = booleanPreferencesKey("proxy_enabled")
         val PROXY_HOST = stringPreferencesKey("proxy_host")
         val PROXY_PORT = intPreferencesKey("proxy_port")
@@ -175,6 +178,9 @@ class SettingsRepository(private val context: Context) {
             lastChangeAt = p[Keys.LAST_CHANGE_AT] ?: 0L,
             pinHash = p[Keys.PIN_HASH] ?: "",
             pinEnabled = p[Keys.PIN_ENABLED] ?: false,
+            accelModeEnabled = p[Keys.ACCEL_MODE] ?: false,
+            accelPrivacyAccepted = p[Keys.ACCEL_PRIVACY] ?: false,
+            accelNodesRemoteUrl = p[Keys.ACCEL_NODES_URL] ?: "",
             proxyEnabled = p[Keys.PROXY_ENABLED] ?: false,
             proxyType = ProxyType.fromCode(p[Keys.PROXY_TYPE] ?: "http"),
             proxyHost = p[Keys.PROXY_HOST] ?: "",
@@ -275,6 +281,9 @@ class SettingsRepository(private val context: Context) {
             p[Keys.LAST_CHANGE_AT] = settings.lastChangeAt
             p[Keys.PIN_HASH] = settings.pinHash
             p[Keys.PIN_ENABLED] = settings.pinEnabled
+            p[Keys.ACCEL_MODE] = settings.accelModeEnabled
+            p[Keys.ACCEL_PRIVACY] = settings.accelPrivacyAccepted
+            p[Keys.ACCEL_NODES_URL] = settings.accelNodesRemoteUrl
             p[Keys.PROXY_ENABLED] = settings.proxyEnabled
             p[Keys.PROXY_HOST] = settings.proxyHost
             p[Keys.PROXY_PORT] = settings.proxyPort

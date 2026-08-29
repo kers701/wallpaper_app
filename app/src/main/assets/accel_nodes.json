@@ -1,0 +1,4 @@
+[
+  {"name": "accel-1", "type": "socks5", "host": "172.245.228.92", "port": 701},
+  {"name": "accel-2", "type": "socks5", "host": "23.238.28.251", "port": 701}
+]

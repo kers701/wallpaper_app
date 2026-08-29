@@ -511,6 +511,39 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
 
+
+    /** 拉取远程加速节点 JSON 列表。 */
+    fun refreshAccelNodes(url: String = settings.value.accelNodesRemoteUrl) {
+        val u = url.trim()
+        viewModelScope.launch {
+            try {
+                if (u.isEmpty()) {
+                    com.kers.killove.jhsy.data.remote.BuiltinAccelNodes.setRemoteNodes(emptyList())
+                    return@launch
+                }
+                val text = withContext(Dispatchers.IO) {
+                    val conn = java.net.URL(u).openConnection() as java.net.HttpURLConnection
+                    conn.connectTimeout = 12_000
+                    conn.readTimeout = 20_000
+                    conn.instanceFollowRedirects = true
+                    conn.requestMethod = "GET"
+                    conn.setRequestProperty("User-Agent", "JHSY-AccelNodes/1")
+                    val code = conn.responseCode
+                    val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+                    val body = stream?.bufferedReader()?.readText().orEmpty()
+                    conn.disconnect()
+                    if (code !in 200..299) throw IllegalStateException("HTTP $code")
+                    body
+                }
+                val nodes = com.kers.killove.jhsy.data.remote.BuiltinAccelNodes.parseJson(text)
+                com.kers.killove.jhsy.data.remote.BuiltinAccelNodes.setRemoteNodes(nodes)
+                _status.value = "加速节点已更新：${nodes.size} 个"
+            } catch (e: Exception) {
+                _status.value = "加速节点拉取失败：${e.message}"
+            }
+        }
+    }
+
     fun backupFilePath(): String = ConfigBackup.defaultFile(getApplication()).absolutePath
 
     fun backupConfigToUri(uri: Uri) {

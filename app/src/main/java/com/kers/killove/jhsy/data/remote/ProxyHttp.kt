@@ -18,11 +18,12 @@ import java.util.concurrent.atomic.AtomicReference
 
 /**
  * 全局 HTTP 代理链路（仅本应用）：
+ * 0. 加速模式（已同意声明）→ 每次请求随机选用内置/配置中转节点
  * 1. 超级代理可用（已启用 + 普通代理已开 + 内核在跑）→ 127.0.0.1 SOCKS5
  * 2. 否则普通代理可用 → HTTP/SOCKS5 节点
  * 3. 否则系统直连
  *
- * 请求失败时按上述顺序自动降级，不抛出「代理挂了整条链路死」的单点故障。
+ * 加速模式与用户代理/超级代理互斥（由设置层保证）；失败时回退直连。
  */
 object ProxyHttp {
 
@@ -75,13 +76,28 @@ object ProxyHttp {
     private val superClientRef = AtomicReference<OkHttpClient?>(null)
     private val proxyClientRef = AtomicReference<OkHttpClient?>(null)
     private val directRef = AtomicReference(buildDirect())
+    private val accelEnabledRef = AtomicReference(false)
+    private val appContextRef = AtomicReference<Context?>(null)
 
     fun applySettings(settings: AppSettings) {
         applySettings(null, settings)
     }
 
     fun applySettings(context: Context?, settings: AppSettings) {
+        if (context != null) appContextRef.set(context.applicationContext)
         settingsRef.set(settings)
+
+        // 加速模式与用户代理互斥：加速开启时不走超级/普通代理
+        val useAccel = settings.accelModeEnabled && settings.accelPrivacyAccepted
+        accelEnabledRef.set(useAccel)
+
+        if (useAccel) {
+            superRunningRef.set(false)
+            superClientRef.set(null)
+            proxyClientRef.set(null)
+            return
+        }
+
         val superRunning = if (context != null && settings.proxyEnabled && settings.superProxyEnabled) {
             SuperProxyController.status(context, settings).running
         } else {
@@ -173,9 +189,30 @@ object ProxyHttp {
     }
 
     /**
-     * 请求执行：超级代理 → 普通代理 → 系统网络。
+     * 请求执行：加速节点(随机) → 超级代理 → 普通代理 → 系统网络。
      */
     fun execute(request: Request): Response {
+        if (accelEnabledRef.get()) {
+            val node = BuiltinAccelNodes.randomOrNull(appContextRef.get())
+            if (node != null) {
+                try {
+                    return buildProxy(node.toProxyConfig()).newCall(request).execute()
+                } catch (_: IOException) {
+                } catch (_: Exception) {
+                }
+                // 再试一次其它节点
+                val again = BuiltinAccelNodes.randomOrNull(appContextRef.get())
+                if (again != null && again != node) {
+                    try {
+                        return buildProxy(again.toProxyConfig()).newCall(request).execute()
+                    } catch (_: IOException) {
+                    } catch (_: Exception) {
+                    }
+                }
+            }
+            // 无可用节点或均失败 → 直连
+            return directRef.get().newCall(request).execute()
+        }
         val superClient = superClientRef.get()
         if (superClient != null) {
             try {

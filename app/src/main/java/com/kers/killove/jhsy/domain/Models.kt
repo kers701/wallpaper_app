@@ -267,6 +267,16 @@ data class AppSettings(
     val pinHash: String = "",
     val pinEnabled: Boolean = false,
 
+    /**
+     * 加速模式：从内置/配置的中转节点随机选用，仅本应用网络。
+     * 与 [proxyEnabled] 互斥；开启前须同意隐私与安全声明。
+     */
+    val accelModeEnabled: Boolean = false,
+    /** 用户已阅读并同意加速模式安全/隐私声明 */
+    val accelPrivacyAccepted: Boolean = false,
+    /** 可选：远程加速节点 JSON 地址（http/https），启动或开启时拉取 */
+    val accelNodesRemoteUrl: String = "",
+
     /** 代理：HTTP/SOCKS5；开启且填了地址后走代理；失败或未开则系统直连 */
     val proxyEnabled: Boolean = false,
     val proxyType: ProxyType = ProxyType.Http,

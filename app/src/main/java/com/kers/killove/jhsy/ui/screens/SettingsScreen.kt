@@ -154,6 +154,11 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
         mutableStateOf(if (keysVisible) settings.fallbackApiUrl else "")
     }
     var proxyOn by remember(settings.proxyEnabled) { mutableStateOf(settings.proxyEnabled) }
+    var accelOn by remember(settings.accelModeEnabled) { mutableStateOf(settings.accelModeEnabled) }
+    var accelPrivacy by remember(settings.accelPrivacyAccepted) { mutableStateOf(settings.accelPrivacyAccepted) }
+    var accelNodesUrl by remember(settings.accelNodesRemoteUrl) { mutableStateOf(settings.accelNodesRemoteUrl) }
+    var showAccelDialog by remember { mutableStateOf(false) }
+    var accelCountdown by remember { mutableStateOf(10) }
     var proxyHost by remember(settings.proxyHost, keysVisible) {
         mutableStateOf(if (keysVisible) settings.proxyHost else "")
     }
@@ -272,6 +277,33 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             "三星建议：设置 → 电池 → 本应用 → 不受限制；允许自启动",
             style = MaterialTheme.typography.bodySmall
         )
+
+        Text("加速模式（与「网络代理」互斥）", style = MaterialTheme.typography.titleSmall)
+        Text(
+            "从内置/配置的中转节点随机下载。开启前须阅读安全与隐私声明。",
+            style = MaterialTheme.typography.bodySmall
+        )
+        RowSwitch("启用加速模式", accelOn) { want ->
+            if (want) {
+                showAccelDialog = true
+                accelCountdown = 10
+            } else {
+                accelOn = false
+            }
+        }
+        if (accelOn) {
+            Text(
+                "已启用 · 可用节点约 ${com.kers.killove.jhsy.data.remote.BuiltinAccelNodes.all(context).size} 个",
+                style = MaterialTheme.typography.bodySmall
+            )
+            OutlinedTextField(
+                value = accelNodesUrl,
+                onValueChange = { accelNodesUrl = it },
+                label = { Text("远程节点列表 URL（可选）") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+        }
 
         }
 
@@ -422,6 +454,10 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
         ) {
         if (keysVisible) {
             RowSwitch("启用代理（不可用自动回退系统网络）", proxyOn) {
+                if (it && accelOn) {
+                    // 与加速模式互斥
+                    accelOn = false
+                }
                 proxyOn = it
                 if (!it) {
                     superProxyOn = false
@@ -1060,6 +1096,9 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                         bgApiUrl = bgApi.trim(),
                         bgLocalPath = bgLocal.trim(),
                         bgMode = bgMode,
+                        accelModeEnabled = accelOn,
+                        accelPrivacyAccepted = accelPrivacy,
+                        accelNodesRemoteUrl = accelNodesUrl.trim(),
                         proxyEnabled = proxyOn,
                         proxyType = if (keysVisible) proxyType else settings.proxyType,
                         proxyHost = if (keysVisible) proxyHost.trim() else settings.proxyHost,
@@ -1081,6 +1120,26 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
         ) {
             Text("保存设置")
         }
+    }
+
+    if (showAccelDialog) {
+        AccelPrivacyDialog(
+            countdown = accelCountdown,
+            onCountdown = { accelCountdown = it },
+            onAgree = {
+                accelPrivacy = true
+                accelOn = true
+                proxyOn = false
+                superProxyOn = false
+                vm.stopSuperProxy()
+                showAccelDialog = false
+                vm.refreshAccelNodes(accelNodesUrl)
+            },
+            onDismiss = {
+                showAccelDialog = false
+                accelOn = false
+            }
+        )
     }
 }
 
@@ -1152,3 +1211,53 @@ private fun <T> EnumDropdown(
         }
     }
 }
+
+
+@Composable
+private fun AccelPrivacyDialog(
+    countdown: Int,
+    onCountdown: (Int) -> Unit,
+    onAgree: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        var left = 10
+        onCountdown(left)
+        while (left > 0) {
+            kotlinx.coroutines.delay(1000)
+            left--
+            onCountdown(left)
+        }
+    }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("加速模式 · 安全与隐私声明") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("请仔细阅读后再决定是否启用：", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    "1. 加速模式会将本应用网络请求（含 Wallhaven 搜索与图片下载等）经内置或配置的中转节点转发。\n" +
+                        "2. 中转方可能看到访问目标、时间与部分流量特征；请仅使用你信任或自建的节点。\n" +
+                        "3. API Key 等若出现在请求中，中转方理论上可见，请自行评估风险。\n" +
+                        "4. 与「网络代理 / 超级代理」互斥，启用后将关闭用户代理。\n" +
+                        "5. 不保证可用性与速度；节点失效时回退系统直连。\n" +
+                        "6. 请遵守当地法律法规与 Wallhaven 服务条款。"
+                )
+                Text(
+                    if (countdown > 0) "请阅读满 10 秒后再同意（还剩 ${countdown} 秒）"
+                    else "若你已理解风险，可点击同意启用。",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = onAgree, enabled = countdown <= 0) {
+                Text(if (countdown > 0) "请等待 ${countdown}s" else "同意并启用")
+            }
+        },
+        dismissButton = {
+            OutlinedButton(onClick = onDismiss) { Text("不同意") }
+        }
+    )
+}
+

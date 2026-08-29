@@ -114,6 +114,9 @@ object ConfigBackup {
         o.put("locationExtremeFallbackEnabled", settings.locationExtremeFallbackEnabled)
 
         // —— 代理（HTTP/SOCKS5 + 订阅节点） ——
+        o.put("accelModeEnabled", settings.accelModeEnabled)
+        o.put("accelPrivacyAccepted", settings.accelPrivacyAccepted)
+        o.put("accelNodesRemoteUrl", settings.accelNodesRemoteUrl)
         o.put("proxyEnabled", settings.proxyEnabled)
         o.put("proxyType", settings.proxyType.name)
         o.put("proxyHost", settings.proxyHost)
@@ -229,6 +232,9 @@ object ConfigBackup {
             locationFallbackEnabled = o.optBoolean("locationFallbackEnabled", base.locationFallbackEnabled),
             locationExtremeFallbackEnabled = o.optBoolean("locationExtremeFallbackEnabled", base.locationExtremeFallbackEnabled),
 
+            accelModeEnabled = o.optBoolean("accelModeEnabled", base.accelModeEnabled),
+            accelPrivacyAccepted = o.optBoolean("accelPrivacyAccepted", base.accelPrivacyAccepted),
+            accelNodesRemoteUrl = o.optString("accelNodesRemoteUrl", base.accelNodesRemoteUrl),
             proxyEnabled = o.optBoolean("proxyEnabled", base.proxyEnabled),
             proxyType = runCatching { ProxyType.valueOf(o.optString("proxyType", base.proxyType.name)) }.getOrDefault(base.proxyType),
             proxyHost = o.optString("proxyHost", base.proxyHost),
