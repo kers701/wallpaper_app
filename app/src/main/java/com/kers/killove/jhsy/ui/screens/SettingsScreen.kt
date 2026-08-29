@@ -283,20 +283,32 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             "从内置/配置的中转节点随机下载。开启前须阅读安全与隐私声明。",
             style = MaterialTheme.typography.bodySmall
         )
-        RowSwitch(
-            title = "启用加速模式",
-            checked = accelOn,
-            enabled = !proxyOn,
-            onChecked = { want ->
-                if (proxyOn) return@onChecked
-                if (want) {
-                    showAccelDialog = true
-                    accelCountdown = 10
-                } else {
-                    accelOn = false
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "启用加速模式",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.weight(1f),
+                color = LocalUiTextColor.current.copy(alpha = if (!proxyOn) 1f else 0.45f)
+            )
+            Switch(
+                checked = accelOn,
+                enabled = !proxyOn,
+                onCheckedChange = { want ->
+                    if (!proxyOn) {
+                        if (want) {
+                            showAccelDialog = true
+                            accelCountdown = 10
+                        } else {
+                            accelOn = false
+                        }
+                    }
                 }
-            }
-        )
+            )
+        }
         if (proxyOn) {
             Text(
                 "网络代理已启用，加速模式已禁用",
@@ -471,19 +483,31 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                     style = MaterialTheme.typography.bodySmall
                 )
             }
-            RowSwitch(
-                title = "启用代理（不可用自动回退系统网络）",
-                checked = proxyOn && !accelOn,
-                enabled = !accelOn,
-                onChecked = { it ->
-                    if (accelOn) return@onChecked
-                    proxyOn = it
-                    if (!it) {
-                        superProxyOn = false
-                        vm.stopSuperProxy()
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "启用代理（不可用自动回退系统网络）",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f),
+                    color = LocalUiTextColor.current.copy(alpha = if (!accelOn) 1f else 0.45f)
+                )
+                Switch(
+                    checked = proxyOn && !accelOn,
+                    enabled = !accelOn,
+                    onCheckedChange = { on ->
+                        if (!accelOn) {
+                            proxyOn = on
+                            if (!on) {
+                                superProxyOn = false
+                                vm.stopSuperProxy()
+                            }
+                        }
                     }
-                }
-            )
+                )
+            }
             if (proxyOn && !accelOn) {
             Text(
                 "链路：超级代理（可用）→ 普通代理 → 系统网络。须先开代理才能开超级代理。",
