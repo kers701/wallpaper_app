@@ -1,6 +1,7 @@
 package com.kers.killove.jhsy.ui.screens
 
 import android.graphics.BitmapFactory
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -29,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -130,8 +132,8 @@ fun HistoryScreen(vm: MainViewModel) {
         WallpaperPreviewDialog(
             path = path,
             onDismiss = { previewPath = null },
-            onSave = {
-                vm.saveWallpaperToGallery(path)
+            onSave = { done ->
+                vm.saveWallpaperToGallery(path, onDone = done)
             }
         )
     }
@@ -141,9 +143,13 @@ fun HistoryScreen(vm: MainViewModel) {
 private fun WallpaperPreviewDialog(
     path: String,
     onDismiss: () -> Unit,
-    onSave: () -> Unit
+    onSave: (onDone: (Boolean, String) -> Unit) -> Unit
 ) {
-    val textColor = LocalUiTextColor.current
+    val context = LocalContext.current
+    var saving by remember { mutableStateOf(false) }
+    var savedOk by remember { mutableStateOf(false) }
+    var feedback by remember { mutableStateOf<String?>(null) }
+
     val bitmap = remember(path) {
         runCatching {
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -196,10 +202,20 @@ private fun WallpaperPreviewDialog(
                     Text("无法加载图片\n$path", color = Color.White.copy(alpha = 0.8f))
                 }
             }
+            feedback?.let { msg ->
+                Text(
+                    msg,
+                    color = if (savedOk) Color(0xFF81C784) else Color(0xFFE57373),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp, bottom = 4.dp)
+                )
+            }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 12.dp),
+                    .padding(top = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 OutlinedButton(
@@ -207,10 +223,32 @@ private fun WallpaperPreviewDialog(
                     modifier = Modifier.weight(1f)
                 ) { Text("返回") }
                 Button(
-                    onClick = onSave,
+                    onClick = {
+                        if (saving || savedOk) return@Button
+                        saving = true
+                        feedback = "正在保存…"
+                        onSave { ok, msg ->
+                            saving = false
+                            savedOk = ok
+                            feedback = msg
+                            Toast.makeText(
+                                context,
+                                if (ok) "已保存到相册" else msg,
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    },
                     modifier = Modifier.weight(1f),
-                    enabled = bitmap != null
-                ) { Text("保存到相册") }
+                    enabled = bitmap != null && !saving && !savedOk
+                ) {
+                    Text(
+                        when {
+                            saving -> "保存中…"
+                            savedOk -> "已保存"
+                            else -> "保存到相册"
+                        }
+                    )
+                }
             }
             Text(
                 File(path).name,
@@ -238,4 +276,3 @@ private fun rememberDateFormat(): SimpleDateFormat =
     androidx.compose.runtime.remember {
         SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
     }
-

@@ -412,16 +412,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     
-    /** 将缓存壁纸写入系统相册 Pictures/JHSY */
-    fun saveWallpaperToGallery(path: String) {
+    /**
+     * 将缓存壁纸写入系统相册 Pictures/JHSY。
+     * [onDone] 主线程回调 (成功, 提示文案)，预览页即时反馈并防连点。
+     */
+    fun saveWallpaperToGallery(path: String, onDone: ((Boolean, String) -> Unit)? = null) {
         viewModelScope.launch {
             try {
                 val ok = withContext(Dispatchers.IO) {
                     saveFileToGallery(getApplication(), path)
                 }
-                _status.value = if (ok) "已保存到相册 Pictures/JHSY" else "保存失败：文件不存在或无法写入"
+                val msg = if (ok) "已保存到相册 Pictures/JHSY" else "保存失败：文件不存在或无法写入"
+                _status.value = msg
+                onDone?.invoke(ok, msg)
             } catch (e: Exception) {
-                _status.value = "保存到相册失败：${e.message}"
+                val msg = "保存到相册失败：${e.message}"
+                _status.value = msg
+                onDone?.invoke(false, msg)
             }
         }
     }
