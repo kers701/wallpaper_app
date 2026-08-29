@@ -45,11 +45,14 @@ class WallpapercApp : Application(), Configuration.Provider {
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_ON)
             addAction(Intent.ACTION_USER_PRESENT)
+            // 息屏取消亮屏补换防抖闹钟
+            addAction(Intent.ACTION_SCREEN_OFF)
         }
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 registerReceiver(receiver, filter, RECEIVER_NOT_EXPORTED)
             } else {
+                @Suppress("DEPRECATION")
                 registerReceiver(receiver, filter)
             }
             screenReceiver = receiver

@@ -1,0 +1,3 @@
+若完整工程 AndroidManifest 尚无精确闹钟权限，建议在 <manifest> 内增加：
+  <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+无此权限时会自动退化为非精确闹钟，防抖仍可用。
