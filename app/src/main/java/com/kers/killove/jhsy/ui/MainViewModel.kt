@@ -29,6 +29,7 @@ import com.kers.killove.jhsy.util.ConfigBackup
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import com.kers.killove.jhsy.util.AnnihilationStore
 import com.kers.killove.jhsy.util.ProcessBridgePrefs
 import com.kers.killove.jhsy.util.SuperProxyController
 import com.kers.killove.jhsy.util.RunLog
@@ -177,11 +178,25 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun refreshJumpTranslation(s: AppSettings) {
-        if (s.jumpKeywords.isEmpty() || s.translateProvider.name == "Off") {
+        val ctx = getApplication<Application>()
+        val anniWords = withContext(Dispatchers.IO) {
+            AnnihilationStore.lastRoundBlocked(ctx)
+        }
+        if (s.translateProvider.name == "Off") {
             _jumpKeywordsZh.value = emptyMap()
+            _annihilationZh.value = emptyMap()
             return
         }
-        _jumpKeywordsZh.value = translator.translateList(s.jumpKeywords, s)
+        if (s.jumpKeywords.isEmpty()) {
+            _jumpKeywordsZh.value = emptyMap()
+        } else {
+            _jumpKeywordsZh.value = translator.translateList(s.jumpKeywords, s)
+        }
+        if (anniWords.isEmpty()) {
+            _annihilationZh.value = emptyMap()
+        } else {
+            _annihilationZh.value = translator.translateList(anniWords, s)
+        }
     }
 
     val recent = dao.recent(30)
@@ -210,6 +225,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _jumpKeywordsZh = MutableStateFlow<Map<String, String>>(emptyMap())
     val jumpKeywordsZh: StateFlow<Map<String, String>> = _jumpKeywordsZh.asStateFlow()
+
+    /** 上一轮被湮灭关键词的中文（展示用） */
+    private val _annihilationZh = MutableStateFlow<Map<String, String>>(emptyMap())
+    val annihilationZh: StateFlow<Map<String, String>> = _annihilationZh.asStateFlow()
 
     /** 会话内是否已解锁（进程重启后需重新输入 PIN） */
     private val _unlocked = MutableStateFlow(false)

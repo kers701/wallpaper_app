@@ -81,6 +81,7 @@ fun OverviewScreen(vm: MainViewModel) {
     var lockBmp by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
     var jumpExpanded by remember { mutableStateOf(false) }
     val jumpZh by vm.jumpKeywordsZh.collectAsState()
+    val anniZh by vm.annihilationZh.collectAsState()
 
     fun reloadMeta() {
         vm.refreshOverview()
@@ -268,19 +269,27 @@ fun OverviewScreen(vm: MainViewModel) {
         if (settings.jumpModeEnabled && settings.annihilationModeEnabled) {
             var anniExpanded by remember { mutableStateOf(false) }
             val anniList = remember(settings.annihilationEpoch, settings.lastChangeAt) {
-                com.kers.killove.jhsy.util.AnnihilationStore.list(context)
+                com.kers.killove.jhsy.util.AnnihilationStore.lastRoundBlocked(context)
+            }
+            val anniAscended = remember(settings.annihilationEpoch, settings.lastChangeAt) {
+                com.kers.killove.jhsy.util.AnnihilationStore.lastRoundAllAscended(context)
+            }
+            val anniHasRound = remember(settings.annihilationEpoch, settings.lastChangeAt) {
+                com.kers.killove.jhsy.util.AnnihilationStore.hasLastRound(context)
             }
             OverviewCard(cardAlpha) {
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .clickable { anniExpanded = !anniExpanded }
+                        .clickable(enabled = anniList.isNotEmpty()) { anniExpanded = !anniExpanded }
                 ) {
                     Text("湮灭关键词", style = MaterialTheme.typography.titleMedium, color = textColor)
                     Text(
                         when {
-                            anniList.isEmpty() -> "正在湮灭 · 第 ${settings.annihilationEpoch} 纪元 · 缓存为空"
-                            else -> "正在湮灭 · 第 ${settings.annihilationEpoch} 纪元 · 共 ${anniList.size} 个" +
+                            !anniHasRound -> "正在湮灭 · 第 ${settings.annihilationEpoch} 纪元 · 尚无本轮记录"
+                            anniAscended || anniList.isEmpty() ->
+                                "正在湮灭 · 第 ${settings.annihilationEpoch} 纪元 · 本次湮灭全员飞升"
+                            else -> "正在湮灭 · 第 ${settings.annihilationEpoch} 纪元 · 本轮湮灭 ${anniList.size} 个" +
                                 if (anniExpanded) " · 点击收起" else " · 点击展开"
                         },
                         style = MaterialTheme.typography.bodySmall,
@@ -289,7 +298,7 @@ fun OverviewScreen(vm: MainViewModel) {
                     if (anniList.isNotEmpty() && anniExpanded) {
                         Spacer(Modifier.height(6.dp))
                         val shown = anniList.joinToString("、") { w ->
-                            val zh = jumpZh[w]
+                            val zh = anniZh[w] ?: jumpZh[w]
                             if (zh.isNullOrBlank()) w else "$w($zh)"
                         }
                         Text(shown, color = textColor, style = MaterialTheme.typography.bodySmall)
