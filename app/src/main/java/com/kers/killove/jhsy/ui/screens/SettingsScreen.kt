@@ -115,21 +115,11 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
     var showRemoteConfig by remember { mutableStateOf(false) }
     var showRestoreField by remember { mutableStateOf(false) }
     // 配置页各板块折叠：默认只显示标题
-    var expandBasic by remember { mutableStateOf(false) }
-    var expandSuper by remember { mutableStateOf(false) }
-    var expandUi by remember { mutableStateOf(false) }
-    var expandTrans by remember { mutableStateOf(false) }
-    var expandBg by remember { mutableStateOf(false) }
-    var expandPin by remember { mutableStateOf(false) }
-    var expandBackup by remember { mutableStateOf(false) }
-    var expandProxy by remember { mutableStateOf(false) }
-    var expandKeys by remember { mutableStateOf(false) }
-    var expandKw by remember { mutableStateOf(false) }
-    var expandFb by remember { mutableStateOf(false) }
-    var expandLoc by remember { mutableStateOf(false) }
-    var expandCache by remember { mutableStateOf(false) }
-    var expandBl by remember { mutableStateOf(false) }
-    var expandSave by remember { mutableStateOf(true) }
+    // 手风琴：同时只展开一个区块
+    var openSection by remember { mutableStateOf("") }
+    fun toggleSection(id: String) {
+        openSection = if (openSection == id) "" else id
+    }
     var powerTh by remember(settings.powerSaveBatteryThreshold) { mutableIntStateOf(settings.powerSaveBatteryThreshold) }
     var transProv by remember(settings.translateProvider) { mutableStateOf(settings.translateProvider) }
     var transKey by remember(settings.translateApiKey, keysVisible) {
@@ -230,8 +220,8 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
     ) {
         CollapsibleSection(
             title = "基础",
-            expanded = expandBasic,
-            onToggle = { expandBasic = !expandBasic }
+            expanded = openSection == "basic",
+            onToggle = { toggleSection("basic") }
         ) {
         Text("更换间隔：${interval.toInt()} 分钟")
         Slider(
@@ -285,8 +275,8 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
 
         CollapsibleSection(
             title = "超级服务（独立进程保活）",
-            expanded = expandSuper,
-            onToggle = { expandSuper = !expandSuper }
+            expanded = openSection == "super",
+            onToggle = { toggleSection("super") }
         ) {
         val superSt = SuperServiceController.status(context)
         Text(superSt.message, style = MaterialTheme.typography.bodySmall)
@@ -357,8 +347,8 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
 
         CollapsibleSection(
             title = "界面外观",
-            expanded = expandUi,
-            onToggle = { expandUi = !expandUi }
+            expanded = openSection == "ui",
+            onToggle = { toggleSection("ui") }
         ) {
         Text("主题遮罩透明度：${"%.0f".format(scrim * 100)}%", style = MaterialTheme.typography.bodySmall)
         Slider(value = scrim, onValueChange = { scrim = it }, valueRange = 0.15f..0.85f)
@@ -372,8 +362,8 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
 
         CollapsibleSection(
             title = "关键词翻译（仅展示/日志）",
-            expanded = expandTrans,
-            onToggle = { expandTrans = !expandTrans }
+            expanded = openSection == "trans",
+            onToggle = { toggleSection("trans") }
         ) {
         EnumDropdown("翻译引擎", TranslateProvider.entries, transProv) { transProv = it }
         if (keysVisible) {
@@ -411,8 +401,8 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
 
         CollapsibleSection(
             title = "软件背景",
-            expanded = expandBg,
-            onToggle = { expandBg = !expandBg }
+            expanded = openSection == "bg",
+            onToggle = { toggleSection("bg") }
         ) {
         Text(
             "优先本地路径 → API 链接 → 系统壁纸；都为空则使用莫奈取色",
@@ -440,8 +430,8 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
 
         CollapsibleSection(
             title = "PIN 锁定",
-            expanded = expandPin,
-            onToggle = { expandPin = !expandPin }
+            expanded = openSection == "pin",
+            onToggle = { toggleSection("pin") }
         ) {
         Text(
             if (settings.pinEnabled) {
@@ -522,8 +512,8 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
 
         CollapsibleSection(
             title = "配置备份 / 恢复",
-            expanded = expandBackup,
-            onToggle = { expandBackup = !expandBackup }
+            expanded = openSection == "backup",
+            onToggle = { toggleSection("backup") }
         ) {
         if (keysVisible) {
             Text(
@@ -606,8 +596,8 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
 
         CollapsibleSection(
             title = "网络代理",
-            expanded = expandProxy,
-            onToggle = { expandProxy = !expandProxy }
+            expanded = openSection == "proxy",
+            onToggle = { toggleSection("proxy") }
         ) {
         if (keysVisible) {
             RowSwitch("启用代理（不可用自动回退系统网络）", proxyOn) {
@@ -819,8 +809,8 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
 
         CollapsibleSection(
             title = "API 密钥（可多个，每行一个）",
-            expanded = expandKeys,
-            onToggle = { expandKeys = !expandKeys }
+            expanded = openSection == "keys",
+            onToggle = { toggleSection("keys") }
         ) {
         if (keysVisible) {
             OutlinedTextField(
@@ -839,8 +829,8 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
 
         CollapsibleSection(
             title = "关键词",
-            expanded = expandKw,
-            onToggle = { expandKw = !expandKw }
+            expanded = openSection == "kw",
+            onToggle = { toggleSection("kw") }
         ) {
         RowSwitch("启用关键词搜索", useKeywords) { useKeywords = it }
         if (useKeywords) {
@@ -906,8 +896,8 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
 
         CollapsibleSection(
             title = "兜底策略",
-            expanded = expandFb,
-            onToggle = { expandFb = !expandFb }
+            expanded = openSection == "fb",
+            onToggle = { toggleSection("fb") }
         ) {
         RowSwitch("网络兜底（Wallhaven 失败 → 备用 API）", netFb) { netFb = it }
         if (netFb) {
@@ -957,8 +947,8 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
 
         CollapsibleSection(
             title = "定位避让",
-            expanded = expandLoc,
-            onToggle = { expandLoc = !expandLoc }
+            expanded = openSection == "loc",
+            onToggle = { toggleSection("loc") }
         ) {
         RowSwitch("启用定位避让", locAvoid) { locAvoid = it }
         if (locAvoid) {
@@ -982,8 +972,8 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
 
         CollapsibleSection(
             title = "缓存与日志",
-            expanded = expandCache,
-            onToggle = { expandCache = !expandCache }
+            expanded = openSection == "cache",
+            onToggle = { toggleSection("cache") }
         ) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = { vm.clearWallpaperCache() }, modifier = Modifier.weight(1f)) { Text("清空缓存文件") }
@@ -994,8 +984,8 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
 
         CollapsibleSection(
             title = "应用黑名单",
-            expanded = expandBl,
-            onToggle = { expandBl = !expandBl }
+            expanded = openSection == "bl",
+            onToggle = { toggleSection("bl") }
         ) {
         Text(
             "已选 ${settings.blacklistPackages.size} 个 · 前台休眠不换壁纸",

@@ -412,6 +412,54 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     
+    /** 将缓存壁纸写入系统相册 Pictures/JHSY */
+    fun saveWallpaperToGallery(path: String) {
+        viewModelScope.launch {
+            try {
+                val ok = withContext(Dispatchers.IO) {
+                    saveFileToGallery(getApplication(), path)
+                }
+                _status.value = if (ok) "已保存到相册 Pictures/JHSY" else "保存失败：文件不存在或无法写入"
+            } catch (e: Exception) {
+                _status.value = "保存到相册失败：${e.message}"
+            }
+        }
+    }
+
+    private fun saveFileToGallery(context: android.content.Context, path: String): Boolean {
+        val file = java.io.File(path)
+        if (!file.isFile) return false
+        val resolver = context.contentResolver
+        val name = file.name.ifBlank { "jhsy_${System.currentTimeMillis()}.jpg" }
+        val mime = when {
+            name.endsWith(".png", true) -> "image/png"
+            name.endsWith(".webp", true) -> "image/webp"
+            else -> "image/jpeg"
+        }
+        val values = android.content.ContentValues().apply {
+            put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, name)
+            put(android.provider.MediaStore.Images.Media.MIME_TYPE, mime)
+            if (android.os.Build.VERSION.SDK_INT >= 29) {
+                put(
+                    android.provider.MediaStore.Images.Media.RELATIVE_PATH,
+                    android.os.Environment.DIRECTORY_PICTURES + "/JHSY"
+                )
+                put(android.provider.MediaStore.Images.Media.IS_PENDING, 1)
+            }
+        }
+        val uri = resolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+            ?: return false
+        resolver.openOutputStream(uri)?.use { out ->
+            file.inputStream().use { ins -> ins.copyTo(out) }
+        } ?: return false
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
+            values.clear()
+            values.put(android.provider.MediaStore.Images.Media.IS_PENDING, 0)
+            resolver.update(uri, values, null, null)
+        }
+        return true
+    }
+
     fun exportHistoryToUri(uri: Uri) {
         viewModelScope.launch {
             try {

@@ -1,25 +1,40 @@
 package com.kers.killove.jhsy.ui.screens
 
+import android.graphics.BitmapFactory
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.kers.killove.jhsy.ui.LocalUiTextColor
 import com.kers.killove.jhsy.ui.MainViewModel
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -29,6 +44,7 @@ fun HistoryScreen(vm: MainViewModel) {
     val recent by vm.recent.collectAsState()
     val fmt = rememberDateFormat()
     val textColor = LocalUiTextColor.current
+    var previewPath by remember { mutableStateOf<String?>(null) }
 
     Column(
         modifier = Modifier
@@ -69,10 +85,16 @@ fun HistoryScreen(vm: MainViewModel) {
                 modifier = Modifier.padding(top = 12.dp)
             ) {
                 items(recent, key = { it.id + it.setAt }) { item ->
+                    val cacheExists = remember(item.path) {
+                        item.path.isNotBlank() && File(item.path).isFile
+                    }
                     GlassCard {
-                        Column(Modifier.padding(12.dp)) {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text("ID: ${item.id}", style = MaterialTheme.typography.titleSmall, color = textColor)
-                            Text("来源: ${item.source.ifBlank { "—" }} · 类别: ${item.category} · 纯度: ${item.purity}", color = textColor)
+                            Text(
+                                "来源: ${item.source.ifBlank { "—" }} · 类别: ${item.category} · 纯度: ${item.purity}",
+                                color = textColor
+                            )
                             if (item.source == "wallhaven" || item.keyword.isNotBlank()) {
                                 Text(
                                     "关键词: ${item.keyword.ifBlank { "（未使用关键词）" }}",
@@ -84,11 +106,118 @@ fun HistoryScreen(vm: MainViewModel) {
                             } else "分辨率未知"
                             Text("分辨率: $res · 大小: ${formatFileSize(item.fileSize)}", color = textColor)
                             val triggerLabel = com.kers.killove.jhsy.domain.TriggerType.fromCode(item.triggerType).label
-                            Text("触发: $triggerLabel · ${fmt.format(Date(item.setAt))}", style = MaterialTheme.typography.bodySmall, color = textColor.copy(alpha = 0.75f))
+                            Text(
+                                "触发: $triggerLabel · ${fmt.format(Date(item.setAt))}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = textColor.copy(alpha = 0.75f)
+                            )
+                            if (cacheExists) {
+                                OutlinedButton(
+                                    onClick = { previewPath = item.path },
+                                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                                ) {
+                                    Text("查看壁纸")
+                                }
+                            }
                         }
                     }
                 }
             }
+        }
+    }
+
+    previewPath?.let { path ->
+        WallpaperPreviewDialog(
+            path = path,
+            onDismiss = { previewPath = null },
+            onSave = {
+                vm.saveWallpaperToGallery(path)
+            }
+        )
+    }
+}
+
+@Composable
+private fun WallpaperPreviewDialog(
+    path: String,
+    onDismiss: () -> Unit,
+    onSave: () -> Unit
+) {
+    val textColor = LocalUiTextColor.current
+    val bitmap = remember(path) {
+        runCatching {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(path, bounds)
+            var sample = 1
+            val maxSide = 2048
+            val w = bounds.outWidth.coerceAtLeast(1)
+            val h = bounds.outHeight.coerceAtLeast(1)
+            while (w / sample > maxSide || h / sample > maxSide) sample *= 2
+            val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+            BitmapFactory.decodeFile(path, opts)?.asImageBitmap()
+        }.getOrNull()
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            dismissOnBackPress = true,
+            dismissOnClickOutside = true
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.92f))
+                .padding(16.dp)
+        ) {
+            Text(
+                "壁纸预览",
+                style = MaterialTheme.typography.titleLarge,
+                color = Color.White,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .background(Color.Black),
+                contentAlignment = Alignment.Center
+            ) {
+                if (bitmap != null) {
+                    Image(
+                        bitmap = bitmap,
+                        contentDescription = "壁纸预览",
+                        modifier = Modifier.fillMaxSize().padding(4.dp),
+                        contentScale = ContentScale.Fit
+                    )
+                } else {
+                    Text("无法加载图片\n$path", color = Color.White.copy(alpha = 0.8f))
+                }
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f)
+                ) { Text("返回") }
+                Button(
+                    onClick = onSave,
+                    modifier = Modifier.weight(1f),
+                    enabled = bitmap != null
+                ) { Text("保存到相册") }
+            }
+            Text(
+                File(path).name,
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White.copy(alpha = 0.5f),
+                modifier = Modifier.padding(top = 4.dp)
+            )
         }
     }
 }
@@ -109,3 +238,4 @@ private fun rememberDateFormat(): SimpleDateFormat =
     androidx.compose.runtime.remember {
         SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
     }
+
