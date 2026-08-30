@@ -1,21 +1,23 @@
-# App icon — kers
+# App icon — kers（3.2.0）
 
-Redesign based on hand sketch:
+手绘草图风格应用图标。
 
-- **Background**: soft pink → white gradient
-- **Shape**: oval with padding between lettering and border
-- **Lettering**: large cursive **ke** + smaller **rs** (upper right), slightly tilted (not axis-aligned)
-- **Text color**: light blue → light pink gradient
-- **Border**: very pale blue gradient stroke
+## 设计
 
-## Assets on `main`
-
-| Path | Role |
+| 元素 | 说明 |
 |------|------|
-| `app/src/main/res/drawable/ic_launcher_foreground.xml` | Adaptive foreground (oval + ke/rs) |
-| `app/src/main/res/drawable/ic_launcher_background.xml` | Adaptive background gradient |
-| `app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml` | Adaptive icon |
-| `app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml` | Round adaptive |
-| `app/src/main/res/values/colors.xml` | `ic_launcher_background` = `#FFF5F8` |
+| 底色 | 浅粉 ↔ 白线性渐变 |
+| 外形 | 椭圆；字与边框留白 |
+| **ke** | 较大、偏左；连笔草书偏行书；轻微左倾（约 −4°，非印刷体） |
+| **rs** | 较小，位于字母 **e** 的右上角（非整词正上方） |
+| 字色 | 浅蓝 → 浅粉渐变 |
+| 边框 | 极淡浅蓝渐变，细描边 |
 
-API 26+ uses adaptive vector. For density PNG fallbacks, sync from local build artifacts if needed.
+## 资源
+
+- `drawable/ic_launcher_foreground.xml` — 自适应前景
+- `drawable/ic_launcher_background.xml` — 粉白渐变背景
+- `mipmap-anydpi-v26/ic_launcher(.xml|_round.xml)` — Adaptive Icon
+- `values/colors.xml` — `ic_launcher_background` = `#FFF5F8`
+
+版本：**3.2.0**（versionCode 3200）
