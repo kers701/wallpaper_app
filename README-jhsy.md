@@ -1,17 +1,14 @@
-# 镜花水月（JHSY）
+# MiroFlweat
 
 | 项目 | 值 |
 |------|-----|
-| 当前版本 | **v3.2.1**（versionCode `3201`） |
-| 包名 | `com.kers.killove.jhsy` |
-| 仓库 | https://github.com/kers701/wallpaper_app |
+| 显示名 | **MiroFlweat** |
+| 包名 | `com.kers.killove.jhsy`（不变） |
+| 版本 | **v3.2.2**（versionCode `3202`） |
 
-## 3.2.1
+由「镜花水月」英译特别组合拆解得到的显示名；包名保持原样。
 
-- **修复 Release 构建失败**：删除损坏的 `mipmap-mdpi/ic_launcher.png`（AAPT `file failed to compile`）
-- 优化图标：文字整体居中；手写粗细变化；k 第一笔为更长曲线；rs 在 e 右上角
-- 详见 `README_ICON.md`
+## 3.2.2
 
-## 3.2.0
-
-- 应用图标 kers 初版重绘
+- 图标：狂放手写 kers、无边框、ke 一笔、减少留白（`README_ICON.md`）
+- 应用内所有「镜花水月」显示文案改为 MiroFlweat
