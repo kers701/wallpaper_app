@@ -1,11 +1,10 @@
 # App icon — kers（MiroFlweat 3.2.4）
 
-直接提取用户提供的一笔连写蓝色线条图：
+直接采用用户手绘蓝线图形：
 
-- 线条：浅蓝 → 浅粉渐变（保持原笔迹形状）
-- 底色：浅粉 ↔ 白线性渐变
-- 无边框
-
-应用显示名：**MiroFlweat**（包名不变）
+- 线条提取自自定义涂鸦
+- 线条色：浅蓝 → 浅粉线性渐变
+- 底色：浅粉 ↔ 白渐变（无边框描边）
+- 资源：`drawable/ic_launcher_foreground.xml` + Adaptive Icon
 
 版本：**3.2.4**（versionCode 3204）
