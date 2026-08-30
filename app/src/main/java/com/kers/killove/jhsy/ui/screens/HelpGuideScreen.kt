@@ -125,7 +125,7 @@ fun HelpGuideScreen(onBack: () -> Unit) {
             TextButton(onClick = onBack) { Text("返回", color = textColor) }
         }
         Text(
-            "镜花水月：从 Wallhaven 等来源自动更换桌面/锁屏壁纸。下列按模块说明含义与推荐配置。",
+            "MiroFlweat：从 Wallhaven 等来源自动更换桌面/锁屏壁纸。下列按模块说明含义与推荐配置。",
             style = MaterialTheme.typography.bodyMedium,
             color = textColor.copy(alpha = 0.85f)
         )
@@ -255,9 +255,9 @@ fun HelpGuideScreen(onBack: () -> Unit) {
 文案与标题随状态 / 纯度运行模式变化：
 
 【标题】普通 / 健康 / 心跳 三种模式：
-• 镜花水月·普通模式 — 纯度遵循「配置」页用户设置
-• 镜花水月·健康模式 — 每次更换在 R8、R13、仅 Sketchy 中随机（忽略用户纯度）
-• 镜花水月·心跳模式 — 每次更换在除 R8 外的所有纯度中随机（忽略用户纯度）
+• MiroFlweat·普通模式 — 纯度遵循「配置」页用户设置
+• MiroFlweat·健康模式 — 每次更换在 R8、R13、仅 Sketchy 中随机（忽略用户纯度）
+• MiroFlweat·心跳模式 — 每次更换在除 R8 外的所有纯度中随机（忽略用户纯度）
 
 通知第三按钮在三种模式间循环：健康模式 → 心跳模式 → 普通模式 → …
 

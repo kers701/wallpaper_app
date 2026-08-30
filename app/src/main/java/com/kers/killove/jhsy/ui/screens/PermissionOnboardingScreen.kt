@@ -64,50 +64,57 @@ fun PermissionOnboardingScreen(onFinished: () -> Unit) {
     ) { tick++ }
 
     DisposableEffect(lifecycleOwner) {
-        val obs = LifecycleEventObserver { _, e ->
-            if (e == Lifecycle.Event.ON_RESUME) tick++
-        }
+        val obs = LifecycleEventObserver { _, e -> if (e == Lifecycle.Event.ON_RESUME) tick++ }
         lifecycleOwner.lifecycle.addObserver(obs)
         onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
     }
 
-    @Suppress("UNUSED_VARIABLE")
-    val refresh = tick
-
     val items = remember(tick) {
         buildList {
-            if (Build.VERSION.SDK_INT >= 33) {
-                val ok = ContextCompat.checkSelfPermission(
-                    context, Manifest.permission.POST_NOTIFICATIONS
-                ) == PackageManager.PERMISSION_GRANTED
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                val g = ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
+                    PackageManager.PERMISSION_GRANTED
                 add(
                     PermItem(
                         "通知权限",
-                        "用于前台服务通知（可在系统中最小化渠道）",
-                        ok
+                        "前台服务常驻通知、立即更换按钮",
+                        g
                     ) {
                         notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                     }
                 )
+            } else {
+                val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                add(PermItem("通知", "系统通知渠道", nm.areNotificationsEnabled(), {
+                    context.startActivity(
+                        Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                            putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                    )
+                }))
             }
-            if (Build.VERSION.SDK_INT >= 33) {
-                val ok = ContextCompat.checkSelfPermission(
-                    context, Manifest.permission.READ_MEDIA_IMAGES
-                ) == PackageManager.PERMISSION_GRANTED
-                add(
-                    PermItem("读取图片", "本地兜底与背景图需要", ok) {
-                        mediaLauncher.launch(Manifest.permission.READ_MEDIA_IMAGES)
-                    }
-                )
-            }
-            val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-            val ignoring = pm.isIgnoringBatteryOptimizations(context.packageName)
+            val mediaPerm = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_IMAGES
+            else Manifest.permission.READ_EXTERNAL_STORAGE
+            val mediaOk = ContextCompat.checkSelfPermission(context, mediaPerm) == PackageManager.PERMISSION_GRANTED
+            add(
+                PermItem("读取图片", "本地兜底 / 备份选图（可选）", mediaOk) {
+                    mediaLauncher.launch(mediaPerm)
+                }
+            )
             add(
                 PermItem(
-                    "忽略电池优化",
-                    "减少系统杀后台概率",
-                    ignoring
-                ) {
+                    "使用情况访问",
+                    "应用黑名单识别前台（可选）",
+                    ForegroundAppHelper.hasUsageAccess(context)
+                ) { ForegroundAppHelper.openUsageAccessSettings(context) }
+            )
+            val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+            val ignore = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                pm.isIgnoringBatteryOptimizations(context.packageName)
+            } else true
+            add(
+                PermItem("忽略电池优化", "减少后台被杀（推荐）", ignore) {
                     try {
                         context.startActivity(
                             Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {

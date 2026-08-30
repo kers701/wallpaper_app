@@ -206,7 +206,7 @@ fun LocationAvoidScreen(vm: MainViewModel, onBack: () -> Unit, onOpenList: () ->
                             "你的系统弹窗只有「仅运行时允许 / 询问 / 不允许」是正常的，很多机型（含三星）不会在弹窗里给「始终允许」。\n" +
                                 "请先选「仅运行时允许」并打开精确位置。\n" +
                                 "再点下方打开权限页：应用信息 → 权限 → 位置，看是否多出「始终允许」。\n" +
-                                "三星还可试：设置 → 位置 → 应用权限 → 镜花水月。\n" +
+                                "三星还可试：设置 → 位置 → 应用权限 → MiroFlweat。\n" +
                                 "若系统始终没有该选项：保持前台服务运行时，本版会用定位类型前台服务在「仅运行时」下尽量读取位置；仍失败则只能在打开应用时判定。",
                             style = MaterialTheme.typography.bodySmall,
                             color = textColor.copy(alpha = 0.8f)

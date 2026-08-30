@@ -66,6 +66,7 @@ fun OverviewScreen(vm: MainViewModel) {
     val fmt = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()) }
 
     val bridgeLast by vm.bridgeLastChange.collectAsState()
+    // 取 DataStore 与跨进程时钟文件较大者，避免自动换完后概览仍显示旧时间
     val effectiveLast = maxOf(settings.lastChangeAt, bridgeLast)
     val lastStr = if (effectiveLast > 0L) fmt.format(Date(effectiveLast)) else "尚未更换"
     val intervalMs = settings.intervalMinutes.coerceIn(5, 180) * 60_000L
@@ -107,6 +108,7 @@ fun OverviewScreen(vm: MainViewModel) {
         lockBmp = withContext(Dispatchers.IO) { decodeFileScaled(lPath) }
     }
 
+    // 每 20 秒从时钟文件拉一次时间，自动换壁纸后无需杀进程
     LaunchedEffect(Unit) {
         vm.promoteWeeklyHotKeywords()
         while (true) {
@@ -153,6 +155,7 @@ fun OverviewScreen(vm: MainViewModel) {
             }
         }
 
+        // 与首页相同的自动更换信息（无开关）
         OverviewCard(cardAlpha) {
             Text("自动更换", style = MaterialTheme.typography.titleMedium, color = textColor)
             Text("间隔：${settings.intervalMinutes} 分钟", color = textColor)
@@ -262,6 +265,7 @@ fun OverviewScreen(vm: MainViewModel) {
             }
         }
 
+        
         if (settings.jumpModeEnabled && settings.annihilationModeEnabled) {
             var anniExpanded by remember { mutableStateOf(false) }
             val anniList = remember(settings.annihilationEpoch, settings.lastChangeAt) {
@@ -303,7 +307,7 @@ fun OverviewScreen(vm: MainViewModel) {
             }
         }
 
-        OverviewCard(cardAlpha) {
+OverviewCard(cardAlpha) {
             Text("壁纸预览（缓存）", style = MaterialTheme.typography.titleSmall, color = textColor)
             Text("桌面 / 锁屏分别取最近对应目标的缓存图", style = MaterialTheme.typography.bodySmall, color = textColor.copy(alpha = 0.6f))
             Spacer(Modifier.height(8.dp))
@@ -368,6 +372,7 @@ fun OverviewScreen(vm: MainViewModel) {
             }
         }
 
+        // 自动更换开关（独立板块，在极简模式下方）
         OverviewCard(cardAlpha) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -385,6 +390,7 @@ fun OverviewScreen(vm: MainViewModel) {
     }
 }
 
+/** 从记录中分别取最新桌面 / 锁屏缓存路径（文件名后缀 _home / _lock / _Home / _Lock） */
 private fun pickHomeLockPaths(recent: List<WallpaperEntity>): Pair<String?, String?> {
     fun match(e: WallpaperEntity, keys: List<String>): Boolean {
         val p = e.path.lowercase()
@@ -403,6 +409,7 @@ private fun pickHomeLockPaths(recent: List<WallpaperEntity>): Pair<String?, Stri
 
 @Composable
 private fun OverviewCard(cardAlpha: Float, content: @Composable () -> Unit) {
+    // 走全局 GlassCard，使「板块美化」在概览页生效
     GlassCard {
         Column(
             Modifier.padding(16.dp),

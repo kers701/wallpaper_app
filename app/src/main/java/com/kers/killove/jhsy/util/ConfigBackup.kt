@@ -43,7 +43,7 @@ object ConfigBackup {
     fun toJson(settings: AppSettings): String {
         val o = JSONObject()
         o.put("version", VERSION)
-        o.put("app", "镜花水月")
+        o.put("app", "MiroFlweat")
         o.put("note", "不含 PIN；超级代理本机路径换机需重选")
 
         // —— 调度与壁纸 ——

@@ -67,6 +67,12 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
+/**
+ * 全局板块卡片：跟随 LocalCardStyle。
+ * - 液态玻璃：半透明渐变 + 高光描边 + 流光扫过
+ * - 高斯模糊：底层强模糊磨砂层 + 清晰内容（不糊字）
+ * - 雾化：柔白弥散
+ */
 @Composable
 fun GlassCard(
     modifier: Modifier = Modifier,
@@ -104,6 +110,7 @@ private fun LiquidGlassCard(
     content: @Composable () -> Unit
 ) {
     val transition = rememberInfiniteTransition(label = "liquid")
+    // 描边高光缓慢游走
     val edgePhase by transition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
@@ -113,6 +120,7 @@ private fun LiquidGlassCard(
         ),
         label = "edge"
     )
+    // 波纹 1
     val wave1 by transition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
@@ -122,6 +130,7 @@ private fun LiquidGlassCard(
         ),
         label = "wave1"
     )
+    // 波纹 2，相位错开
     val wave2 by transition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
@@ -143,6 +152,7 @@ private fun LiquidGlassCard(
         end = Offset(720f, 880f)
     )
 
+    // 渐变高光描边：亮点沿边缓慢移动
     val ang = edgePhase * 2f * PI.toFloat()
     val edgeBrush = Brush.linearGradient(
         colors = listOf(
@@ -157,6 +167,7 @@ private fun LiquidGlassCard(
         end = Offset(400f + cos(ang + PI.toFloat()) * 420f, 400f + sin(ang + PI.toFloat()) * 420f)
     )
 
+    // 软波纹：径向扩散，低对比，避免光柱感
     fun rippleBrush(phase: Float, cx0: Float, cy0: Float, dx: Float, dy: Float): Brush {
         val cx = cx0 + cos(phase * 2f * PI.toFloat()) * dx
         val cy = cy0 + sin(phase * 2f * PI.toFloat()) * dy
@@ -181,6 +192,7 @@ private fun LiquidGlassCard(
             .background(bodyBrush)
             .border(width = 1.6.dp, brush = edgeBrush, shape = shape)
     ) {
+        // 顶缘柔和高光（非光柱）
         Box(
             Modifier
                 .fillMaxWidth()
@@ -195,6 +207,7 @@ private fun LiquidGlassCard(
                     )
                 )
         )
+        // 波纹流光层（两层错相位）
         Box(Modifier.matchParentSize().background(ripple1))
         Box(Modifier.matchParentSize().background(ripple2))
         content()
@@ -212,6 +225,7 @@ private fun GaussianBlurCard(
     val backdrop = LocalBackdropBitmap.current
     val frost = (0.22f + alpha * 0.40f).coerceIn(0.18f, 0.65f)
     Box(modifier = modifier.fillMaxWidth().clip(shape)) {
+        // 真·磨砂折中：用当前软件背景图做底层，再强模糊
         if (backdrop != null) {
             Image(
                 bitmap = backdrop,
@@ -243,6 +257,7 @@ private fun GaussianBlurCard(
                     )
             )
         }
+        // 磨砂罩：保证文字可读
         Box(
             Modifier
                 .matchParentSize()
@@ -337,6 +352,7 @@ fun HomeScreen(vm: MainViewModel, onOpenHelp: (() -> Unit)? = null) {
             delay(10_000)
         }
     }
+    // 进入首页时拉一次时钟文件
     LaunchedEffect(Unit) {
         vm.syncChangeClockFromBridge()
     }
@@ -660,6 +676,7 @@ fun RowSwitch(
         Switch(checked = checked, onCheckedChange = onChecked, enabled = enabled)
     }
 }
+
 
 @Composable
 fun CollapsibleSection(
