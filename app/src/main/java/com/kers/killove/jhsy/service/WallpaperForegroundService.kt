@@ -249,8 +249,15 @@ class WallpaperForegroundService : Service() {
                 applicationContext, settingsRepo, WallhavenApi(),
                 SystemWallpaperSetter(applicationContext), dao,
                 onProgress = { frac, label ->
-                    val pct = (frac * 100).toInt().coerceIn(0, 100)
-                    refreshNotification(if (label.isNotBlank()) "$label · $pct%" else "更换中 $pct%")
+                    if (shouldNotifyProgress(label, frac)) {
+                        val text = when {
+                            label.isNotBlank() -> label
+                            frac <= 0f -> "开始更换…"
+                            frac >= 1f -> "更换完成"
+                            else -> null
+                        }
+                        if (text != null) refreshNotification(text)
+                    }
                 }
             )
         } else null
@@ -324,6 +331,21 @@ class WallpaperForegroundService : Service() {
                 delay(30_000L)
             }
         }
+    }
+
+
+    /**
+     * 下载/预下载过程中的字节进度不刷新通知，仅开始与成功/失败类文案更新一次。
+     */
+    private fun shouldNotifyProgress(label: String, frac: Float): Boolean {
+        val l = label.trim()
+        if (l.isEmpty()) return false
+        // 明确的字节/百分比进度文案
+        if (l.contains("KB") || Regex("\\d+%").containsMatchIn(l)) return false
+        if (l.startsWith("下载 ") && ("/" in l || l.endsWith("KB"))) return false
+        if (l.startsWith("预下载 ") && "KB" in l) return false
+        // 里程碑：开始 / 完成 / 失败 / 设置中
+        return true
     }
 
     private fun refreshNotification(overrideText: String? = null) {
@@ -503,8 +525,15 @@ class WallpaperForegroundService : Service() {
                 applicationContext, settingsRepo, WallhavenApi(),
                 SystemWallpaperSetter(applicationContext), dao,
                 onProgress = { frac, label ->
-                    val pct = (frac * 100).toInt().coerceIn(0, 100)
-                    refreshNotification(if (label.isNotBlank()) "$label · $pct%" else "更换中 $pct%")
+                    if (shouldNotifyProgress(label, frac)) {
+                        val text = when {
+                            label.isNotBlank() -> label
+                            frac <= 0f -> "开始更换…"
+                            frac >= 1f -> "更换完成"
+                            else -> null
+                        }
+                        if (text != null) refreshNotification(text)
+                    }
                 }
             )
             changer.changeOnce(

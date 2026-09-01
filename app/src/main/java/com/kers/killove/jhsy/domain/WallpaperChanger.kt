@@ -488,16 +488,9 @@ class WallpaperChanger(
                     true
                 }.getOrDefault(false)
             } else {
+                // 仅开始一次通知；过程中不刷进度，避免通知栏卡顿
                 onProgress(0f, "下载中…")
-                api.downloadToFile(item.pathUrl, dest) { read, total ->
-                    val frac = if (total > 0L) (read.toFloat() / total).coerceIn(0f, 1f) else 0f
-                    val label = if (total > 0L) {
-                        "下载 ${read / 1024}KB / ${total / 1024}KB"
-                    } else {
-                        "下载 ${read / 1024}KB"
-                    }
-                    onProgress(frac, label)
-                }
+                api.downloadToFile(item.pathUrl, dest, onProgress = null)
             }
         }
         val finalFile = if (item.source == "local") File(item.pathUrl) else dest
@@ -705,10 +698,9 @@ class WallpaperChanger(
                     true
                 }.getOrDefault(false)
             } else {
-                api.downloadToFile(item.pathUrl, dest) { read, total ->
-                    val frac = if (total > 0L) (read.toFloat() / total).coerceIn(0f, 0.99f) else 0f
-                    onProgress(frac, "预下载 ${read / 1024}KB")
-                }
+                // 预下载过程不刷通知进度
+                onProgress(0f, "预下载中…")
+                api.downloadToFile(item.pathUrl, dest, onProgress = null)
             }
         }
         if (!ok || !dest.exists() || dest.length() < 32L) {

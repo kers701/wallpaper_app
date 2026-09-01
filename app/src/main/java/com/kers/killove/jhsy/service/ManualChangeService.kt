@@ -74,10 +74,19 @@ class ManualChangeService : Service() {
                     applicationContext, settingsRepo, WallhavenApi(),
                     SystemWallpaperSetter(applicationContext), dao,
                     onProgress = { frac, label ->
-                        val pct = (frac * 100).toInt().coerceIn(0, 100)
-                        val text = if (label.isNotBlank()) "$label · $pct%" else "下载中 $pct%"
-                        notify(text)
-                        ProcessBridgePrefs.setStatusHint(this@ManualChangeService, text)
+                        val isByteProgress = "KB" in label || "%" in label
+                        if (!isByteProgress) {
+                            val text = when {
+                                label.isNotBlank() -> label
+                                frac <= 0f -> "下载中…"
+                                frac >= 1f -> "完成"
+                                else -> null
+                            }
+                            if (text != null) {
+                                notify(text)
+                                ProcessBridgePrefs.setStatusHint(this@ManualChangeService, text)
+                            }
+                        }
                     }
                 )
                 // 当场下载；不用预缓存；不预取下一张；不碰定时规则
