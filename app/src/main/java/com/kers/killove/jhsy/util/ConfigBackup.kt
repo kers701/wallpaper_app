@@ -50,6 +50,7 @@ object ConfigBackup {
         o.put("enabled", settings.enabled)
         o.put("intervalMinutes", settings.intervalMinutes)
         o.put("purity", settings.purity.name)
+        o.put("purityFilterEnabled", settings.purityFilterEnabled)
         o.put("categoryMode", settings.categoryMode.name)
         o.put("target", settings.target.name)
         o.put("resolutionMode", settings.resolutionMode.name)
@@ -175,7 +176,21 @@ object ConfigBackup {
         return base.copy(
             enabled = o.optBoolean("enabled", base.enabled),
             intervalMinutes = o.optInt("intervalMinutes", base.intervalMinutes).coerceIn(5, 180),
-            purity = runCatching { Purity.valueOf(o.optString("purity", base.purity.name)) }.getOrDefault(base.purity),
+            purity = runCatching {
+                val n = o.optString("purity", base.purity.name)
+                runCatching { Purity.valueOf(n) }.getOrElse {
+                    when (n) {
+                        "R8" -> Purity.SfwOnly
+                        "R13" -> Purity.SfwSketchy
+                        "R18" -> Purity.All
+                        "Only13" -> Purity.SketchyOnly
+                        "Only18" -> Purity.NsfwOnly
+                        "R18D" -> Purity.SketchyNsfw
+                        else -> Purity.fromCode(n)
+                    }
+                }
+            }.getOrDefault(base.purity),
+            purityFilterEnabled = o.optBoolean("purityFilterEnabled", base.purityFilterEnabled),
             categoryMode = runCatching { CategoryMode.valueOf(o.optString("categoryMode", base.categoryMode.name)) }.getOrDefault(base.categoryMode),
             target = runCatching { WallpaperTarget.valueOf(o.optString("target", base.target.name)) }.getOrDefault(base.target),
             resolutionMode = runCatching { ResolutionMode.valueOf(o.optString("resolutionMode", base.resolutionMode.name)) }.getOrDefault(base.resolutionMode),

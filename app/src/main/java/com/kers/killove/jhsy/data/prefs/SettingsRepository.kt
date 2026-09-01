@@ -37,6 +37,7 @@ class SettingsRepository(private val context: Context) {
         val ENABLED = booleanPreferencesKey("enabled")
         val INTERVAL = intPreferencesKey("interval_minutes")
         val PURITY = stringPreferencesKey("purity")
+        val PURITY_FILTER = booleanPreferencesKey("purity_filter_enabled")
         val CATEGORY = stringPreferencesKey("category_mode")
         val TARGET = stringPreferencesKey("target")
         val RES_MODE = stringPreferencesKey("res_mode")
@@ -134,6 +135,7 @@ class SettingsRepository(private val context: Context) {
             enabled = p[Keys.ENABLED] ?: false,
             intervalMinutes = p[Keys.INTERVAL] ?: 10,
             purity = Purity.fromCode(p[Keys.PURITY] ?: "110"),
+            purityFilterEnabled = p[Keys.PURITY_FILTER] ?: false,
             categoryMode = CategoryMode.fromCode(p[Keys.CATEGORY] ?: "lh"),
             target = runCatching {
                 WallpaperTarget.valueOf(p[Keys.TARGET] ?: "Both")
@@ -243,6 +245,7 @@ class SettingsRepository(private val context: Context) {
             p[Keys.ENABLED] = settings.enabled
             p[Keys.INTERVAL] = settings.intervalMinutes.coerceIn(5, 180)
             p[Keys.PURITY] = settings.purity.code
+            p[Keys.PURITY_FILTER] = settings.purityFilterEnabled
             p[Keys.CATEGORY] = settings.categoryMode.code
             p[Keys.TARGET] = settings.target.name
             p[Keys.RES_MODE] = settings.resolutionMode.code

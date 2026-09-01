@@ -99,6 +99,10 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
         mutableFloatStateOf(settings.intervalMinutes.toFloat())
     }
     var purity by remember(settings.purity) { mutableStateOf(settings.purity) }
+    var purityFilterOn by remember(settings.purityFilterEnabled) { mutableStateOf(settings.purityFilterEnabled) }
+    var puritySfw by remember(settings.purity) { mutableStateOf(settings.purity.sfw) }
+    var puritySketchy by remember(settings.purity) { mutableStateOf(settings.purity.sketchy) }
+    var purityNsfw by remember(settings.purity) { mutableStateOf(settings.purity.nsfw) }
     var category by remember(settings.categoryMode) { mutableStateOf(settings.categoryMode) }
     var target by remember(settings.target) { mutableStateOf(settings.target) }
     var resMode by remember(settings.resolutionMode) { mutableStateOf(settings.resolutionMode) }
@@ -240,7 +244,65 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
         )
         Text("小于 15 分钟将自动使用前台服务", style = MaterialTheme.typography.bodySmall)
 
-        EnumDropdown("纯度", Purity.entries, purity) { purity = it }
+        RowSwitch("启用纯度筛选", purityFilterOn) { on ->
+            purityFilterOn = on
+            if (on && !puritySfw && !puritySketchy && !purityNsfw) {
+                // 默认勾选保守级+模糊级
+                puritySfw = true
+                puritySketchy = true
+                purityNsfw = false
+                purity = Purity.SfwSketchy
+            }
+        }
+        if (!purityFilterOn) {
+            Text(
+                "未启用时每次更换在全部级别中完全随机",
+                style = MaterialTheme.typography.bodySmall
+            )
+        } else {
+            Text(
+                "点击选中，再点取消；可多选组合",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                PurityChip(
+                    label = "保守级",
+                    selected = puritySfw,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    puritySfw = !puritySfw
+                    val next = Purity.fromFlags(puritySfw, puritySketchy, purityNsfw)
+                    if (next != null) purity = next
+                }
+                PurityChip(
+                    label = "模糊级",
+                    selected = puritySketchy,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    puritySketchy = !puritySketchy
+                    val next = Purity.fromFlags(puritySfw, puritySketchy, purityNsfw)
+                    if (next != null) purity = next
+                }
+                PurityChip(
+                    label = "限制级",
+                    selected = purityNsfw,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    purityNsfw = !purityNsfw
+                    val next = Purity.fromFlags(puritySfw, puritySketchy, purityNsfw)
+                    if (next != null) purity = next
+                }
+            }
+            val combo = Purity.fromFlags(puritySfw, puritySketchy, purityNsfw)
+            Text(
+                if (combo != null) "当前组合：${combo.label}（${combo.code}）"
+                else "请至少选择一个级别",
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
         EnumDropdown("类别", CategoryMode.entries, category) { category = it }
         EnumDropdown("设置目标", WallpaperTarget.entries, target) { target = it }
         EnumDropdown("分辨率", ResolutionMode.entries, resMode) { resMode = it }
@@ -822,7 +884,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             } else {
                 LockedField("高德 Key")
             }
-            RowSwitch("绿色模式（区内 R13 / 仅 Sketchy 随机）", locFb) { locFb = it }
+            RowSwitch("绿色模式（区内锁定保守+模糊，关限制级）", locFb) { locFb = it }
             RowSwitch("定位极限回退（区内仅本地换壁纸）", locExtreme) { locExtreme = it }
             Text(
                 "已选 ${settings.avoidanceLocations().size} 个点 · 半径 ${settings.locationAvoidRadiusMeters} 米 · 区内: ${if (settings.locationInAvoidZone) "生效中" else "未触发"} · 后台需「始终允许」定位",
@@ -1111,7 +1173,10 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                 vm.saveSettings(
                     settings.copy(
                         intervalMinutes = interval.toInt(),
-                        purity = purity,
+                        purity = if (purityFilterOn) {
+                            Purity.fromFlags(puritySfw, puritySketchy, purityNsfw) ?: purity
+                        } else purity,
+                        purityFilterEnabled = purityFilterOn,
                         categoryMode = category,
                         target = target,
                         resolutionMode = resMode,
@@ -1199,6 +1264,33 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                 accelOn = false
             }
         )
+    }
+}
+
+
+@Composable
+private fun PurityChip(
+    label: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    val colors = if (selected) {
+        androidx.compose.material3.ButtonDefaults.buttonColors()
+    } else {
+        androidx.compose.material3.ButtonDefaults.outlinedButtonColors()
+    }
+    if (selected) {
+        androidx.compose.material3.Button(
+            onClick = onClick,
+            modifier = modifier,
+            colors = colors
+        ) { Text(label) }
+    } else {
+        OutlinedButton(
+            onClick = onClick,
+            modifier = modifier
+        ) { Text(label) }
     }
 }
 

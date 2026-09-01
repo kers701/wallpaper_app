@@ -23,17 +23,48 @@ enum class ResolutionMode(val code: String, val label: String) {
     Custom("zdy", "自定义")
 }
 
-enum class Purity(val code: String, val label: String) {
-    R8("100", "R8 仅 SFW"),
-    R13("110", "R13 SFW+Sketchy"),
-    R18("111", "R18 全部"),
-    Only13("010", "仅 Sketchy"),
-    Only18("001", "仅 NSFW"),
-    R18D("011", "Sketchy+NSFW");
+/**
+ * Wallhaven 纯度三比特：SFW / Sketchy / NSFW（保守级 / 模糊级 / 限制级）。
+ * 代码位序：第1位 SFW、第2位 Sketchy、第3位 NSFW。
+ */
+enum class Purity(
+    val code: String,
+    val label: String,
+    val sfw: Boolean,
+    val sketchy: Boolean,
+    val nsfw: Boolean
+) {
+    SfwOnly("100", "仅保守级", true, false, false),
+    SketchyOnly("010", "仅模糊级", false, true, false),
+    NsfwOnly("001", "仅限制级", false, false, true),
+    SfwSketchy("110", "保守+模糊", true, true, false),
+    SfwNsfw("101", "保守+限制", true, false, true),
+    SketchyNsfw("011", "模糊+限制", false, true, true),
+    All("111", "全部级别", true, true, true);
 
+    /** 兼容旧名称 */
     companion object {
-        fun fromCode(code: String): Purity =
-            entries.find { it.code == code } ?: R13
+        val R8 = SfwOnly
+        val R13 = SfwSketchy
+        val R18 = All
+        val Only13 = SketchyOnly
+        val Only18 = NsfwOnly
+        val R18D = SketchyNsfw
+
+        fun fromCode(code: String): Purity {
+            val c = code.trim().padStart(3, '0').take(3)
+            return entries.find { it.code == c } ?: SfwSketchy
+        }
+
+        /** 由三个开关组合；全关返回 null（表示未选） */
+        fun fromFlags(sfw: Boolean, sketchy: Boolean, nsfw: Boolean): Purity? {
+            if (!sfw && !sketchy && !nsfw) return null
+            val code = "${if (sfw) '1' else '0'}${if (sketchy) '1' else '0'}${if (nsfw) '1' else '0'}"
+            return fromCode(code)
+        }
+
+        /** 完全随机（至少一档开启） */
+        fun randomAny(): Purity = entries.random()
     }
 }
 
@@ -201,6 +232,8 @@ data class AppSettings(
     val enabled: Boolean = false,
     val intervalMinutes: Int = 10,
     val purity: Purity = Purity.R13,
+    /** 是否启用纯度筛选；关闭则每次更换在全部合法组合中完全随机 */
+    val purityFilterEnabled: Boolean = false,
     val categoryMode: CategoryMode = CategoryMode.Rotate,
     val target: WallpaperTarget = WallpaperTarget.Both,
     val resolutionMode: ResolutionMode = ResolutionMode.Device,

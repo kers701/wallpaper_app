@@ -856,23 +856,26 @@ class WallpaperChanger(
      */
     private fun applyPurityRuntimeMode(settings: AppSettings): AppSettings {
         return when (ProcessBridgePrefs.purityMode(context)) {
-            ProcessBridgePrefs.MODE_HEALTH -> {
-                val p = listOf(Purity.R8, Purity.R13, Purity.Only13).random()
-                settings.copy(purity = p)
+            ProcessBridgePrefs.MODE_HEALTH ->
+                // 健康模式锁定：仅模糊级 (010)
+                settings.copy(purity = Purity.SketchyOnly, purityFilterEnabled = true)
+            ProcessBridgePrefs.MODE_HEARTBEAT ->
+                // 心跳模式锁定：模糊级+限制级 (011)
+                settings.copy(purity = Purity.SketchyNsfw, purityFilterEnabled = true)
+            else -> {
+                // 普通模式：关闭筛选则完全随机；开启则用用户勾选组合
+                if (!settings.purityFilterEnabled) {
+                    settings.copy(purity = Purity.randomAny())
+                } else {
+                    settings
+                }
             }
-            ProcessBridgePrefs.MODE_HEARTBEAT -> {
-                val p = listOf(
-                    Purity.R13, Purity.R18, Purity.Only13, Purity.Only18, Purity.R18D
-                ).random()
-                settings.copy(purity = p)
-            }
-            else -> settings
         }
     }
 
     /**
      * 预下载用：与 changeOnce 一致的运行时纯度，但不写回 DataStore。
-     * 若在避让区且开启绿色模式，纯度限制为 R13 / 仅 Sketchy。
+     * 若在避让区且开启绿色模式，纯度锁定为保守级+模糊级 (110)。
      * （原先预取直接读用户设置，健康模式下仍可能预下 nsfw，历史里就会出现 NSFW。）
      */
     private suspend fun settingsForPrefetch(base: AppSettings): AppSettings {
@@ -888,7 +891,7 @@ class WallpaperChanger(
                 context, locs, s.locationAvoidRadiusMeters.toDouble()
             )
             if (inZone && s.locationFallbackEnabled) {
-                val green = listOf(Purity.R13, Purity.Only13).random()
+                val green = Purity.SfwSketchy // 绿色模式锁定：保守级+模糊级 (110)
                 s = s.copy(purity = green, locationInAvoidZone = true)
             }
         }
@@ -912,8 +915,8 @@ class WallpaperChanger(
                     locationSavedForceLocal = settings.forceLocalMode
                 )
                 if (settings.locationFallbackEnabled) {
-                    // 绿色模式：区内在 R13 与「仅 Sketchy」之间随机，不再固定锁 R13
-                    val green = listOf(Purity.R13, Purity.Only13).random()
+                    // 绿色模式：区内锁定保守级+模糊级 (110)，限制级关闭
+                    val green = Purity.SfwSketchy // 绿色模式锁定：保守级+模糊级 (110)
                     next = next.copy(purity = green)
                 }
                 if (settings.locationExtremeFallbackEnabled) {
@@ -922,9 +925,9 @@ class WallpaperChanger(
                 settingsRepo.save(next)
                 return next
             }
-            // 已在区内：每次更换再次随机绿色纯度（R13 / 仅 Sketchy）
+            // 已在区内：每次更换保持绿色纯度锁定 (110)
             if (settings.locationFallbackEnabled) {
-                val green = listOf(Purity.R13, Purity.Only13).random()
+                val green = Purity.SfwSketchy // 绿色模式锁定：保守级+模糊级 (110)
                 if (green != settings.purity) {
                     val next = settings.copy(purity = green)
                     settingsRepo.save(next)
