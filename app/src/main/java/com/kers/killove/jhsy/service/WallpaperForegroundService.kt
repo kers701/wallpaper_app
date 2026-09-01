@@ -121,8 +121,8 @@ class WallpaperForegroundService : Service() {
             ACTION_CYCLE_PURITY_MODE -> {
                 val next = ProcessBridgePrefs.cyclePurityMode(this)
                 lastStatusText = when (next) {
-                    ProcessBridgePrefs.MODE_HEALTH -> "已切换：健康模式（R8/R13/Sketchy 随机）"
-                    ProcessBridgePrefs.MODE_HEARTBEAT -> "已切换：心跳模式（除 R8 外随机）"
+                    ProcessBridgePrefs.MODE_HEALTH -> "已切换：健康模式（模糊级）"
+                    ProcessBridgePrefs.MODE_HEARTBEAT -> "已切换：心跳模式（模糊级+限制级）"
                     else -> "已切换：普通模式（遵循配置纯度）"
                 }
                 refreshNotification(lastStatusText)

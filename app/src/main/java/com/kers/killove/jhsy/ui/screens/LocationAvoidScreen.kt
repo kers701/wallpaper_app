@@ -138,7 +138,7 @@ fun LocationAvoidScreen(vm: MainViewModel, onBack: () -> Unit, onOpenList: () ->
         }
         item {
             Text(
-                "配置高德开发者 Key 后可搜索位置。进入避让点触发半径内可开启绿色模式（R13 / 仅 Sketchy 随机），并可开启极限回退（仅本地换壁纸）。离开后恢复原状态。\n" +
+                "配置高德开发者 Key 后可搜索位置。进入避让点触发半径内可开启绿色模式（保守级+模糊级），并可开启极限回退（仅本地换壁纸）。离开后恢复原状态。\n" +
                     "重要：后台判定避让需要定位「始终允许」。Android 11+ 和多数国产系统（三星等）的弹窗里往往没有该选项，请点下方按钮进入系统设置手动选择。",
                 style = MaterialTheme.typography.bodySmall,
                 color = textColor.copy(alpha = 0.8f)
