@@ -59,6 +59,8 @@ import com.kers.killove.jhsy.ui.LocalUiTextColor
 import com.kers.killove.jhsy.util.BatteryHelper
 import com.kers.killove.jhsy.util.SuperServiceController
 import androidx.compose.ui.platform.LocalContext
+import android.widget.Toast
+import com.kers.killove.jhsy.util.ProcessBridgePrefs
 import com.kers.killove.jhsy.ui.MainViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -244,64 +246,123 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
         )
         Text("小于 15 分钟将自动使用前台服务", style = MaterialTheme.typography.bodySmall)
 
-        RowSwitch("启用纯度筛选", purityFilterOn) { on ->
-            purityFilterOn = on
-            if (on && !puritySfw && !puritySketchy && !purityNsfw) {
-                // 默认勾选保守级+模糊级
-                puritySfw = true
-                puritySketchy = true
-                purityNsfw = false
-                purity = Purity.SfwSketchy
-            }
+        // 运行模式接管：健康 / 心跳 / 绿色（定位避让区内且开绿色）时纯度不可改
+        val runtimeMode = remember(settings.locationInAvoidZone, settings.locationFallbackEnabled) {
+            ProcessBridgePrefs.purityMode(context)
         }
-        if (!purityFilterOn) {
+        // 刷新：设置页展开时再读一次文件
+        val modeNow = ProcessBridgePrefs.purityMode(context)
+        val greenActive = settings.locationInAvoidZone && settings.locationFallbackEnabled
+        val modeLocked = modeNow == ProcessBridgePrefs.MODE_HEALTH ||
+            modeNow == ProcessBridgePrefs.MODE_HEARTBEAT ||
+            greenActive
+        val lockedPurity = when {
+            greenActive -> Purity.SfwSketchy
+            modeNow == ProcessBridgePrefs.MODE_HEALTH -> Purity.SketchyOnly
+            modeNow == ProcessBridgePrefs.MODE_HEARTBEAT -> Purity.SketchyNsfw
+            else -> null
+        }
+        val modeName = when {
+            greenActive -> "绿色模式"
+            modeNow == ProcessBridgePrefs.MODE_HEALTH -> "健康模式"
+            modeNow == ProcessBridgePrefs.MODE_HEARTBEAT -> "心跳模式"
+            else -> "普通模式"
+        }
+        val lockedLabel = when (lockedPurity) {
+            Purity.SketchyOnly -> "模糊级"
+            Purity.SketchyNsfw -> "模糊级+限制级"
+            Purity.SfwSketchy -> "保守级+模糊级"
+            else -> lockedPurity?.label ?: ""
+        }
+        val hasApiKey = settings.apiKeys.any { it.isNotBlank() } ||
+            apiKeysText.lines().any { it.trim().isNotEmpty() }
+
+        if (modeLocked && lockedPurity != null) {
             Text(
-                "未启用时每次更换在全部级别中完全随机",
-                style = MaterialTheme.typography.bodySmall
+                "🔒 纯度选择已被${modeName}接管（$lockedLabel）",
+                style = MaterialTheme.typography.bodyMedium
             )
-        } else {
             Text(
-                "点击选中，再点取消；可多选组合",
+                "当前锁定 ${lockedPurity.code} · 切回普通模式后可改",
                 style = MaterialTheme.typography.bodySmall
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                PurityChip(
-                    label = "保守级",
-                    selected = puritySfw,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    puritySfw = !puritySfw
-                    val next = Purity.fromFlags(puritySfw, puritySketchy, purityNsfw)
-                    if (next != null) purity = next
-                }
-                PurityChip(
-                    label = "模糊级",
-                    selected = puritySketchy,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    puritySketchy = !puritySketchy
-                    val next = Purity.fromFlags(puritySfw, puritySketchy, purityNsfw)
-                    if (next != null) purity = next
-                }
-                PurityChip(
-                    label = "限制级",
-                    selected = purityNsfw,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    purityNsfw = !purityNsfw
-                    val next = Purity.fromFlags(puritySfw, puritySketchy, purityNsfw)
-                    if (next != null) purity = next
+                PurityChip("保守级", lockedPurity.sfw, Modifier.weight(1f), enabled = false) {}
+                PurityChip("模糊级", lockedPurity.sketchy, Modifier.weight(1f), enabled = false) {}
+                PurityChip("限制级", lockedPurity.nsfw, Modifier.weight(1f), enabled = false) {}
+            }
+        } else {
+            RowSwitch("启用纯度筛选", purityFilterOn) { on ->
+                purityFilterOn = on
+                if (on && !puritySfw && !puritySketchy && !purityNsfw) {
+                    puritySfw = true
+                    puritySketchy = true
+                    purityNsfw = false
+                    purity = Purity.SfwSketchy
                 }
             }
-            val combo = Purity.fromFlags(puritySfw, puritySketchy, purityNsfw)
-            Text(
-                if (combo != null) "当前组合：${combo.label}（${combo.code}）"
-                else "请至少选择一个级别",
-                style = MaterialTheme.typography.bodySmall
-            )
+            if (!purityFilterOn) {
+                Text(
+                    "未启用时每次更换在全部级别中完全随机",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            } else {
+                Text(
+                    "点击选中，再点取消；可多选组合",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    PurityChip(
+                        label = "保守级",
+                        selected = puritySfw,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        puritySfw = !puritySfw
+                        val next = Purity.fromFlags(puritySfw, puritySketchy, purityNsfw)
+                        if (next != null) purity = next
+                    }
+                    PurityChip(
+                        label = "模糊级",
+                        selected = puritySketchy,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        puritySketchy = !puritySketchy
+                        val next = Purity.fromFlags(puritySfw, puritySketchy, purityNsfw)
+                        if (next != null) purity = next
+                    }
+                    PurityChip(
+                        label = "限制级",
+                        selected = purityNsfw,
+                        modifier = Modifier.weight(1f),
+                        enabled = hasApiKey,
+                        onDisabledClick = {
+                            Toast.makeText(context, "请先配置 Wallhaven API 密钥", Toast.LENGTH_SHORT).show()
+                        }
+                    ) {
+                        purityNsfw = !purityNsfw
+                        val next = Purity.fromFlags(puritySfw, puritySketchy, purityNsfw)
+                        if (next != null) purity = next
+                    }
+                }
+                if (!hasApiKey) {
+                    Text(
+                        "限制级需配置 API 密钥后可用（灰色不可选）",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                val combo = Purity.fromFlags(puritySfw, puritySketchy, purityNsfw)
+                Text(
+                    if (combo != null) "当前组合：${combo.label}（${combo.code}）"
+                    else "请至少选择一个级别",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
         }
         EnumDropdown("类别", CategoryMode.entries, category) { category = it }
         EnumDropdown("设置目标", WallpaperTarget.entries, target) { target = it }
@@ -1273,22 +1334,31 @@ private fun PurityChip(
     label: String,
     selected: Boolean,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    onDisabledClick: (() -> Unit)? = null,
     onClick: () -> Unit
 ) {
-    val colors = if (selected) {
-        androidx.compose.material3.ButtonDefaults.buttonColors()
-    } else {
-        androidx.compose.material3.ButtonDefaults.outlinedButtonColors()
+    val handle = {
+        if (enabled) onClick()
+        else onDisabledClick?.invoke()
     }
-    if (selected) {
-        androidx.compose.material3.Button(
-            onClick = onClick,
+    if (!enabled) {
+        OutlinedButton(
+            onClick = handle,
             modifier = modifier,
-            colors = colors
+            enabled = true, // 仍可点以弹出提示
+            colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                contentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+            )
+        ) { Text(label) }
+    } else if (selected) {
+        androidx.compose.material3.Button(
+            onClick = handle,
+            modifier = modifier
         ) { Text(label) }
     } else {
         OutlinedButton(
-            onClick = onClick,
+            onClick = handle,
             modifier = modifier
         ) { Text(label) }
     }
