@@ -490,7 +490,7 @@ class WallpaperChanger(
             } else {
                 // 仅开始一次通知；过程中不刷进度，避免通知栏卡顿
                 onProgress(0f, "下载中…")
-                api.downloadToFile(item.pathUrl, dest, onProgress = null)
+                api.downloadToFile(item.pathUrl, dest)
             }
         }
         val finalFile = if (item.source == "local") File(item.pathUrl) else dest
@@ -700,7 +700,7 @@ class WallpaperChanger(
             } else {
                 // 预下载过程不刷通知进度
                 onProgress(0f, "预下载中…")
-                api.downloadToFile(item.pathUrl, dest, onProgress = null)
+                api.downloadToFile(item.pathUrl, dest)
             }
         }
         if (!ok || !dest.exists() || dest.length() < 32L) {

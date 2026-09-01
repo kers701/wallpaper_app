@@ -246,17 +246,13 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
         )
         Text("小于 15 分钟将自动使用前台服务", style = MaterialTheme.typography.bodySmall)
 
-        // 运行模式接管：健康 / 心跳 / 绿色（定位避让区内且开绿色）时纯度不可改
-        val runtimeMode = remember(settings.locationInAvoidZone, settings.locationFallbackEnabled) {
-            ProcessBridgePrefs.purityMode(context)
-        }
-        // 刷新：设置页展开时再读一次文件
+        // 运行模式接管：健康 / 心跳 / 绿色 时纯度只读
         val modeNow = ProcessBridgePrefs.purityMode(context)
         val greenActive = settings.locationInAvoidZone && settings.locationFallbackEnabled
         val modeLocked = modeNow == ProcessBridgePrefs.MODE_HEALTH ||
             modeNow == ProcessBridgePrefs.MODE_HEARTBEAT ||
             greenActive
-        val lockedPurity = when {
+        val lockedPurity: Purity? = when {
             greenActive -> Purity.SfwSketchy
             modeNow == ProcessBridgePrefs.MODE_HEALTH -> Purity.SketchyOnly
             modeNow == ProcessBridgePrefs.MODE_HEARTBEAT -> Purity.SketchyNsfw
@@ -272,27 +268,47 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             Purity.SketchyOnly -> "模糊级"
             Purity.SketchyNsfw -> "模糊级+限制级"
             Purity.SfwSketchy -> "保守级+模糊级"
-            else -> lockedPurity?.label ?: ""
+            null -> ""
+            else -> lockedPurity.label
         }
         val hasApiKey = settings.apiKeys.any { it.isNotBlank() } ||
             apiKeysText.lines().any { it.trim().isNotEmpty() }
 
         if (modeLocked && lockedPurity != null) {
+            val lp = lockedPurity
             Text(
-                "🔒 纯度选择已被${modeName}接管（$lockedLabel）",
+                text = "纯度选择已被${modeName}接管（$lockedLabel）",
                 style = MaterialTheme.typography.bodyMedium
             )
             Text(
-                "当前锁定 ${lockedPurity.code} · 切回普通模式后可改",
+                text = "当前锁定 ${lp.code} · 切回普通模式后可改",
                 style = MaterialTheme.typography.bodySmall
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                PurityChip("保守级", lockedPurity.sfw, Modifier.weight(1f), enabled = false) {}
-                PurityChip("模糊级", lockedPurity.sketchy, Modifier.weight(1f), enabled = false) {}
-                PurityChip("限制级", lockedPurity.nsfw, Modifier.weight(1f), enabled = false) {}
+                PurityChip(
+                    label = "保守级",
+                    selected = lp.sfw,
+                    modifier = Modifier.weight(1f),
+                    enabled = false,
+                    onClick = {}
+                )
+                PurityChip(
+                    label = "模糊级",
+                    selected = lp.sketchy,
+                    modifier = Modifier.weight(1f),
+                    enabled = false,
+                    onClick = {}
+                )
+                PurityChip(
+                    label = "限制级",
+                    selected = lp.nsfw,
+                    modifier = Modifier.weight(1f),
+                    enabled = false,
+                    onClick = {}
+                )
             }
         } else {
             RowSwitch("启用纯度筛选", purityFilterOn) { on ->
@@ -306,12 +322,12 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             }
             if (!purityFilterOn) {
                 Text(
-                    "未启用时每次更换在全部级别中完全随机",
+                    text = "未启用时每次更换在全部级别中完全随机",
                     style = MaterialTheme.typography.bodySmall
                 )
             } else {
                 Text(
-                    "点击选中，再点取消；可多选组合",
+                    text = "点击选中，再点取消；可多选组合",
                     style = MaterialTheme.typography.bodySmall
                 )
                 Row(
@@ -321,44 +337,50 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                     PurityChip(
                         label = "保守级",
                         selected = puritySfw,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        puritySfw = !puritySfw
-                        val next = Purity.fromFlags(puritySfw, puritySketchy, purityNsfw)
-                        if (next != null) purity = next
-                    }
+                        modifier = Modifier.weight(1f),
+                        enabled = true,
+                        onClick = {
+                            puritySfw = !puritySfw
+                            Purity.fromFlags(puritySfw, puritySketchy, purityNsfw)?.let { purity = it }
+                        }
+                    )
                     PurityChip(
                         label = "模糊级",
                         selected = puritySketchy,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        puritySketchy = !puritySketchy
-                        val next = Purity.fromFlags(puritySfw, puritySketchy, purityNsfw)
-                        if (next != null) purity = next
-                    }
+                        modifier = Modifier.weight(1f),
+                        enabled = true,
+                        onClick = {
+                            puritySketchy = !puritySketchy
+                            Purity.fromFlags(puritySfw, puritySketchy, purityNsfw)?.let { purity = it }
+                        }
+                    )
                     PurityChip(
                         label = "限制级",
                         selected = purityNsfw,
                         modifier = Modifier.weight(1f),
                         enabled = hasApiKey,
                         onDisabledClick = {
-                            Toast.makeText(context, "请先配置 Wallhaven API 密钥", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(
+                                context,
+                                "请先配置 Wallhaven API 密钥",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        },
+                        onClick = {
+                            purityNsfw = !purityNsfw
+                            Purity.fromFlags(puritySfw, puritySketchy, purityNsfw)?.let { purity = it }
                         }
-                    ) {
-                        purityNsfw = !purityNsfw
-                        val next = Purity.fromFlags(puritySfw, puritySketchy, purityNsfw)
-                        if (next != null) purity = next
-                    }
+                    )
                 }
                 if (!hasApiKey) {
                     Text(
-                        "限制级需配置 API 密钥后可用（灰色不可选）",
+                        text = "限制级需配置 API 密钥后可用（灰色不可选）",
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
                 val combo = Purity.fromFlags(puritySfw, puritySketchy, purityNsfw)
                 Text(
-                    if (combo != null) "当前组合：${combo.label}（${combo.code}）"
+                    text = if (combo != null) "当前组合：${combo.label}（${combo.code}）"
                     else "请至少选择一个级别",
                     style = MaterialTheme.typography.bodySmall
                 )
@@ -1336,29 +1358,31 @@ private fun PurityChip(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     onDisabledClick: (() -> Unit)? = null,
-    onClick: () -> Unit
+    onClick: () -> Unit = {}
 ) {
-    val handle = {
-        if (enabled) onClick()
-        else onDisabledClick?.invoke()
+    fun handleClick() {
+        if (enabled) {
+            onClick()
+        } else {
+            onDisabledClick?.invoke()
+        }
     }
     if (!enabled) {
         OutlinedButton(
-            onClick = handle,
+            onClick = { handleClick() },
             modifier = modifier,
-            enabled = true, // 仍可点以弹出提示
             colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
                 contentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
             )
         ) { Text(label) }
     } else if (selected) {
-        androidx.compose.material3.Button(
-            onClick = handle,
+        Button(
+            onClick = { handleClick() },
             modifier = modifier
         ) { Text(label) }
     } else {
         OutlinedButton(
-            onClick = handle,
+            onClick = { handleClick() },
             modifier = modifier
         ) { Text(label) }
     }
