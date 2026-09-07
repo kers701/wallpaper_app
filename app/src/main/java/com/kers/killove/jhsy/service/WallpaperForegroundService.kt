@@ -130,7 +130,7 @@ class WallpaperForegroundService : Service() {
                 val active = runCatching { DestinyHelper.resolveActive(this) }.getOrNull()
                 if (active != null) {
                     pendingConfirm = "destiny_force"
-                    lastStatusText = "命运劫持已生效是否强制切换？"
+                    lastStatusText = "命运劫持已生效是否强制恢复？"
                     ensureForegroundOnly()
                     refreshNotification(lastStatusText)
                 } else {
@@ -392,7 +392,7 @@ class WallpaperForegroundService : Service() {
     
     /**
      * 命运先机二次确认：
-     * force=true  → 本时段压制 + 置信度-1 + 真正切换通知模式
+     * force=true  → 本时段压制 + 置信度-1，恢复通知栏原运行模式（不循环切换）
      * force=false → 继续劫持 + 置信度+1
      */
     private suspend fun handleDestinyForceSwitch(force: Boolean) {
@@ -407,19 +407,9 @@ class WallpaperForegroundService : Service() {
         val active = DestinyHelper.resolveActive(this)
             ?: DestinyHelper.resolveActive(s)
         if (active == null) {
-            // 已过期或未命中：直接切模式
-            if (force) {
-                val next = ProcessBridgePrefs.cyclePurityMode(this)
-                lastStatusText = when (next) {
-                    ProcessBridgePrefs.MODE_HEALTH -> "已切换：健康模式（模糊级）"
-                    ProcessBridgePrefs.MODE_HEARTBEAT -> "已切换：心跳模式（模糊级+限制级）"
-                    else -> "已切换：普通模式（遵循配置纯度）"
-                }
-                refreshNotification(lastStatusText)
-            } else {
-                lastStatusText = resolveNotificationText(null)
-                refreshNotification(lastStatusText)
-            }
+            // 已过期或未命中：无需恢复
+            lastStatusText = resolveNotificationText(null)
+            refreshNotification(lastStatusText)
             return
         }
         val rules = DestinyHelper.parseRules(s.destinyRulesJson).toMutableList()
@@ -433,16 +423,17 @@ class WallpaperForegroundService : Service() {
             val json = DestinyHelper.toJson(rules)
             repo.save(s.copy(destinyRulesJson = json))
             ProcessBridgePrefs.writeDestiny(this, s.destinyEnabled, json)
-            val next = ProcessBridgePrefs.cyclePurityMode(this)
-            val modeTxt = when (next) {
+            // 不 cycle：保留用户当前通知运行模式，仅解除本时段命运劫持
+            val cur = ProcessBridgePrefs.purityMode(this)
+            val modeTxt = when (cur) {
                 ProcessBridgePrefs.MODE_HEALTH -> "健康模式（模糊级）"
                 ProcessBridgePrefs.MODE_HEARTBEAT -> "心跳模式（模糊级+限制级）"
                 else -> "普通模式（遵循配置纯度）"
             }
             lastStatusText =
-                "已强制切换：$modeTxt · ${active.name} 本时段跳过（置信度 ${rules[i].confidence}）"
+                "已强制恢复：$modeTxt · ${active.name} 本时段跳过（置信度 ${rules[i].confidence}）"
             refreshNotification(lastStatusText)
-            RunLog.i(this, "destiny force-skip id=${active.id} conf=${rules[i].confidence} until=${rules[i].suppressedUntilEpoch}")
+            RunLog.i(this, "destiny force-restore id=${active.id} conf=${rules[i].confidence} until=${rules[i].suppressedUntilEpoch}")
         } else {
             rules[i] = DestinyHelper.reinforceConfidence(rules[i])
             val json = DestinyHelper.toJson(rules)
@@ -747,7 +738,7 @@ private suspend fun handleAddAvoidHere() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
             if (pendingConfirm == "destiny_force") {
-                builder.addAction(0, "是（强制切换）", confirm)
+                builder.addAction(0, "是（强制恢复）", confirm)
                 builder.addAction(0, "否（继续劫持）", cancel)
             } else {
                 builder.addAction(0, "确认", confirm)
@@ -761,14 +752,16 @@ private suspend fun handleAddAvoidHere() {
             Intent(this, WallpaperForegroundService::class.java).setAction(ACTION_CYCLE_PURITY_MODE),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val modeBtn = ProcessBridgePrefs.purityModeNextButtonLabel(mode)
+        // 命运命中：按钮改为「模式恢复」；否则为 普通/健康/心跳 循环下一模式
+        val destinyActive = runCatching { DestinyHelper.resolveActive(this) }.getOrNull() != null
+        val modeBtn = if (destinyActive) "模式恢复" else ProcessBridgePrefs.purityModeNextButtonLabel(mode)
 
         if (sleeping) {
-            // 休眠中：立即更换 + 模式切换（已移除「停止」）
+            // 休眠中：立即更换 + 模式切换/恢复
             builder.addAction(0, "立即更换", changeNow)
             builder.addAction(0, modeBtn, cycleMode)
         } else {
-            // 正常：避让/黑名单需二次确认；模式循环按钮
+            // 正常：避让/黑名单需二次确认；模式循环或恢复按钮
             builder.addAction(0, "定位避让", addAvoid)
             builder.addAction(0, "应用黑名单", addBlack)
             builder.addAction(0, modeBtn, cycleMode)
