@@ -333,6 +333,11 @@ data class AppSettings(
     val annihilationModeEnabled: Boolean = false,
     /** 当前湮灭纪元（从 1 起；全部命中清空或强制清空时 +1） */
     val annihilationEpoch: Int = 1,
+    /**
+     * 虚妄模式（需跃迁+湮灭均开启）：
+     * 湮灭后剩余候选中，包含本次搜索词的全部进入虚妄，其余才写入跃迁。
+     */
+    val illusionModeEnabled: Boolean = false,
 
     val networkFallbackEnabled: Boolean = true,
     val fallbackApiUrl: String = "",

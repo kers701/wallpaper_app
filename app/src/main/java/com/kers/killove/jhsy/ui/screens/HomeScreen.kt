@@ -452,6 +452,9 @@ fun HomeScreen(vm: MainViewModel, onOpenHelp: (() -> Unit)? = null) {
                         color = textColor
                     )
                 }
+                if (settings.jumpModeEnabled && settings.annihilationModeEnabled && settings.illusionModeEnabled) {
+                    Text("虚妄模式：开启", color = textColor)
+                }
                 Text("纯度：${settings.purity.label} · 类别：${settings.categoryMode.label}", color = textColor)
                 Text("目标：${settings.target.label}" + if (settings.isolateHomeLock) " · 桌面锁屏隔离" else "", color = textColor)
                 Text(
@@ -567,6 +570,52 @@ fun HomeScreen(vm: MainViewModel, onOpenHelp: (() -> Unit)? = null) {
                 }
             }
         }
+
+        if (settings.jumpModeEnabled && settings.annihilationModeEnabled && settings.illusionModeEnabled) {
+            var illuExpanded by remember { mutableStateOf(false) }
+            val illuList = remember(settings.lastChangeAt, settings.illusionModeEnabled) {
+                com.kers.killove.jhsy.util.IllusionStore.lastRoundIllusory(context)
+            }
+            val illuHas = remember(settings.lastChangeAt, settings.illusionModeEnabled) {
+                com.kers.killove.jhsy.util.IllusionStore.hasLastRound(context)
+            }
+            val illuNone = remember(settings.lastChangeAt, settings.illusionModeEnabled) {
+                com.kers.killove.jhsy.util.IllusionStore.lastRoundNone(context)
+            }
+            OverviewCard(cardAlpha) {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { illuExpanded = !illuExpanded }
+                ) {
+                    Text("虚妄关键词", style = MaterialTheme.typography.titleMedium, color = textColor)
+                    Text(
+                        when {
+                            !illuHas -> "虚妄模式：开启 · 尚无本轮记录"
+                            illuNone -> "虚妄模式：开启 · 本轮无人入虚妄"
+                            else -> "虚妄模式：开启 · 本轮虚妄 ${illuList.size} 个" +
+                                if (illuExpanded) " · 点击收起" else " · 点击展开"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = textColor.copy(alpha = 0.85f)
+                    )
+                    if (illuExpanded && illuList.isNotEmpty()) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            illuList.joinToString("、"),
+                            color = textColor,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    Text(
+                        "身前虚妄，身后亦是虚妄",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = textColor.copy(alpha = 0.65f)
+                    )
+                }
+            }
+        }
+
 
         GlassCard {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

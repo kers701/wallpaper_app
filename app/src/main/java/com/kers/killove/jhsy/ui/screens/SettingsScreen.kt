@@ -153,6 +153,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
     var useKeywords by remember(settings.useKeywords) { mutableStateOf(settings.useKeywords) }
     var jumpMode by remember(settings.jumpModeEnabled) { mutableStateOf(settings.jumpModeEnabled) }
     var annihilMode by remember(settings.annihilationModeEnabled) { mutableStateOf(settings.annihilationModeEnabled) }
+    var illusionMode by remember(settings.illusionModeEnabled) { mutableStateOf(settings.illusionModeEnabled) }
 
     var netFb by remember(settings.networkFallbackEnabled) {
         mutableStateOf(settings.networkFallbackEnabled)
@@ -518,19 +519,34 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
         if (useKeywords) {
         RowSwitch("跃迁模式（用上次成功标签覆盖跃迁列表）", jumpMode) {
             jumpMode = it
-            if (!it) annihilMode = false
+            if (!it) {
+                annihilMode = false
+                illusionMode = false
+            }
         }
         Text(
             "Wallhaven 成功后会用该壁纸标签覆盖跃迁列表；开启且列表非空时优先用跃迁词搜索",
             style = MaterialTheme.typography.bodySmall
         )
         if (jumpMode) {
-            RowSwitch("湮灭模式（用过的词不进入跃迁；全命中则新纪元）", annihilMode) { annihilMode = it }
+            RowSwitch("湮灭模式（用过的词不进入跃迁；全命中则新纪元）", annihilMode) {
+                annihilMode = it
+                if (!it) illusionMode = false
+            }
             if (annihilMode) {
                 Text(
                     "正在湮灭 · 第 ${settings.annihilationEpoch} 纪元 · 缓存 ${com.kers.killove.jhsy.util.AnnihilationStore.size(context)} 条（满 777 强制清空）",
                     style = MaterialTheme.typography.bodySmall
                 )
+                RowSwitch("虚妄模式（含本次搜索词的标签进虚妄，其余才跃迁）", illusionMode) {
+                    illusionMode = it
+                }
+                if (illusionMode) {
+                    Text(
+                        "身前虚妄，身后亦是虚妄——湮灭后剩余词中，包含本次用词者进入虚妄，不写入跃迁。",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
             }
         }
         if (settings.jumpKeywords.isEmpty()) {
@@ -1320,6 +1336,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                         useKeywords = useKeywords,
                         jumpModeEnabled = jumpMode,
                         annihilationModeEnabled = annihilMode && jumpMode,
+                        illusionModeEnabled = illusionMode && annihilMode && jumpMode,
                         annihilationEpoch = settings.annihilationEpoch,
                         networkFallbackEnabled = netFb,
                         fallbackApiUrl = fbUrl,

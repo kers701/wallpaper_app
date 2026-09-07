@@ -556,6 +556,19 @@ class WallpaperChanger(
                     RunLog.i(context, "annihilation epoch -> ${settings.annihilationEpoch + 1} (all hit, cache cleared)")
                 }
             }
+            // 虚妄：包含本次搜索词的候选进入虚妄，其余才进跃迁
+            if (settings.jumpModeEnabled && settings.annihilationModeEnabled &&
+                settings.illusionModeEnabled && forJump.isNotEmpty()
+            ) {
+                val (kept, illusory) = com.kers.killove.jhsy.util.IllusionStore.filterForJump(
+                    context, forJump, usedKeyword
+                )
+                forJump = kept
+                RunLog.i(
+                    context,
+                    "illusion blocked=${illusory.size} kept=${kept.size} used=${usedKeyword ?: ""}"
+                )
+            }
             if (forJump.isNotEmpty()) {
                 settingsRepo.setJumpKeywords(forJump)
             }
