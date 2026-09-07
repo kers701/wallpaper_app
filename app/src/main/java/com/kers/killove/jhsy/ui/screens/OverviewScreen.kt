@@ -180,10 +180,12 @@ fun OverviewScreen(vm: MainViewModel) {
                 color = textColor
             )
             run {
+                val destiny = com.kers.killove.jhsy.util.DestinyHelper.resolveActive(settings)
                 val mode = com.kers.killove.jhsy.util.ProcessBridgePrefs.purityMode(context)
-                val modeLabel = when (mode) {
-                    com.kers.killove.jhsy.util.ProcessBridgePrefs.MODE_HEALTH -> "健康模式"
-                    com.kers.killove.jhsy.util.ProcessBridgePrefs.MODE_HEARTBEAT -> "心跳模式"
+                val modeLabel = when {
+                    destiny != null -> "命运模式"
+                    mode == com.kers.killove.jhsy.util.ProcessBridgePrefs.MODE_HEALTH -> "健康模式"
+                    mode == com.kers.killove.jhsy.util.ProcessBridgePrefs.MODE_HEARTBEAT -> "心跳模式"
                     else -> "普通模式"
                 }
                 val green = settings.locationAvoidEnabled &&

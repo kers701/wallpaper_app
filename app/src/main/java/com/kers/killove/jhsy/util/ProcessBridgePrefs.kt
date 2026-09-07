@@ -36,6 +36,7 @@ object ProcessBridgePrefs {
         // 跨进程：黑名单与避让点以文件为准，主进程保存时整表覆盖
         writeBlacklist(context, s.blacklistPackages)
         writeAvoidLocationsJson(context, s.avoidanceLocationsJson.ifBlank { "[]" })
+        writeDestiny(context, s.destinyEnabled, s.destinyRulesJson)
     }
 
     fun enabled(context: Context): Boolean =
@@ -280,7 +281,46 @@ object ProcessBridgePrefs {
         sp(context).getLong("status_hint_at", 0L)
 
 
-    // —— 通知纯度运行模式：normal / health / heartbeat ——
+    // —— 命运先机跨进程（文件）——
+    private fun destinyEnabledFile(context: Context): java.io.File =
+        java.io.File(context.applicationContext.filesDir, "jhsy_destiny_enabled.txt")
+
+    private fun destinyRulesFile(context: Context): java.io.File =
+        java.io.File(context.applicationContext.filesDir, "jhsy_destiny_rules.json")
+
+    fun writeDestiny(context: Context, enabled: Boolean, rulesJson: String) {
+        synchronized(LOCK) {
+            runCatching {
+                destinyEnabledFile(context).writeText(if (enabled) "1" else "0")
+                destinyRulesFile(context).writeText(rulesJson.ifBlank { "[]" })
+            }
+            sp(context).edit()
+                .putBoolean("destiny_enabled", enabled)
+                .putString("destiny_rules", rulesJson.ifBlank { "[]" })
+                .commit()
+        }
+    }
+
+    fun destinyEnabled(context: Context): Boolean {
+        val fromFile = runCatching {
+            destinyEnabledFile(context).takeIf { it.exists() }?.readText()?.trim()
+        }.getOrNull()
+        return when (fromFile) {
+            "1" -> true
+            "0" -> false
+            else -> sp(context).getBoolean("destiny_enabled", false)
+        }
+    }
+
+    fun destinyRulesJson(context: Context): String {
+        val fromFile = runCatching {
+            destinyRulesFile(context).takeIf { it.exists() }?.readText()
+        }.getOrNull()
+        if (!fromFile.isNullOrBlank()) return fromFile
+        return sp(context).getString("destiny_rules", "[]") ?: "[]"
+    }
+
+        // —— 通知纯度运行模式：normal / health / heartbeat ——
     // 必须 filesDir 跨进程同步：:svc 点通知改模式，:manual 当场下载必须读到同一值。
     // SharedPreferences 在多进程下各自缓存，不可靠（与 lastChange 时钟文件同理）。
     const val MODE_NORMAL = "normal"

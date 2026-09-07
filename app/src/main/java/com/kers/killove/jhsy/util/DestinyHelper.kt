@@ -139,7 +139,18 @@ object DestinyHelper {
      */
     fun resolveActive(settings: AppSettings, cal: Calendar = Calendar.getInstance()): DestinyRule? {
         if (!settings.destinyEnabled) return null
-        val rules = parseRules(settings.destinyRulesJson)
+        return pickWinner(parseRules(settings.destinyRulesJson), cal)
+    }
+
+    /**
+     * 服务进程优先用桥接文件（与 DataStore 可能不同步）。
+     */
+    fun resolveActive(context: android.content.Context, cal: Calendar = Calendar.getInstance()): DestinyRule? {
+        if (!ProcessBridgePrefs.destinyEnabled(context)) return null
+        return pickWinner(parseRules(ProcessBridgePrefs.destinyRulesJson(context)), cal)
+    }
+
+    private fun pickWinner(rules: List<DestinyRule>, cal: Calendar): DestinyRule? {
         val hit = rules.filter { matches(it, cal) }
         if (hit.isEmpty()) return null
         val minP = hit.minOf { it.priority }
