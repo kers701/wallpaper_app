@@ -74,6 +74,7 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
     var customSketchy by remember { mutableStateOf(true) }
     var customNsfw by remember { mutableStateOf(false) }
     var remainingUsesInput by remember { mutableStateOf("-1") }
+    var priorityInput by remember { mutableStateOf("100") }
 
     fun openEditor(existing: DestinyRule?) {
         editing = existing
@@ -90,6 +91,7 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
             customNsfw = p.nsfw
             nameInput = existing.name
             remainingUsesInput = existing.remainingUses.toString()
+            priorityInput = existing.priority.toString()
         } else {
             startH = 2; startM = 15; endH = 5; endM = 20
             days = setOf(1, 2, 5)
@@ -97,6 +99,7 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
             customSfw = true; customSketchy = true; customNsfw = false
             nameInput = ""
             remainingUsesInput = "-1"
+            priorityInput = "100"
         }
         showEditor = true
     }
@@ -116,7 +119,7 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
             id = base?.id ?: UUID.randomUUID().toString(),
             name = name.ifBlank { "命运 ${fmt.format(Date(now))}" },
             enabled = base?.enabled ?: true,
-            priority = base?.priority ?: 100,
+            priority = priorityInput.trim().toIntOrNull()?.coerceIn(0, 999) ?: (base?.priority ?: 100),
             startMinutes = (startH.coerceIn(0, 23) * 60 + startM.coerceIn(0, 59)),
             endMinutes = (endH.coerceIn(0, 23) * 60 + endM.coerceIn(0, 59)),
             weekdays = days.toList().sorted(),
@@ -173,19 +176,15 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
                         Text(rule.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("优先级", modifier = Modifier.padding(end = 8.dp))
-                        OutlinedTextField(
-                            value = rule.priority.toString(),
-                            onValueChange = { v ->
-                                val n = v.filter { it.isDigit() }.take(3).toIntOrNull()?.coerceIn(0, 999) ?: 0
-                                rules = rules.toMutableList().also {
-                                    it[index] = rule.copy(priority = n, updatedAt = System.currentTimeMillis())
-                                }
-                            },
-                            modifier = Modifier.weight(1f),
-                            singleLine = true
+                        Text(
+                            "优先级 ${rule.priority}",
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.weight(1f)
                         )
-                        Text("置信度 ${rule.confidence}", modifier = Modifier.padding(start = 12.dp))
+                        Text(
+                            "置信度 ${rule.confidence}",
+                            style = MaterialTheme.typography.bodySmall
+                        )
                     }
                     Text(
                         "${rule.startLabel()}–${rule.endLabel()} · 周${rule.weekdays.joinToString("、") { DestinyHelper.weekdayLabel(it) }} · ${rule.mode.label}" +
@@ -383,6 +382,15 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
                             }
                         }
                     }
+                    OutlinedTextField(
+                        value = priorityInput,
+                        onValueChange = { v ->
+                            priorityInput = v.filter { it.isDigit() }.take(3)
+                        },
+                        label = { Text("优先级（0～999，数字越小越优先）") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                     OutlinedTextField(
                         value = remainingUsesInput,
                         onValueChange = { v ->
