@@ -778,22 +778,6 @@ fun CollapsibleSection(
         }
     }
 
-    if (confirmClearRunLog) {
-        AlertDialog(
-            onDismissRequest = { confirmClearRunLog = false },
-            title = { Text("清空运行日志？") },
-            text = { Text("将清空 run.log，此操作不可撤销。") },
-            confirmButton = {
-                TextButton(onClick = {
-                    RunLog.clear(context)
-                    Toast.makeText(context, "已清空 run.log", Toast.LENGTH_SHORT).show()
-                    confirmClearRunLog = false
-                }) { Text("确认清空") }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmClearRunLog = false }) { Text("取消") }
-            }
-        )
-    }
+
 
 }
