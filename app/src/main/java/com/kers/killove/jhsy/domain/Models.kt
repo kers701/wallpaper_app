@@ -246,34 +246,25 @@ enum class DestinyMode(val code: String, val label: String) {
  * 一条命运先机规则。
  * @param weekdays 1=周一 … 7=周日
  * @param startMinutes / endMinutes 从 0:00 起的分钟数 0～1439；若 end < start 视为跨午夜
- * @param priority 0～999，数字越小优先
- * @param confidence 置信度；同优先级时数字越大越优先；强制切换减 1，拒绝强制加 1
- * @param suppressedUntilEpoch 本时段强制跳过截止时间（毫秒）；0 表示未压制
- * 冲突判定：先优先级 → 再置信度 → 再修改/创建时间
+ * @param priority 0～999，数字越小优先；同优先级取 updatedAt 更新者
  */
 data class DestinyRule(
     val id: String,
     val name: String,
     val enabled: Boolean = true,
     val priority: Int = 100,
-    val confidence: Int = 0,
     val startMinutes: Int = 0,
     val endMinutes: Int = 60,
     val weekdays: List<Int> = listOf(1, 2, 3, 4, 5, 6, 7),
     val mode: DestinyMode = DestinyMode.User,
     val customPurityCode: String = "110",
     val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis(),
-    /** 强制切换后：当前命中时段结束前不再生效 */
-    val suppressedUntilEpoch: Long = 0L
+    val updatedAt: Long = System.currentTimeMillis()
 ) {
     fun customPurity(): Purity = Purity.fromCode(customPurityCode)
 
     fun startLabel(): String = "%02d:%02d".format(startMinutes / 60, startMinutes % 60)
     fun endLabel(): String = "%02d:%02d".format(endMinutes / 60, endMinutes % 60)
-
-    fun isSuppressed(now: Long = System.currentTimeMillis()): Boolean =
-        suppressedUntilEpoch > 0L && now < suppressedUntilEpoch
 }
 
 data class AppSettings(

@@ -36,6 +36,7 @@ import com.kers.killove.jhsy.ui.screens.BlacklistScreen
 import com.kers.killove.jhsy.ui.screens.GlassCard
 import com.kers.killove.jhsy.ui.screens.HistoryScreen
 import com.kers.killove.jhsy.ui.screens.HelpGuideScreen
+import com.kers.killove.jhsy.ui.screens.DestinyScheduleScreen
 import com.kers.killove.jhsy.ui.screens.HomeScreen
 import com.kers.killove.jhsy.ui.screens.LocationAvoidListScreen
 import com.kers.killove.jhsy.ui.screens.LocationAvoidScreen
@@ -99,7 +100,7 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
                             SettingsScreen(
                                 vm,
                                 onOpenBlacklist = { nav.navigate("blacklist") },
-                                onOpenLocationAvoid = { nav.navigate("location_avoid") }
+                                onOpenLocationAvoid = { nav.navigate("location_avoid") }, onOpenDestiny = { nav.navigate("destiny") }
                             )
                         }
                         composable("history") { HistoryScreen(vm) }
@@ -125,6 +126,9 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
                         }
                         composable("help") {
                             HelpGuideScreen(onBack = { nav.popBackStack() })
+                        }
+                        composable("destiny") {
+                            DestinyScheduleScreen(vm, onBack = { nav.popBackStack() })
                         }
                     }
 

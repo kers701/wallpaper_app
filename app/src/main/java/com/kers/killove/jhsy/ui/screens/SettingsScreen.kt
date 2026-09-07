@@ -65,7 +65,7 @@ import com.kers.killove.jhsy.ui.MainViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLocationAvoid: () -> Unit = {}, onOpenProxyNodes: () -> Unit = {}) {
+fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLocationAvoid: () -> Unit = {}, onOpenProxyNodes: () -> Unit = {}, onOpenDestiny: () -> Unit = {}) {
     val createDocLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
     ) { uri ->
@@ -249,16 +249,25 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
         // 运行模式接管：健康 / 心跳 / 绿色 时纯度只读
         val modeNow = ProcessBridgePrefs.purityMode(context)
         val greenActive = settings.locationInAvoidZone && settings.locationFallbackEnabled
-        val modeLocked = modeNow == ProcessBridgePrefs.MODE_HEALTH ||
+        val destinyActive = com.kers.killove.jhsy.util.DestinyHelper.resolveActive(settings)
+        val modeLocked = destinyActive != null ||
+            modeNow == ProcessBridgePrefs.MODE_HEALTH ||
             modeNow == ProcessBridgePrefs.MODE_HEARTBEAT ||
             greenActive
         val lockedPurity: Purity? = when {
+            destinyActive != null -> when (destinyActive.mode) {
+                com.kers.killove.jhsy.domain.DestinyMode.Health -> Purity.SketchyOnly
+                com.kers.killove.jhsy.domain.DestinyMode.Heartbeat -> Purity.SketchyNsfw
+                com.kers.killove.jhsy.domain.DestinyMode.Custom -> destinyActive.customPurity()
+                com.kers.killove.jhsy.domain.DestinyMode.User -> settings.purity
+            }
             greenActive -> Purity.SfwSketchy
             modeNow == ProcessBridgePrefs.MODE_HEALTH -> Purity.SketchyOnly
             modeNow == ProcessBridgePrefs.MODE_HEARTBEAT -> Purity.SketchyNsfw
             else -> null
         }
         val modeName = when {
+            destinyActive != null -> "命运劫持"
             greenActive -> "绿色模式"
             modeNow == ProcessBridgePrefs.MODE_HEALTH -> "健康模式"
             modeNow == ProcessBridgePrefs.MODE_HEARTBEAT -> "心跳模式"
@@ -277,11 +286,14 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
         if (modeLocked && lockedPurity != null) {
             val lp = lockedPurity
             Text(
-                text = "纯度选择已被${modeName}接管（$lockedLabel）",
+                text = if (destinyActive != null) "纯度选择已被命运劫持-${destinyActive.name}-（$lockedLabel）" else "纯度选择已被${modeName}接管（$lockedLabel）",
                 style = MaterialTheme.typography.bodyMedium
             )
             Text(
-                text = "当前锁定 ${lp.code} · 切回普通模式后可改",
+                text = if (destinyActive != null)
+                    "当前锁定 ${lp.code} · 离开命运先机时段后恢复原模式"
+                else
+                    "当前锁定 ${lp.code} · 切回普通模式后可改",
                 style = MaterialTheme.typography.bodySmall
             )
             Row(
@@ -956,6 +968,24 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
         }
 
         CollapsibleSection(
+            title = "命运先机",
+            expanded = openSection == "destiny",
+            onToggle = { toggleSection("destiny") }
+        ) {
+            Text("按星期与时段自动劫持纯度搜索策略。详见应用内说明。", style = MaterialTheme.typography.bodySmall)
+            RowSwitch("启用命运先机", settings.destinyEnabled) { on ->
+                vm.setDestinyEnabled(on)
+            }
+            if (settings.destinyEnabled) {
+                val n = com.kers.killove.jhsy.util.DestinyHelper.parseRules(settings.destinyRulesJson).size
+                Text("已配置 $n 条规则", style = MaterialTheme.typography.bodySmall)
+                OutlinedButton(onClick = onOpenDestiny, modifier = Modifier.fillMaxWidth()) {
+                    Text("命运先机配置…")
+                }
+            }
+        }
+
+        CollapsibleSection(
             title = "定位避让",
             expanded = openSection == "loc",
             onToggle = { toggleSection("loc") }
@@ -1260,6 +1290,8 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                             Purity.fromFlags(puritySfw, puritySketchy, purityNsfw) ?: purity
                         } else purity,
                         purityFilterEnabled = purityFilterOn,
+                        destinyEnabled = settings.destinyEnabled,
+                        destinyRulesJson = settings.destinyRulesJson,
                         categoryMode = category,
                         target = target,
                         resolutionMode = resMode,

@@ -20,6 +20,7 @@ import com.kers.killove.jhsy.util.ProcessBridgePrefs
 import com.kers.killove.jhsy.util.DataSaverBudget
 import com.kers.killove.jhsy.util.RunLog
 import com.kers.killove.jhsy.util.LocationHelper
+import com.kers.killove.jhsy.util.DestinyHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -93,13 +94,22 @@ class WallpaperChanger(
             RunLog.i(context, "cleared stale locationInAvoidZone (no avoid points or disabled)")
         }
 
-        // 通知「健康/心跳」运行模式：覆盖用户纯度配置（每次更换重新随机）
-        // 模式从 filesDir 读取，保证 :svc / :manual 一致
+        // 命运先机：时段命中则劫持纯度（优先于通知栏健康/心跳）；未命中则恢复原运行模式
+        val destinyRule = DestinyHelper.resolveActive(settings)
         val runtimeMode = ProcessBridgePrefs.purityMode(context)
-        settings = applyPurityRuntimeMode(settings)
+        if (destinyRule != null) {
+            settings = DestinyHelper.applyToSettings(settings, destinyRule)
+            RunLog.i(
+                context,
+                "destiny active name=${destinyRule.name} mode=${destinyRule.mode.code} pri=${destinyRule.priority} effective=${settings.purity.code}"
+            )
+        } else {
+            settings = applyPurityRuntimeMode(settings)
+            RunLog.i(context, "purity runtime mode=$runtimeMode effective=${settings.purity.code}")
+        }
         RunLog.i(
             context,
-            "purity runtime mode=$runtimeMode effective=${settings.purity.code}/${settings.purity.label} trigger=${triggerType.code}"
+            "purity final mode=${if (destinyRule != null) "destiny:${destinyRule.name}" else runtimeMode} effective=${settings.purity.code}/${settings.purity.label} trigger=${triggerType.code}"
         )
 
         if (!forceIgnoreScreenOff && settings.skipWhenScreenOff && isScreenOff()) {
@@ -842,8 +852,8 @@ class WallpaperChanger(
 
     /**
      * 通知栏纯度运行模式（跨进程）：
-     * - health 健康：R8 / R13 / 仅 Sketchy 三选一随机
-     * - heartbeat 心跳：除 R8 外所有纯度随机
+     * - health 健康：锁定模糊级 (010)
+     * - heartbeat 心跳：锁定模糊级+限制级 (011)
      * - normal：遵循用户设置（本函数不改）
      */
     private fun applyPurityRuntimeMode(settings: AppSettings): AppSettings {
@@ -887,10 +897,11 @@ class WallpaperChanger(
                 s = s.copy(purity = green, locationInAvoidZone = true)
             }
         }
-        return applyPurityRuntimeMode(s)
+        val dr = DestinyHelper.resolveActive(s)
+        return if (dr != null) DestinyHelper.applyToSettings(s, dr) else applyPurityRuntimeMode(s)
     }
 
-    /** 定位避让：进入避让区启用绿色模式（R13/仅Sketchy随机）与极限本地；离开后恢复 */
+    /** 定位避让：进入避让区启用绿色模式（保守+模糊 110）与极限本地；离开后恢复 */
     private suspend fun applyLocationAvoidance(settings: AppSettings): AppSettings {
         // 避让点始终从标记文件读，避免 :svc 内 DataStore 仍持有已删除点
         val locs = settings.copy(

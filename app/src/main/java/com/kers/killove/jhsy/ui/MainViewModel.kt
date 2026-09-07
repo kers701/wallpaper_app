@@ -14,6 +14,8 @@ import com.kers.killove.jhsy.domain.ProxyNode
 import com.kers.killove.jhsy.data.remote.WallhavenApi
 import com.kers.killove.jhsy.data.wallpaper.SystemWallpaperSetter
 import com.kers.killove.jhsy.domain.AppSettings
+import com.kers.killove.jhsy.domain.DestinyRule
+import com.kers.killove.jhsy.util.DestinyHelper
 import com.kers.killove.jhsy.domain.ChangeResult
 import com.kers.killove.jhsy.domain.TriggerType
 import com.kers.killove.jhsy.domain.AvoidanceLocation
@@ -56,6 +58,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
@@ -994,6 +997,26 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             } catch (e: Exception) {
                 _status.value = "清空缓存失败：${e.message}"
             }
+        }
+    }
+
+    fun saveDestinyRules(rules: List<DestinyRule>) {
+        viewModelScope.launch {
+            val s = settingsRepo.settingsFlow.first()
+            settingsRepo.save(
+                s.copy(
+                    destinyRulesJson = DestinyHelper.toJson(rules),
+                    destinyEnabled = s.destinyEnabled
+                )
+            )
+            _status.value = "命运先机配置已保存"
+        }
+    }
+
+    fun setDestinyEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            val s = settingsRepo.settingsFlow.first()
+            settingsRepo.save(s.copy(destinyEnabled = enabled))
         }
     }
 

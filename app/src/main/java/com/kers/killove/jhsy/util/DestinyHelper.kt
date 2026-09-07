@@ -29,15 +29,13 @@ object DestinyHelper {
                             name = o.optString("name", "未命名"),
                             enabled = o.optBoolean("enabled", true),
                             priority = o.optInt("priority", 100).coerceIn(0, 999),
-                            confidence = o.optInt("confidence", 0),
                             startMinutes = o.optInt("startMinutes", 0).coerceIn(0, 1439),
                             endMinutes = o.optInt("endMinutes", 60).coerceIn(0, 1439),
                             weekdays = wd.map { it.coerceIn(1, 7) }.distinct().sorted(),
                             mode = DestinyMode.fromCode(o.optString("mode", "user")),
                             customPurityCode = o.optString("customPurityCode", "110"),
                             createdAt = o.optLong("createdAt", System.currentTimeMillis()),
-                            updatedAt = o.optLong("updatedAt", System.currentTimeMillis()),
-                            suppressedUntilEpoch = o.optLong("suppressedUntilEpoch", 0L)
+                            updatedAt = o.optLong("updatedAt", System.currentTimeMillis())
                         )
                     )
                 }
@@ -53,7 +51,6 @@ object DestinyHelper {
             o.put("name", r.name)
             o.put("enabled", r.enabled)
             o.put("priority", r.priority.coerceIn(0, 999))
-            o.put("confidence", r.confidence)
             o.put("startMinutes", r.startMinutes.coerceIn(0, 1439))
             o.put("endMinutes", r.endMinutes.coerceIn(0, 1439))
             val days = JSONArray()
@@ -63,7 +60,6 @@ object DestinyHelper {
             o.put("customPurityCode", r.customPurityCode)
             o.put("createdAt", r.createdAt)
             o.put("updatedAt", r.updatedAt)
-            o.put("suppressedUntilEpoch", r.suppressedUntilEpoch)
             arr.put(o)
         }
         return arr.toString()
@@ -87,7 +83,6 @@ object DestinyHelper {
 
     fun matches(rule: DestinyRule, cal: Calendar = Calendar.getInstance()): Boolean {
         if (!rule.enabled) return false
-        if (rule.isSuppressed(cal.timeInMillis)) return false
         if (isoWeekday(cal) !in rule.weekdays) return false
         val now = minutesOfDay(cal)
         val s = rule.startMinutes.coerceIn(0, 1439)
@@ -102,40 +97,7 @@ object DestinyHelper {
     }
 
     /**
-     * 当前命中时段的结束时刻（epoch ms）。用于强制切换后压制到本段结束。
-     * 非跨午夜：今天 endMinutes；跨午夜且已过 0 点处于后半段：今天 end；跨午夜前半段：明天 end。
-     */
-    fun currentWindowEndEpoch(rule: DestinyRule, cal: Calendar = Calendar.getInstance()): Long {
-        val s = rule.startMinutes.coerceIn(0, 1439)
-        val e = rule.endMinutes.coerceIn(0, 1439)
-        val nowMin = minutesOfDay(cal)
-        val endCal = cal.clone() as Calendar
-        endCal.set(Calendar.SECOND, 0)
-        endCal.set(Calendar.MILLISECOND, 0)
-        if (s <= e) {
-            endCal.set(Calendar.HOUR_OF_DAY, e / 60)
-            endCal.set(Calendar.MINUTE, e % 60)
-            // 若刚好在结束点，压制到下一分钟，避免边界抖动
-            if (endCal.timeInMillis <= cal.timeInMillis) {
-                endCal.add(Calendar.MINUTE, 1)
-            }
-        } else {
-            // 跨午夜
-            if (nowMin >= s) {
-                // 还在开始日一侧 → 结束在明天
-                endCal.add(Calendar.DAY_OF_YEAR, 1)
-            }
-            endCal.set(Calendar.HOUR_OF_DAY, e / 60)
-            endCal.set(Calendar.MINUTE, e % 60)
-            if (endCal.timeInMillis <= cal.timeInMillis) {
-                endCal.add(Calendar.MINUTE, 1)
-            }
-        }
-        return endCal.timeInMillis
-    }
-
-    /**
-     * 命中多条时：① priority 最小 ② confidence 最大 ③ updatedAt 最新（再比 createdAt）。
+     * 命中多条时：priority 最小优先；同 priority 取 updatedAt 最新。
      */
     fun resolveActive(settings: AppSettings, cal: Calendar = Calendar.getInstance()): DestinyRule? {
         if (!settings.destinyEnabled) return null
@@ -143,30 +105,7 @@ object DestinyHelper {
         val hit = rules.filter { matches(it, cal) }
         if (hit.isEmpty()) return null
         val minP = hit.minOf { it.priority }
-        val byPri = hit.filter { it.priority == minP }
-        val maxC = byPri.maxOf { it.confidence }
-        val byConf = byPri.filter { it.confidence == maxC }
-        return byConf.maxWithOrNull(
-            compareBy<DestinyRule> { it.updatedAt }.thenBy { it.createdAt }
-        )
-    }
-
-    /** 强制跳过当前时段：压制到本段结束 + 置信度 -1 */
-    fun forceSkipCurrentWindow(rule: DestinyRule, cal: Calendar = Calendar.getInstance()): DestinyRule {
-        val end = currentWindowEndEpoch(rule, cal)
-        return rule.copy(
-            confidence = rule.confidence - 1,
-            suppressedUntilEpoch = end,
-            updatedAt = System.currentTimeMillis()
-        )
-    }
-
-    /** 拒绝强制切换：置信度 +1 */
-    fun reinforceConfidence(rule: DestinyRule): DestinyRule {
-        return rule.copy(
-            confidence = rule.confidence + 1,
-            updatedAt = System.currentTimeMillis()
-        )
+        return hit.filter { it.priority == minP }.maxByOrNull { it.updatedAt }
     }
 
     fun applyToSettings(settings: AppSettings, rule: DestinyRule): AppSettings {

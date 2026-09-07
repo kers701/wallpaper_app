@@ -124,6 +124,8 @@ class SettingsRepository(private val context: Context) {
         val LOC_SAVED_PURITY = stringPreferencesKey("location_saved_purity")
         val LOC_SAVED_FORCE = booleanPreferencesKey("location_saved_force")
         val LOC_IN_ZONE = booleanPreferencesKey("location_in_zone")
+        val DESTINY_ENABLED = booleanPreferencesKey("destiny_enabled")
+        val DESTINY_RULES = stringPreferencesKey("destiny_rules_json")
         val DATA_SAVER = booleanPreferencesKey("data_saver")
         val LEGACY_API_KEY = stringPreferencesKey("api_key")
         val LEGACY_FALLBACK = booleanPreferencesKey("fallback")
@@ -136,6 +138,8 @@ class SettingsRepository(private val context: Context) {
             intervalMinutes = p[Keys.INTERVAL] ?: 10,
             purity = Purity.fromCode(p[Keys.PURITY] ?: "110"),
             purityFilterEnabled = p[Keys.PURITY_FILTER] ?: false,
+            destinyEnabled = p[Keys.DESTINY_ENABLED] ?: false,
+            destinyRulesJson = p[Keys.DESTINY_RULES] ?: "[]",
             categoryMode = CategoryMode.fromCode(p[Keys.CATEGORY] ?: "lh"),
             target = runCatching {
                 WallpaperTarget.valueOf(p[Keys.TARGET] ?: "Both")
@@ -246,6 +250,8 @@ class SettingsRepository(private val context: Context) {
             p[Keys.INTERVAL] = settings.intervalMinutes.coerceIn(5, 180)
             p[Keys.PURITY] = settings.purity.code
             p[Keys.PURITY_FILTER] = settings.purityFilterEnabled
+            p[Keys.DESTINY_ENABLED] = settings.destinyEnabled
+            p[Keys.DESTINY_RULES] = settings.destinyRulesJson
             p[Keys.CATEGORY] = settings.categoryMode.code
             p[Keys.TARGET] = settings.target.name
             p[Keys.RES_MODE] = settings.resolutionMode.code
