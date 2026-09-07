@@ -126,7 +126,7 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
             TextButton(onClick = onBack) { Text("返回") }
         }
         Text(
-            "按星期与时段自动劫持纯度。多条同时命中时：优先级数字越小越优先；同优先级取最近修改的一条。",
+            "按星期与时段自动劫持纯度。冲突判定：①优先级越小越优先 ②同优先级置信度越大越优先 ③再比最近修改。通知栏切换模式时若已劫持，会询问是否强制切换（是：本时段跳过且置信度-1；否：继续劫持且置信度+1）。",
             style = MaterialTheme.typography.bodySmall,
             color = textColor
         )
@@ -169,6 +169,7 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
                             modifier = Modifier.weight(1f),
                             singleLine = true
                         )
+                        Text("置信度 ${rule.confidence}", modifier = Modifier.padding(start = 12.dp))
                     }
                     Text(
                         "${rule.startLabel()}–${rule.endLabel()} · 周${rule.weekdays.joinToString("、") { DestinyHelper.weekdayLabel(it) }} · ${rule.mode.label}" +
@@ -176,7 +177,8 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
                         style = MaterialTheme.typography.bodySmall
                     )
                     Text(
-                        "创建：${fmt.format(Date(rule.createdAt))} · 修改：${fmt.format(Date(rule.updatedAt))}",
+                        "创建：${fmt.format(Date(rule.createdAt))} · 修改：${fmt.format(Date(rule.updatedAt))}" +
+                            if (rule.isSuppressed()) " · 本时段已强制跳过" else "",
                         style = MaterialTheme.typography.bodySmall
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
