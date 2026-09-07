@@ -182,8 +182,35 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
                             if (rule.isSuppressed()) " · 本时段已强制跳过" else "",
                         style = MaterialTheme.typography.bodySmall
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         OutlinedButton(onClick = { openEditor(rule) }) { Text("编辑") }
+                        OutlinedButton(onClick = {
+                            val next = rules.toMutableList().also {
+                                it[index] = rule.copy(
+                                    confidence = 0,
+                                    updatedAt = System.currentTimeMillis()
+                                )
+                            }
+                            rules = next
+                            vm.saveDestinyRules(next)
+                            status = "已重置置信度：${rule.name}"
+                        }) { Text("置信度重置") }
+                        if (rule.isSuppressed()) {
+                            OutlinedButton(onClick = {
+                                val next = rules.toMutableList().also {
+                                    it[index] = rule.copy(
+                                        suppressedUntilEpoch = 0L,
+                                        updatedAt = System.currentTimeMillis()
+                                    )
+                                }
+                                rules = next
+                                vm.saveDestinyRules(next)
+                                status = "已恢复命中：${rule.name}（本时段可再次生效）"
+                            }) { Text("恢复") }
+                        }
                         OutlinedButton(onClick = {
                             rules = rules.toMutableList().also { it.removeAt(index) }
                         }) { Text("删除") }

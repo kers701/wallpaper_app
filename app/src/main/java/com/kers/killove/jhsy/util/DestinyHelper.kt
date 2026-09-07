@@ -199,6 +199,13 @@ object DestinyHelper {
         }
     }
 
+    /** 配置名最多显示 3 个字符，超出加 … */
+    fun shortName(name: String, maxChars: Int = 3): String {
+        val n = name.trim()
+        if (n.length <= maxChars) return n.ifEmpty { "未命名" }
+        return n.take(maxChars) + "…"
+    }
+
     fun weekdayLabel(d: Int): String = when (d) {
         1 -> "一"
         2 -> "二"

@@ -698,19 +698,26 @@ private suspend fun handleAddAvoidHere() {
         )
         val mode = ProcessBridgePrefs.purityMode(this)
         val accessLabel = currentAccessLabel()
-        val destinyOn = runCatching { DestinyHelper.resolveActive(this) }.getOrNull() != null
-        val modeTitle = if (destinyOn) {
-            "MiroFlweat·命运模式"
+        val activeDestiny = runCatching { DestinyHelper.resolveActive(this) }.getOrNull()
+        val modeTitle = if (activeDestiny != null) {
+            val shortName = DestinyHelper.shortName(activeDestiny.name)
+            "MiroFlweat·命运模式($shortName)·$accessLabel"
         } else {
             ProcessBridgePrefs.purityModeTitle(mode)
         }
         val title = when {
-            contentText.startsWith("定位休眠") -> "$modeTitle · 定位休眠"
-            contentText.startsWith("应用休眠") -> "$modeTitle · 应用休眠"
-            contentText.startsWith("省电休眠") -> "$modeTitle · 省电休眠"
+            activeDestiny != null && contentText.startsWith("定位休眠") ->
+                "MiroFlweat·命运模式(${DestinyHelper.shortName(activeDestiny.name)}) · 定位休眠"
+            activeDestiny != null && contentText.startsWith("应用休眠") ->
+                "MiroFlweat·命运模式(${DestinyHelper.shortName(activeDestiny.name)}) · 应用休眠"
+            activeDestiny != null && contentText.startsWith("省电休眠") ->
+                "MiroFlweat·命运模式(${DestinyHelper.shortName(activeDestiny.name)}) · 省电休眠"
+            contentText.startsWith("定位休眠") -> "${ProcessBridgePrefs.purityModeTitle(mode)} · 定位休眠"
+            contentText.startsWith("应用休眠") -> "${ProcessBridgePrefs.purityModeTitle(mode)} · 应用休眠"
+            contentText.startsWith("省电休眠") -> "${ProcessBridgePrefs.purityModeTitle(mode)} · 省电休眠"
             contentText.startsWith("命运劫持") -> modeTitle
             contentText.startsWith("确认") -> modeTitle
-            else -> "$modeTitle · $accessLabel"
+            else -> if (activeDestiny != null) modeTitle else "${ProcessBridgePrefs.purityModeTitle(mode)} · $accessLabel"
         }
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title)
