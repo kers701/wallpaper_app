@@ -10,10 +10,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -28,6 +31,9 @@ import com.kers.killove.jhsy.ui.MainViewModel
 /** 已选黑名单次级页 */
 @Composable
 fun BlacklistSelectedScreen(vm: MainViewModel, onBack: () -> Unit) {
+    var pendingRemovePkg by remember { mutableStateOf<String?>(null) }
+    var pendingRemoveLabel by remember { mutableStateOf("") }
+
     val settings by vm.settings.collectAsState()
     val apps by vm.launcherApps.collectAsState()
     val textColor = LocalUiTextColor.current
@@ -80,7 +86,10 @@ fun BlacklistSelectedScreen(vm: MainViewModel, onBack: () -> Unit) {
                                     color = textColor.copy(alpha = 0.65f)
                                 )
                             }
-                            OutlinedButton(onClick = { vm.toggleBlacklistPackage(pkg) }) {
+                            OutlinedButton(onClick = {
+                                pendingRemovePkg = pkg
+                                pendingRemoveLabel = label
+                            }) {
                                 Text("移除")
                             }
                         }
@@ -90,4 +99,22 @@ fun BlacklistSelectedScreen(vm: MainViewModel, onBack: () -> Unit) {
             }
         }
     }
+
+    if (pendingRemovePkg != null) {
+        AlertDialog(
+            onDismissRequest = { pendingRemovePkg = null },
+            title = { Text("移出黑名单？") },
+            text = { Text("确定将「$pendingRemoveLabel」移出黑名单吗？") },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingRemovePkg?.let { vm.toggleBlacklistPackage(it) }
+                    pendingRemovePkg = null
+                }) { Text("确认移除") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingRemovePkg = null }) { Text("取消") }
+            }
+        )
+    }
+
 }

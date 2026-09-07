@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -33,6 +34,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -316,6 +318,8 @@ private fun FogCard(
 
 @Composable
 fun HomeScreen(vm: MainViewModel, onOpenHelp: (() -> Unit)? = null) {
+    var confirmClearRunLog by remember { mutableStateOf(false) }
+
     val settings by vm.settings.collectAsState()
     val status by vm.status.collectAsState()
     val busy by vm.busy.collectAsState()
@@ -686,10 +690,7 @@ fun HomeScreen(vm: MainViewModel, onOpenHelp: (() -> Unit)? = null) {
                         style = MaterialTheme.typography.bodySmall,
                         color = textColor.copy(alpha = 0.7f)
                     )
-                    OutlinedButton(onClick = {
-                        RunLog.clear(context)
-                        Toast.makeText(context, "已清空 run.log", Toast.LENGTH_SHORT).show()
-                    }) { Text("清空日志") }
+                    OutlinedButton(onClick = { confirmClearRunLog = true }) { Text("清空日志") }
                     OutlinedButton(onClick = {
                         RunLog.setDeveloperMode(context, false)
                         runLogOn = false
@@ -699,6 +700,24 @@ fun HomeScreen(vm: MainViewModel, onOpenHelp: (() -> Unit)? = null) {
                 }
             }
         }
+    }
+
+    if (confirmClearRunLog) {
+        AlertDialog(
+            onDismissRequest = { confirmClearRunLog = false },
+            title = { Text("清空运行日志？") },
+            text = { Text("将清空 run.log，此操作不可撤销。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    RunLog.clear(context)
+                    Toast.makeText(context, "已清空 run.log", Toast.LENGTH_SHORT).show()
+                    confirmClearRunLog = false
+                }) { Text("确认清空") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmClearRunLog = false }) { Text("取消") }
+            }
+        )
     }
 }
 
@@ -758,4 +777,23 @@ fun CollapsibleSection(
             }
         }
     }
+
+    if (confirmClearRunLog) {
+        AlertDialog(
+            onDismissRequest = { confirmClearRunLog = false },
+            title = { Text("清空运行日志？") },
+            text = { Text("将清空 run.log，此操作不可撤销。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    RunLog.clear(context)
+                    Toast.makeText(context, "已清空 run.log", Toast.LENGTH_SHORT).show()
+                    confirmClearRunLog = false
+                }) { Text("确认清空") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmClearRunLog = false }) { Text("取消") }
+            }
+        )
+    }
+
 }

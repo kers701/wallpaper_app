@@ -15,10 +15,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -43,6 +45,8 @@ import java.util.Locale
 
 @Composable
 fun HistoryScreen(vm: MainViewModel) {
+    var confirmAction by remember { mutableStateOf<String?>(null) }
+
     val recent by vm.recent.collectAsState()
     val fmt = rememberDateFormat()
     val textColor = LocalUiTextColor.current
@@ -68,10 +72,10 @@ fun HistoryScreen(vm: MainViewModel) {
             }) {
                 Text("导出记录")
             }
-            OutlinedButton(onClick = { vm.clearLogs() }) {
+            OutlinedButton(onClick = { confirmAction = "logs" }) {
                 Text("清空记录")
             }
-            OutlinedButton(onClick = { vm.clearWallpaperCache() }) {
+            OutlinedButton(onClick = { confirmAction = "cache" }) {
                 Text("清空缓存")
             }
         }
@@ -137,6 +141,30 @@ fun HistoryScreen(vm: MainViewModel) {
             }
         )
     }
+
+    if (confirmAction != null) {
+        val isLogs = confirmAction == "logs"
+        AlertDialog(
+            onDismissRequest = { confirmAction = null },
+            title = { Text(if (isLogs) "清空更换记录？" else "清空壁纸缓存？") },
+            text = {
+                Text(
+                    if (isLogs) "将删除全部更换历史，此操作不可撤销。"
+                    else "将删除已下载的壁纸缓存文件，此操作不可撤销。"
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (isLogs) vm.clearLogs() else vm.clearWallpaperCache()
+                    confirmAction = null
+                }) { Text("确认清空") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmAction = null }) { Text("取消") }
+            }
+        )
+    }
+
 }
 
 @Composable

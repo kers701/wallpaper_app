@@ -10,10 +10,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -26,6 +30,9 @@ import com.kers.killove.jhsy.ui.MainViewModel
 /** 避让名单次级页：仅展示/移除已选点 */
 @Composable
 fun LocationAvoidListScreen(vm: MainViewModel, onBack: () -> Unit) {
+    var pendingRemoveId by remember { mutableStateOf<String?>(null) }
+    var pendingRemoveName by remember { mutableStateOf("") }
+
     val settings by vm.settings.collectAsState()
     val textColor = LocalUiTextColor.current
     val list = settings.avoidanceLocations()
@@ -67,7 +74,10 @@ fun LocationAvoidListScreen(vm: MainViewModel, onBack: () -> Unit) {
                                     color = textColor.copy(alpha = 0.7f)
                                 )
                             }
-                            OutlinedButton(onClick = { vm.removeAvoidanceLocation(loc.id) }) {
+                            OutlinedButton(onClick = {
+                                pendingRemoveId = loc.id
+                                pendingRemoveName = loc.name.ifBlank { loc.id }
+                            }) {
                                 Text("移除")
                             }
                         }
@@ -77,4 +87,22 @@ fun LocationAvoidListScreen(vm: MainViewModel, onBack: () -> Unit) {
             }
         }
     }
+
+    if (pendingRemoveId != null) {
+        AlertDialog(
+            onDismissRequest = { pendingRemoveId = null },
+            title = { Text("移除避让点？") },
+            text = { Text("确定移除「$pendingRemoveName」吗？") },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingRemoveId?.let { vm.removeAvoidanceLocation(it) }
+                    pendingRemoveId = null
+                }) { Text("确认移除") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingRemoveId = null }) { Text("取消") }
+            }
+        )
+    }
+
 }

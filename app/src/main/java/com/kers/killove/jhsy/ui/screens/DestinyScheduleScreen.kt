@@ -60,6 +60,8 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
     var pendingSave by remember { mutableStateOf<DestinyRule?>(null) }
     var nameInput by remember { mutableStateOf("") }
     var status by remember { mutableStateOf("") }
+    var pendingDeleteIndex by remember { mutableStateOf<Int?>(null) }
+    var pendingDeleteName by remember { mutableStateOf("") }
 
     // editor state
     var startH by remember { mutableIntStateOf(2) }
@@ -212,7 +214,8 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
                             }) { Text("恢复") }
                         }
                         OutlinedButton(onClick = {
-                            rules = rules.toMutableList().also { it.removeAt(index) }
+                            pendingDeleteIndex = index
+                            pendingDeleteName = rule.name
                         }) { Text("删除") }
                     }
                 }
@@ -231,6 +234,27 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
         if (status.isNotBlank()) {
             Text(status, style = MaterialTheme.typography.bodySmall, color = textColor)
         }
+    }
+
+    
+    if (pendingDeleteIndex != null) {
+        AlertDialog(
+            onDismissRequest = { pendingDeleteIndex = null },
+            title = { Text("删除命运先机配置？") },
+            text = { Text("确定删除「$pendingDeleteName」吗？删除后需再点保存才会写入本地。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    val idx = pendingDeleteIndex
+                    if (idx != null && idx in rules.indices) {
+                        rules = rules.toMutableList().also { it.removeAt(idx) }
+                    }
+                    pendingDeleteIndex = null
+                }) { Text("确认删除") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteIndex = null }) { Text("取消") }
+            }
+        )
     }
 
     if (showEditor) {

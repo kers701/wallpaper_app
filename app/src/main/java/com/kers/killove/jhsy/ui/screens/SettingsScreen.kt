@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenuItem
@@ -66,6 +67,7 @@ import com.kers.killove.jhsy.ui.MainViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLocationAvoid: () -> Unit = {}, onOpenProxyNodes: () -> Unit = {}, onOpenDestiny: () -> Unit = {}) {
+    var cacheConfirm by remember { mutableStateOf<String?>(null) }
     val createDocLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
     ) { uri ->
@@ -1287,8 +1289,8 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             onToggle = { toggleSection("cache") }
         ) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { vm.clearWallpaperCache() }, modifier = Modifier.weight(1f)) { Text("清空缓存文件") }
-            OutlinedButton(onClick = { vm.clearLogs() }, modifier = Modifier.weight(1f)) { Text("清空更换记录") }
+            OutlinedButton(onClick = { cacheConfirm = "cache" }, modifier = Modifier.weight(1f)) { Text("清空缓存文件") }
+            OutlinedButton(onClick = { cacheConfirm = "logs" }, modifier = Modifier.weight(1f)) { Text("清空更换记录") }
         }
 
         }
@@ -1394,6 +1396,29 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             onDismiss = {
                 showAccelDialog = false
                 accelOn = false
+            }
+        )
+    }
+
+    if (cacheConfirm != null) {
+        val isCache = cacheConfirm == "cache"
+        AlertDialog(
+            onDismissRequest = { cacheConfirm = null },
+            title = { Text(if (isCache) "清空缓存文件？" else "清空更换记录？") },
+            text = {
+                Text(
+                    if (isCache) "将删除已下载的壁纸缓存，此操作不可撤销。"
+                    else "将删除全部更换历史记录，此操作不可撤销。"
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (isCache) vm.clearWallpaperCache() else vm.clearLogs()
+                    cacheConfirm = null
+                }) { Text("确认清空") }
+            },
+            dismissButton = {
+                TextButton(onClick = { cacheConfirm = null }) { Text("取消") }
             }
         )
     }
@@ -1504,8 +1529,10 @@ private fun <T> EnumDropdown(
             }
         }
     }
-}
 
+
+
+}
 
 @Composable
 private fun AccelPrivacyDialog(
@@ -1553,5 +1580,5 @@ private fun AccelPrivacyDialog(
             OutlinedButton(onClick = onDismiss) { Text("不同意") }
         }
     )
-}
 
+}
