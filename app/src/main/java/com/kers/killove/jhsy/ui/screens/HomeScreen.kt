@@ -598,7 +598,7 @@ fun HomeScreen(vm: MainViewModel, onOpenHelp: (() -> Unit)? = null) {
                     Text(
                         when {
                             !illuHas -> "虚妄模式：开启 · 尚无本轮记录"
-                            illuNone || illuList.isEmpty() -> "虚妄模式：开启 · 本轮无人入虚妄"
+                            illuNone || illuList.isEmpty() -> "虚妄模式：开启 · 全员升华"
                             else -> "虚妄模式：开启 · 本轮虚妄 ${illuList.size} 个" +
                                 if (illuExpanded) " · 点击收起" else " · 点击展开"
                         },
