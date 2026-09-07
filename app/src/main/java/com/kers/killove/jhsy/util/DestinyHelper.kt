@@ -37,7 +37,8 @@ object DestinyHelper {
                             customPurityCode = o.optString("customPurityCode", "110"),
                             createdAt = o.optLong("createdAt", System.currentTimeMillis()),
                             updatedAt = o.optLong("updatedAt", System.currentTimeMillis()),
-                            suppressedUntilEpoch = o.optLong("suppressedUntilEpoch", 0L)
+                            suppressedUntilEpoch = o.optLong("suppressedUntilEpoch", 0L),
+                            remainingUses = o.optInt("remainingUses", -1)
                         )
                     )
                 }
@@ -64,6 +65,7 @@ object DestinyHelper {
             o.put("createdAt", r.createdAt)
             o.put("updatedAt", r.updatedAt)
             o.put("suppressedUntilEpoch", r.suppressedUntilEpoch)
+            o.put("remainingUses", r.remainingUses)
             arr.put(o)
         }
         return arr.toString()
@@ -85,20 +87,18 @@ object DestinyHelper {
     fun minutesOfDay(cal: Calendar = Calendar.getInstance()): Int =
         cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
 
-    fun matches(rule: DestinyRule, cal: Calendar = Calendar.getInstance()): Boolean {
-        if (!rule.enabled) return false
-        if (rule.isSuppressed(cal.timeInMillis)) return false
+    fun inScheduledWindow(rule: DestinyRule, cal: Calendar = Calendar.getInstance()): Boolean {
         if (isoWeekday(cal) !in rule.weekdays) return false
         val now = minutesOfDay(cal)
         val s = rule.startMinutes.coerceIn(0, 1439)
         val e = rule.endMinutes.coerceIn(0, 1439)
-        return if (s <= e) {
-            // 闭区间 [start, end]，如 2:15–5:20
-            now in s..e
-        } else {
-            // 跨午夜：例如 22:00–05:00
-            now >= s || now <= e
-        }
+        return if (s <= e) now in s..e else (now >= s || now <= e)
+    }
+
+    fun matches(rule: DestinyRule, cal: Calendar = Calendar.getInstance()): Boolean {
+        if (!rule.enabled) return false
+        if (rule.isSuppressed(cal.timeInMillis)) return false
+        return inScheduledWindow(rule, cal)
     }
 
     /**
@@ -160,6 +160,40 @@ object DestinyHelper {
         return byConf.maxWithOrNull(
             compareBy<DestinyRule> { it.updatedAt }.thenBy { it.createdAt }
         )
+    }
+
+    /**
+     * 检测各规则「计划时段」由内→外，完成一次周期：
+     * remainingUses>0 则减 1；减到 0 删除；-1 不衰减。
+     * @return 更新后的规则列表 + 新的 in-window 状态表
+     */
+    fun applyPeriodEndDecay(
+        rules: List<DestinyRule>,
+        prevInWindow: Map<String, Boolean>,
+        cal: Calendar = Calendar.getInstance()
+    ): Pair<List<DestinyRule>, Map<String, Boolean>> {
+        val nextIn = linkedMapOf<String, Boolean>()
+        val out = mutableListOf<DestinyRule>()
+        for (r in rules) {
+            val nowIn = r.enabled && inScheduledWindow(r, cal)
+            val wasIn = prevInWindow[r.id] == true
+            nextIn[r.id] = nowIn
+            if (r.remainingUses == 0) {
+                // 已耗尽，移除
+                continue
+            }
+            if (wasIn && !nowIn && r.remainingUses > 0) {
+                val left = r.remainingUses - 1
+                if (left <= 0) continue
+                out += r.copy(remainingUses = left, updatedAt = System.currentTimeMillis())
+            } else {
+                out += r
+            }
+        }
+        // 清理已不存在 id 的状态由调用方覆盖写入 nextIn（仅保留仍存在的）
+        val alive = out.map { it.id }.toSet()
+        val cleaned = nextIn.filterKeys { it in alive }
+        return out to cleaned
     }
 
     /** 强制跳过当前时段：压制到本段结束 + 置信度 -1 */

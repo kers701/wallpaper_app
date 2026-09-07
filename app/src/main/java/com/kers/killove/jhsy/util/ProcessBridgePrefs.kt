@@ -288,7 +288,30 @@ object ProcessBridgePrefs {
     private fun destinyRulesFile(context: Context): java.io.File =
         java.io.File(context.applicationContext.filesDir, "jhsy_destiny_rules.json")
 
-    fun writeDestiny(context: Context, enabled: Boolean, rulesJson: String) {
+    
+    private fun destinyInWindowFile(context: Context): java.io.File =
+        java.io.File(context.applicationContext.filesDir, "jhsy_destiny_in_window.json")
+
+    fun readDestinyInWindow(context: Context): Map<String, Boolean> {
+        return runCatching {
+            val f = destinyInWindowFile(context)
+            if (!f.exists()) return emptyMap()
+            val o = org.json.JSONObject(f.readText())
+            buildMap {
+                o.keys().forEach { k -> put(k, o.optBoolean(k, false)) }
+            }
+        }.getOrDefault(emptyMap())
+    }
+
+    fun writeDestinyInWindow(context: Context, map: Map<String, Boolean>) {
+        runCatching {
+            val o = org.json.JSONObject()
+            map.forEach { (k, v) -> o.put(k, v) }
+            destinyInWindowFile(context).writeText(o.toString())
+        }
+    }
+
+fun writeDestiny(context: Context, enabled: Boolean, rulesJson: String) {
         synchronized(LOCK) {
             runCatching {
                 destinyEnabledFile(context).writeText(if (enabled) "1" else "0")

@@ -249,6 +249,7 @@ enum class DestinyMode(val code: String, val label: String) {
  * @param priority 0～999，数字越小优先
  * @param confidence 置信度；同优先级时数字越大越优先；强制切换减 1，拒绝强制加 1
  * @param suppressedUntilEpoch 本时段强制跳过截止时间（毫秒）；0 表示未压制
+ * @param remainingUses 生效次数；-1=无限（不衰减）；>0 每完成一个时段周期减 1，到 0 自动删除
  * 冲突判定：先优先级 → 再置信度 → 再修改/创建时间
  */
 data class DestinyRule(
@@ -265,7 +266,9 @@ data class DestinyRule(
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
     /** 强制切换后：当前命中时段结束前不再生效 */
-    val suppressedUntilEpoch: Long = 0L
+    val suppressedUntilEpoch: Long = 0L,
+    /** -1 无限；正整数为剩余生效周期数 */
+    val remainingUses: Int = -1
 ) {
     fun customPurity(): Purity = Purity.fromCode(customPurityCode)
 

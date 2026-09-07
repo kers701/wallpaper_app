@@ -73,6 +73,7 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
     var customSfw by remember { mutableStateOf(true) }
     var customSketchy by remember { mutableStateOf(true) }
     var customNsfw by remember { mutableStateOf(false) }
+    var remainingUsesInput by remember { mutableStateOf("-1") }
 
     fun openEditor(existing: DestinyRule?) {
         editing = existing
@@ -88,12 +89,14 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
             customSketchy = p.sketchy
             customNsfw = p.nsfw
             nameInput = existing.name
+            remainingUsesInput = existing.remainingUses.toString()
         } else {
             startH = 2; startM = 15; endH = 5; endM = 20
             days = setOf(1, 2, 5)
             mode = DestinyMode.Heartbeat
             customSfw = true; customSketchy = true; customNsfw = false
             nameInput = ""
+            remainingUsesInput = "-1"
         }
         showEditor = true
     }
@@ -102,6 +105,13 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
         val now = System.currentTimeMillis()
         val purity = Purity.fromFlags(customSfw, customSketchy, customNsfw) ?: Purity.SfwSketchy
         val base = editing
+        val uses = remainingUsesInput.trim().toIntOrNull().let { v ->
+            when {
+                v == null -> -1
+                v < 0 -> -1
+                else -> v
+            }
+        }
         return DestinyRule(
             id = base?.id ?: UUID.randomUUID().toString(),
             name = name.ifBlank { "命运 ${fmt.format(Date(now))}" },
@@ -113,7 +123,10 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
             mode = mode,
             customPurityCode = purity.code,
             createdAt = base?.createdAt ?: now,
-            updatedAt = now
+            updatedAt = now,
+            confidence = base?.confidence ?: 0,
+            suppressedUntilEpoch = base?.suppressedUntilEpoch ?: 0L,
+            remainingUses = uses
         )
     }
 
@@ -177,6 +190,10 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
                     Text(
                         "${rule.startLabel()}–${rule.endLabel()} · 周${rule.weekdays.joinToString("、") { DestinyHelper.weekdayLabel(it) }} · ${rule.mode.label}" +
                             if (rule.mode == DestinyMode.Custom) "（${rule.customPurity().label}）" else "",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Text(
+                        "生效次数：" + if (rule.remainingUses < 0) "无限" else "${rule.remainingUses}",
                         style = MaterialTheme.typography.bodySmall
                     )
                     Text(
@@ -366,6 +383,16 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
                             }
                         }
                     }
+                    OutlinedTextField(
+                        value = remainingUsesInput,
+                        onValueChange = { v ->
+                            remainingUsesInput = v.filter { it.isDigit() || it == '-' }.take(6)
+                        },
+                        label = { Text("生效次数（-1=无限）") },
+                        supportingText = { Text("每完成一个时段减 1；到 0 自动删除；-1 不衰减") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                     if (mode == DestinyMode.Custom) {
                         Text("自定义纯度")
                         Row(verticalAlignment = Alignment.CenterVertically) {

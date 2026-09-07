@@ -23,6 +23,7 @@ import com.kers.killove.jhsy.data.wallpaper.SystemWallpaperSetter
 import com.kers.killove.jhsy.domain.TriggerType
 import com.kers.killove.jhsy.domain.WallpaperChanger
 import com.kers.killove.jhsy.util.ProcessBridgePrefs
+import com.kers.killove.jhsy.util.DestinyHelper
 import com.kers.killove.jhsy.util.DataSaverBudget
 import com.kers.killove.jhsy.util.RunLog
 import com.kers.killove.jhsy.util.LocationHelper
@@ -49,7 +50,7 @@ class WallpaperForegroundService : Service() {
     private var loopJob: Job? = null
     private var wakeLock: PowerManager.WakeLock? = null
     @Volatile private var lastStatusText: String = "运行中 · 自动更换已开启"
-    /** none | avoid | blacklist — 通知二次确认 */
+    /** none | avoid | blacklist | destiny_force — 通知二次确认 */
     @Volatile private var pendingConfirm: String = "none"
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -103,6 +104,7 @@ class WallpaperForegroundService : Service() {
                     when (pendingConfirm) {
                         "avoid" -> handleAddAvoidHere()
                         "blacklist" -> handleAddFgBlacklist()
+                        "destiny_force" -> handleDestinyForceSwitch(force = true)
                         else -> refreshNotification("无待确认操作")
                     }
                     pendingConfirm = "none"
@@ -110,23 +112,37 @@ class WallpaperForegroundService : Service() {
                 }
             }
             ACTION_CANCEL_PENDING -> {
+                val wasDestiny = pendingConfirm == "destiny_force"
                 pendingConfirm = "none"
-                lastStatusText = "已取消"
                 scope.launch {
-                    lastStatusText = resolveNotificationText(null)
-                    refreshNotification(lastStatusText)
+                    if (wasDestiny) {
+                        handleDestinyForceSwitch(force = false)
+                    } else {
+                        lastStatusText = "已取消"
+                        lastStatusText = resolveNotificationText(null)
+                        refreshNotification(lastStatusText)
+                    }
+                    ensureForegroundAndLoop()
                 }
-                ensureForegroundAndLoop()
             }
             ACTION_CYCLE_PURITY_MODE -> {
-                val next = ProcessBridgePrefs.cyclePurityMode(this)
-                lastStatusText = when (next) {
-                    ProcessBridgePrefs.MODE_HEALTH -> "已切换：健康模式（模糊级）"
-                    ProcessBridgePrefs.MODE_HEARTBEAT -> "已切换：心跳模式（模糊级+限制级）"
-                    else -> "已切换：普通模式（遵循配置纯度）"
+                // 命运先机命中时：不直接切换，二次确认是否强制（用桥接文件跨进程判定）
+                val active = runCatching { DestinyHelper.resolveActive(this) }.getOrNull()
+                if (active != null) {
+                    pendingConfirm = "destiny_force"
+                    lastStatusText = "命运劫持已生效是否强制恢复？"
+                    ensureForegroundOnly()
+                    refreshNotification(lastStatusText)
+                } else {
+                    val next = ProcessBridgePrefs.cyclePurityMode(this)
+                    lastStatusText = when (next) {
+                        ProcessBridgePrefs.MODE_HEALTH -> "已切换：健康模式（模糊级）"
+                        ProcessBridgePrefs.MODE_HEARTBEAT -> "已切换：心跳模式（模糊级+限制级）"
+                        else -> "已切换：普通模式（遵循配置纯度）"
+                    }
+                    refreshNotification(lastStatusText)
+                    ensureForegroundAndLoop()
                 }
-                refreshNotification(lastStatusText)
-                ensureForegroundAndLoop()
             }
             else -> ensureForegroundAndLoop()
         }
@@ -266,9 +282,15 @@ class WallpaperForegroundService : Service() {
         while (scope.isActive) {
             try {
                 tick++
-                // 约每 30s～2 分钟刷新动态通知状态（休眠原因 / 运行中）
-                lastStatusText = resolveNotificationText(null)
-                refreshNotification(lastStatusText)
+                // 命运先机：时段结束衰减生效次数
+                runCatching { tickDestinyPeriodDecay() }
+                // 约每 30s～2 分钟刷新动态通知状态；二次确认中勿覆盖文案/按钮
+                if (pendingConfirm == "none") {
+                    lastStatusText = resolveNotificationText(null)
+                    refreshNotification(lastStatusText)
+                } else {
+                    refreshNotification(lastStatusText)
+                }
                 // 预下载失败 5 分钟重试（与更换周期解耦）
                 if (tick % 2 == 0 && changer != null) {
                     runCatching { changer.tickPrefetchMaintenance() }
@@ -369,7 +391,83 @@ class WallpaperForegroundService : Service() {
         }
     }
 
-    private suspend fun handleAddAvoidHere() {
+    
+
+    /** 计划时段由内→外时：remainingUses 衰减；到 0 删除配置 */
+    private suspend fun tickDestinyPeriodDecay() {
+        val repo = runCatching { SettingsRepository(applicationContext) }.getOrNull() ?: return
+        val s = runCatching { repo.settingsFlow.first() }.getOrNull() ?: return
+        if (!s.destinyEnabled) return
+        val rules = DestinyHelper.parseRules(s.destinyRulesJson)
+        if (rules.isEmpty()) return
+        val prev = ProcessBridgePrefs.readDestinyInWindow(this)
+        val (nextRules, nextIn) = DestinyHelper.applyPeriodEndDecay(rules, prev)
+        ProcessBridgePrefs.writeDestinyInWindow(this, nextIn)
+        if (nextRules.size != rules.size || nextRules.zip(rules).any { it.first != it.second }) {
+            val json = DestinyHelper.toJson(nextRules)
+            repo.save(s.copy(destinyRulesJson = json))
+            ProcessBridgePrefs.writeDestiny(this, s.destinyEnabled, json)
+            RunLog.i(this, "destiny period decay rules ${rules.size}->${nextRules.size}")
+        }
+    }
+
+    /**
+     * 命运先机二次确认：
+     * force=true  → 本时段压制 + 置信度-1，恢复通知栏原运行模式（不循环切换）
+     * force=false → 继续劫持 + 置信度+1
+     */
+    private suspend fun handleDestinyForceSwitch(force: Boolean) {
+        val repo = runCatching { SettingsRepository(applicationContext) }.getOrNull() ?: run {
+            refreshNotification("无法读取配置")
+            return
+        }
+        val s = runCatching { repo.settingsFlow.first() }.getOrNull() ?: run {
+            refreshNotification("无法读取配置")
+            return
+        }
+        val active = DestinyHelper.resolveActive(this)
+            ?: DestinyHelper.resolveActive(s)
+        if (active == null) {
+            // 已过期或未命中：无需恢复
+            lastStatusText = resolveNotificationText(null)
+            refreshNotification(lastStatusText)
+            return
+        }
+        val rules = DestinyHelper.parseRules(s.destinyRulesJson).toMutableList()
+        val i = rules.indexOfFirst { it.id == active.id }
+        if (i < 0) {
+            refreshNotification("规则不存在")
+            return
+        }
+        if (force) {
+            rules[i] = DestinyHelper.forceSkipCurrentWindow(rules[i])
+            val json = DestinyHelper.toJson(rules)
+            repo.save(s.copy(destinyRulesJson = json))
+            ProcessBridgePrefs.writeDestiny(this, s.destinyEnabled, json)
+            // 不 cycle：保留用户当前通知运行模式，仅解除本时段命运劫持
+            val cur = ProcessBridgePrefs.purityMode(this)
+            val modeTxt = when (cur) {
+                ProcessBridgePrefs.MODE_HEALTH -> "健康模式（模糊级）"
+                ProcessBridgePrefs.MODE_HEARTBEAT -> "心跳模式（模糊级+限制级）"
+                else -> "普通模式（遵循配置纯度）"
+            }
+            lastStatusText =
+                "已强制恢复：$modeTxt · ${active.name} 本时段跳过（置信度 ${rules[i].confidence}）"
+            refreshNotification(lastStatusText)
+            RunLog.i(this, "destiny force-restore id=${active.id} conf=${rules[i].confidence} until=${rules[i].suppressedUntilEpoch}")
+        } else {
+            rules[i] = DestinyHelper.reinforceConfidence(rules[i])
+            val json = DestinyHelper.toJson(rules)
+            repo.save(s.copy(destinyRulesJson = json))
+            ProcessBridgePrefs.writeDestiny(this, s.destinyEnabled, json)
+            lastStatusText =
+                "继续命运劫持：${active.name}（置信度 ${rules[i].confidence}）"
+            refreshNotification(lastStatusText)
+            RunLog.i(this, "destiny reinforce id=${active.id} conf=${rules[i].confidence}")
+        }
+    }
+
+private suspend fun handleAddAvoidHere() {
         try {
             if (!LocationHelper.hasLocationPermission(this)) {
                 refreshNotification("定位休眠操作失败：无定位权限")
@@ -620,14 +718,27 @@ class WallpaperForegroundService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val mode = ProcessBridgePrefs.purityMode(this)
-        val modeTitle = ProcessBridgePrefs.purityModeTitle(mode)
         val accessLabel = currentAccessLabel()
+        val activeDestiny = runCatching { DestinyHelper.resolveActive(this) }.getOrNull()
+        val modeTitle = if (activeDestiny != null) {
+            val shortName = DestinyHelper.shortName(activeDestiny.name)
+            "MiroFlweat·命运模式($shortName)·$accessLabel"
+        } else {
+            ProcessBridgePrefs.purityModeTitle(mode)
+        }
         val title = when {
-            contentText.startsWith("定位休眠") -> "$modeTitle · 定位休眠"
-            contentText.startsWith("应用休眠") -> "$modeTitle · 应用休眠"
-            contentText.startsWith("省电休眠") -> "$modeTitle · 省电休眠"
+            activeDestiny != null && contentText.startsWith("定位休眠") ->
+                "MiroFlweat·命运模式(${DestinyHelper.shortName(activeDestiny.name)}) · 定位休眠"
+            activeDestiny != null && contentText.startsWith("应用休眠") ->
+                "MiroFlweat·命运模式(${DestinyHelper.shortName(activeDestiny.name)}) · 应用休眠"
+            activeDestiny != null && contentText.startsWith("省电休眠") ->
+                "MiroFlweat·命运模式(${DestinyHelper.shortName(activeDestiny.name)}) · 省电休眠"
+            contentText.startsWith("定位休眠") -> "${ProcessBridgePrefs.purityModeTitle(mode)} · 定位休眠"
+            contentText.startsWith("应用休眠") -> "${ProcessBridgePrefs.purityModeTitle(mode)} · 应用休眠"
+            contentText.startsWith("省电休眠") -> "${ProcessBridgePrefs.purityModeTitle(mode)} · 省电休眠"
+            contentText.startsWith("命运劫持") -> modeTitle
             contentText.startsWith("确认") -> modeTitle
-            else -> "$modeTitle · $accessLabel"
+            else -> if (activeDestiny != null) modeTitle else "${ProcessBridgePrefs.purityModeTitle(mode)} · $accessLabel"
         }
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title)
@@ -643,7 +754,7 @@ class WallpaperForegroundService : Service() {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
         // 二次确认态：只显示确认/取消
-        if (pendingConfirm == "avoid" || pendingConfirm == "blacklist") {
+        if (pendingConfirm == "avoid" || pendingConfirm == "blacklist" || pendingConfirm == "destiny_force") {
             val confirm = PendingIntent.getService(
                 this, 11,
                 Intent(this, WallpaperForegroundService::class.java).setAction(ACTION_CONFIRM_PENDING),
@@ -654,8 +765,13 @@ class WallpaperForegroundService : Service() {
                 Intent(this, WallpaperForegroundService::class.java).setAction(ACTION_CANCEL_PENDING),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
-            builder.addAction(0, "确认", confirm)
-            builder.addAction(0, "取消", cancel)
+            if (pendingConfirm == "destiny_force") {
+                builder.addAction(0, "是（强制恢复）", confirm)
+                builder.addAction(0, "否（继续劫持）", cancel)
+            } else {
+                builder.addAction(0, "确认", confirm)
+                builder.addAction(0, "取消", cancel)
+            }
             return builder.build()
         }
 
@@ -664,14 +780,16 @@ class WallpaperForegroundService : Service() {
             Intent(this, WallpaperForegroundService::class.java).setAction(ACTION_CYCLE_PURITY_MODE),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val modeBtn = ProcessBridgePrefs.purityModeNextButtonLabel(mode)
+        // 命运命中：按钮改为「模式恢复」；否则为 普通/健康/心跳 循环下一模式
+        val destinyActive = runCatching { DestinyHelper.resolveActive(this) }.getOrNull() != null
+        val modeBtn = if (destinyActive) "模式恢复" else ProcessBridgePrefs.purityModeNextButtonLabel(mode)
 
         if (sleeping) {
-            // 休眠中：立即更换 + 模式切换（已移除「停止」）
+            // 休眠中：立即更换 + 模式切换/恢复
             builder.addAction(0, "立即更换", changeNow)
             builder.addAction(0, modeBtn, cycleMode)
         } else {
-            // 正常：避让/黑名单需二次确认；模式循环按钮
+            // 正常：避让/黑名单需二次确认；模式循环或恢复按钮
             builder.addAction(0, "定位避让", addAvoid)
             builder.addAction(0, "应用黑名单", addBlack)
             builder.addAction(0, modeBtn, cycleMode)
