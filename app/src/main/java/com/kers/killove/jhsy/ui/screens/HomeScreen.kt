@@ -582,30 +582,27 @@ fun HomeScreen(vm: MainViewModel, onOpenHelp: (() -> Unit)? = null) {
             val illuNone = remember(settings.lastChangeAt, settings.illusionModeEnabled) {
                 com.kers.killove.jhsy.util.IllusionStore.lastRoundNone(context)
             }
-            OverviewCard(cardAlpha) {
+            GlassCard {
                 Column(
                     Modifier
+                        .padding(16.dp)
                         .fillMaxWidth()
-                        .clickable { illuExpanded = !illuExpanded }
+                        .clickable(enabled = illuList.isNotEmpty()) { illuExpanded = !illuExpanded },
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text("虚妄关键词", style = MaterialTheme.typography.titleMedium, color = textColor)
                     Text(
                         when {
                             !illuHas -> "虚妄模式：开启 · 尚无本轮记录"
-                            illuNone -> "虚妄模式：开启 · 本轮无人入虚妄"
+                            illuNone || illuList.isEmpty() -> "虚妄模式：开启 · 本轮无人入虚妄"
                             else -> "虚妄模式：开启 · 本轮虚妄 ${illuList.size} 个" +
                                 if (illuExpanded) " · 点击收起" else " · 点击展开"
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = textColor.copy(alpha = 0.85f)
                     )
-                    if (illuExpanded && illuList.isNotEmpty()) {
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            illuList.joinToString("、"),
-                            color = textColor,
-                            style = MaterialTheme.typography.bodySmall
-                        )
+                    if (illuList.isNotEmpty() && illuExpanded) {
+                        Text(illuList.joinToString("、"), color = textColor)
                     }
                     Text(
                         "身前虚妄，身后亦是虚妄",
