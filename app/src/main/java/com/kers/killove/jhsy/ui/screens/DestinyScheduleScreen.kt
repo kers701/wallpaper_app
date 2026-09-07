@@ -3,6 +3,7 @@ package com.kers.killove.jhsy.ui.screens
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -214,6 +215,14 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
                     Modifier.verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    OutlinedTextField(
+                        value = nameInput,
+                        onValueChange = { nameInput = it },
+                        label = { Text("配置名称") },
+                        placeholder = { Text("可自定义名称") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                     Text("开始时间（24 小时）")
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(
@@ -248,10 +257,14 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
                             singleLine = true
                         )
                     }
-                    Text("生效星期")
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        (1..7).forEach { d ->
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("生效星期（周一～周日）")
+                    // 两行排布，避免窄屏挤掉「日」
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        listOf(1, 2, 3, 4).forEach { d ->
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.weight(1f)
+                            ) {
                                 Text(DestinyHelper.weekdayLabel(d), style = MaterialTheme.typography.bodySmall)
                                 Checkbox(
                                     checked = d in days,
@@ -262,7 +275,25 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
                             }
                         }
                     }
-                    Text("先进模式")
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        listOf(5, 6, 7).forEach { d ->
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(DestinyHelper.weekdayLabel(d), style = MaterialTheme.typography.bodySmall)
+                                Checkbox(
+                                    checked = d in days,
+                                    onCheckedChange = {
+                                        days = if (it) days + d else days - d
+                                    }
+                                )
+                            }
+                        }
+                        // 占位对齐，使五六日与上行等宽感
+                        Spacer(Modifier.weight(1f))
+                    }
+                    Text("先机模式")
                     var modeExpanded by remember { mutableStateOf(false) }
                     ExposedDropdownMenuBox(expanded = modeExpanded, onExpandedChange = { modeExpanded = it }) {
                         OutlinedTextField(
@@ -303,19 +334,23 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
                         status = "请至少选择一个星期"
                         return@TextButton
                     }
-                    pendingSave = buildRuleFromEditor(nameInput)
-                    if (editing == null) {
-                        nameInput = ""
-                        showNameDialog = true
-                    } else {
-                        val r = pendingSave!!
-                        rules = rules.toMutableList().also { list ->
+                    val finalName = nameInput.trim().ifBlank {
+                        "命运 ${fmt.format(Date(System.currentTimeMillis()))}"
+                    }
+                    nameInput = finalName
+                    val r = buildRuleFromEditor(finalName)
+                    rules = rules.toMutableList().also { list ->
+                        if (editing == null) {
+                            list.add(r)
+                        } else {
                             val i = list.indexOfFirst { it.id == r.id }
                             if (i >= 0) list[i] = r else list.add(r)
                         }
-                        showEditor = false
-                        pendingSave = null
                     }
+                    showEditor = false
+                    showNameDialog = false
+                    pendingSave = null
+                    status = if (editing == null) "已添加：$finalName" else "已更新：$finalName"
                 }) { Text("保存配置") }
             },
             dismissButton = {
