@@ -23,6 +23,7 @@ import com.kers.killove.jhsy.data.wallpaper.SystemWallpaperSetter
 import com.kers.killove.jhsy.domain.TriggerType
 import com.kers.killove.jhsy.domain.WallpaperChanger
 import com.kers.killove.jhsy.util.ProcessBridgePrefs
+import com.kers.killove.jhsy.util.DestinyHelper
 import com.kers.killove.jhsy.util.DataSaverBudget
 import com.kers.killove.jhsy.util.RunLog
 import com.kers.killove.jhsy.util.LocationHelper
@@ -49,7 +50,7 @@ class WallpaperForegroundService : Service() {
     private var loopJob: Job? = null
     private var wakeLock: PowerManager.WakeLock? = null
     @Volatile private var lastStatusText: String = "运行中 · 自动更换已开启"
-    /** none | avoid | blacklist — 通知二次确认 */
+    /** none | avoid | blacklist | destiny_force — 通知二次确认 */
     @Volatile private var pendingConfirm: String = "none"
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -103,6 +104,7 @@ class WallpaperForegroundService : Service() {
                     when (pendingConfirm) {
                         "avoid" -> handleAddAvoidHere()
                         "blacklist" -> handleAddFgBlacklist()
+                        "destiny_force" -> handleDestinyForceSwitch(force = true)
                         else -> refreshNotification("无待确认操作")
                     }
                     pendingConfirm = "none"
@@ -110,23 +112,40 @@ class WallpaperForegroundService : Service() {
                 }
             }
             ACTION_CANCEL_PENDING -> {
+                val wasDestiny = pendingConfirm == "destiny_force"
                 pendingConfirm = "none"
-                lastStatusText = "已取消"
                 scope.launch {
-                    lastStatusText = resolveNotificationText(null)
-                    refreshNotification(lastStatusText)
+                    if (wasDestiny) {
+                        handleDestinyForceSwitch(force = false)
+                    } else {
+                        lastStatusText = "已取消"
+                        lastStatusText = resolveNotificationText(null)
+                        refreshNotification(lastStatusText)
+                    }
+                    ensureForegroundAndLoop()
                 }
-                ensureForegroundAndLoop()
             }
             ACTION_CYCLE_PURITY_MODE -> {
-                val next = ProcessBridgePrefs.cyclePurityMode(this)
-                lastStatusText = when (next) {
-                    ProcessBridgePrefs.MODE_HEALTH -> "已切换：健康模式（模糊级）"
-                    ProcessBridgePrefs.MODE_HEARTBEAT -> "已切换：心跳模式（模糊级+限制级）"
-                    else -> "已切换：普通模式（遵循配置纯度）"
+                // 命运先机命中时：不直接切换，二次确认是否强制
+                scope.launch {
+                    val repo = runCatching { SettingsRepository(applicationContext) }.getOrNull()
+                    val s = repo?.let { runCatching { it.settingsFlow.first() }.getOrNull() }
+                    val active = s?.let { DestinyHelper.resolveActive(it) }
+                    if (active != null) {
+                        pendingConfirm = "destiny_force"
+                        lastStatusText = "命运劫持已生效（${active.name}）是否强制切换？"
+                        refreshNotification(lastStatusText)
+                    } else {
+                        val next = ProcessBridgePrefs.cyclePurityMode(this@WallpaperForegroundService)
+                        lastStatusText = when (next) {
+                            ProcessBridgePrefs.MODE_HEALTH -> "已切换：健康模式（模糊级）"
+                            ProcessBridgePrefs.MODE_HEARTBEAT -> "已切换：心跳模式（模糊级+限制级）"
+                            else -> "已切换：普通模式（遵循配置纯度）"
+                        }
+                        refreshNotification(lastStatusText)
+                    }
+                    ensureForegroundAndLoop()
                 }
-                refreshNotification(lastStatusText)
-                ensureForegroundAndLoop()
             }
             else -> ensureForegroundAndLoop()
         }
@@ -369,7 +388,68 @@ class WallpaperForegroundService : Service() {
         }
     }
 
-    private suspend fun handleAddAvoidHere() {
+    
+    /**
+     * 命运先机二次确认：
+     * force=true  → 本时段压制 + 置信度-1 + 真正切换通知模式
+     * force=false → 继续劫持 + 置信度+1
+     */
+    private suspend fun handleDestinyForceSwitch(force: Boolean) {
+        val repo = runCatching { SettingsRepository(applicationContext) }.getOrNull() ?: run {
+            refreshNotification("无法读取配置")
+            return
+        }
+        val s = runCatching { repo.settingsFlow.first() }.getOrNull() ?: run {
+            refreshNotification("无法读取配置")
+            return
+        }
+        val active = DestinyHelper.resolveActive(s)
+        if (active == null) {
+            // 已过期或未命中：直接切模式
+            if (force) {
+                val next = ProcessBridgePrefs.cyclePurityMode(this)
+                lastStatusText = when (next) {
+                    ProcessBridgePrefs.MODE_HEALTH -> "已切换：健康模式（模糊级）"
+                    ProcessBridgePrefs.MODE_HEARTBEAT -> "已切换：心跳模式（模糊级+限制级）"
+                    else -> "已切换：普通模式（遵循配置纯度）"
+                }
+                refreshNotification(lastStatusText)
+            } else {
+                lastStatusText = resolveNotificationText(null)
+                refreshNotification(lastStatusText)
+            }
+            return
+        }
+        val rules = DestinyHelper.parseRules(s.destinyRulesJson).toMutableList()
+        val i = rules.indexOfFirst { it.id == active.id }
+        if (i < 0) {
+            refreshNotification("规则不存在")
+            return
+        }
+        if (force) {
+            rules[i] = DestinyHelper.forceSkipCurrentWindow(rules[i])
+            repo.save(s.copy(destinyRulesJson = DestinyHelper.toJson(rules)))
+            val next = ProcessBridgePrefs.cyclePurityMode(this)
+            val modeTxt = when (next) {
+                ProcessBridgePrefs.MODE_HEALTH -> "健康模式（模糊级）"
+                ProcessBridgePrefs.MODE_HEARTBEAT -> "心跳模式（模糊级+限制级）"
+                else -> "普通模式（遵循配置纯度）"
+            }
+            lastStatusText =
+                "已强制切换：$modeTxt · ${active.name} 本时段跳过（置信度 ${rules[i].confidence}）"
+            refreshNotification(lastStatusText)
+            RunLog.i(this, "destiny force-skip id=${active.id} conf=${rules[i].confidence} until=${rules[i].suppressedUntilEpoch}")
+        } else {
+            rules[i] = DestinyHelper.reinforceConfidence(rules[i])
+            repo.save(s.copy(destinyRulesJson = DestinyHelper.toJson(rules)))
+            lastStatusText =
+                "继续命运劫持：${active.name}（置信度 ${rules[i].confidence}）"
+            refreshNotification(lastStatusText)
+            RunLog.i(this, "destiny reinforce id=${active.id} conf=${rules[i].confidence}")
+        }
+    }
+
+private suspend fun handleAddAvoidHere() {
         try {
             if (!LocationHelper.hasLocationPermission(this)) {
                 refreshNotification("定位休眠操作失败：无定位权限")
@@ -643,7 +723,7 @@ class WallpaperForegroundService : Service() {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
         // 二次确认态：只显示确认/取消
-        if (pendingConfirm == "avoid" || pendingConfirm == "blacklist") {
+        if (pendingConfirm == "avoid" || pendingConfirm == "blacklist" || pendingConfirm == "destiny_force") {
             val confirm = PendingIntent.getService(
                 this, 11,
                 Intent(this, WallpaperForegroundService::class.java).setAction(ACTION_CONFIRM_PENDING),
@@ -654,8 +734,13 @@ class WallpaperForegroundService : Service() {
                 Intent(this, WallpaperForegroundService::class.java).setAction(ACTION_CANCEL_PENDING),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
-            builder.addAction(0, "确认", confirm)
-            builder.addAction(0, "取消", cancel)
+            if (pendingConfirm == "destiny_force") {
+                builder.addAction(0, "是（强制切换）", confirm)
+                builder.addAction(0, "否（继续劫持）", cancel)
+            } else {
+                builder.addAction(0, "确认", confirm)
+                builder.addAction(0, "取消", cancel)
+            }
             return builder.build()
         }
 

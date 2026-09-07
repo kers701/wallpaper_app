@@ -228,6 +228,54 @@ data class ProxyNode(
     val latencyMs: Long = -1L
 )
 
+
+/** 命运先机：时段内劫持纯度策略 */
+enum class DestinyMode(val code: String, val label: String) {
+    Health("health", "健康模式"),
+    Heartbeat("heartbeat", "心跳模式"),
+    User("user", "用户配置"),
+    Custom("custom", "自定义劫持");
+
+    companion object {
+        fun fromCode(code: String): DestinyMode =
+            entries.find { it.code == code } ?: User
+    }
+}
+
+/**
+ * 一条命运先机规则。
+ * @param weekdays 1=周一 … 7=周日
+ * @param startMinutes / endMinutes 从 0:00 起的分钟数 0～1439；若 end < start 视为跨午夜
+ * @param priority 0～999，数字越小优先
+ * @param confidence 置信度；同优先级时数字越大越优先；强制切换减 1，拒绝强制加 1
+ * @param suppressedUntilEpoch 本时段强制跳过截止时间（毫秒）；0 表示未压制
+ * 冲突判定：先优先级 → 再置信度 → 再修改/创建时间
+ */
+data class DestinyRule(
+    val id: String,
+    val name: String,
+    val enabled: Boolean = true,
+    val priority: Int = 100,
+    val confidence: Int = 0,
+    val startMinutes: Int = 0,
+    val endMinutes: Int = 60,
+    val weekdays: List<Int> = listOf(1, 2, 3, 4, 5, 6, 7),
+    val mode: DestinyMode = DestinyMode.User,
+    val customPurityCode: String = "110",
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis(),
+    /** 强制切换后：当前命中时段结束前不再生效 */
+    val suppressedUntilEpoch: Long = 0L
+) {
+    fun customPurity(): Purity = Purity.fromCode(customPurityCode)
+
+    fun startLabel(): String = "%02d:%02d".format(startMinutes / 60, startMinutes % 60)
+    fun endLabel(): String = "%02d:%02d".format(endMinutes / 60, endMinutes % 60)
+
+    fun isSuppressed(now: Long = System.currentTimeMillis()): Boolean =
+        suppressedUntilEpoch > 0L && now < suppressedUntilEpoch
+}
+
 data class AppSettings(
     val enabled: Boolean = false,
     val intervalMinutes: Int = 10,
@@ -373,7 +421,7 @@ data class AppSettings(
     val locationAvoidRadiusMeters: Int = 10,
     val amapApiKey: String = "",
     val avoidanceLocationsJson: String = "[]",
-    /** 绿色模式：进入避让区时纯度在 R13 与「仅 Sketchy」间随机 */
+    /** 绿色模式：进入避让区时锁定保守级+模糊级 (110) */
     val locationFallbackEnabled: Boolean = true,
     /** 定位极限回退：进入避让区仅用本地文件换壁纸 */
     val locationExtremeFallbackEnabled: Boolean = false,
@@ -383,7 +431,12 @@ data class AppSettings(
     val locationInAvoidZone: Boolean = false,
 
     /** 省流量：按当日缓存增量抬高间隔，≥20GB 今日停换 */
-    val dataSaverEnabled: Boolean = false
+    val dataSaverEnabled: Boolean = false,
+
+    /** 命运先机总开关 */
+    val destinyEnabled: Boolean = false,
+    /** 命运先机规则 JSON 数组 */
+    val destinyRulesJson: String = "[]"
 ) {
     fun nextApiKey(): String? {
         val keys = apiKeys.map { it.trim() }.filter { it.isNotEmpty() }
