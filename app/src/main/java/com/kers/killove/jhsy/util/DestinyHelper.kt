@@ -38,7 +38,10 @@ object DestinyHelper {
                             createdAt = o.optLong("createdAt", System.currentTimeMillis()),
                             updatedAt = o.optLong("updatedAt", System.currentTimeMillis()),
                             suppressedUntilEpoch = o.optLong("suppressedUntilEpoch", 0L),
-                            remainingUses = o.optInt("remainingUses", -1)
+                            remainingUses = o.optInt("remainingUses", -1),
+                            dateRangeEnabled = o.optBoolean("dateRangeEnabled", false),
+                            startYmd = o.optInt("startYmd", 0),
+                            endYmd = o.optInt("endYmd", 0)
                         )
                     )
                 }
@@ -66,6 +69,9 @@ object DestinyHelper {
             o.put("updatedAt", r.updatedAt)
             o.put("suppressedUntilEpoch", r.suppressedUntilEpoch)
             o.put("remainingUses", r.remainingUses)
+            o.put("dateRangeEnabled", r.dateRangeEnabled)
+            o.put("startYmd", r.startYmd)
+            o.put("endYmd", r.endYmd)
             arr.put(o)
         }
         return arr.toString()
@@ -87,7 +93,30 @@ object DestinyHelper {
     fun minutesOfDay(cal: Calendar = Calendar.getInstance()): Int =
         cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
 
+    /** 今日 YYYYMMDD */
+    fun todayYmd(cal: Calendar = Calendar.getInstance()): Int {
+        val y = cal.get(Calendar.YEAR)
+        val m = cal.get(Calendar.MONTH) + 1
+        val d = cal.get(Calendar.DAY_OF_MONTH)
+        return y * 10000 + m * 100 + d
+    }
+
+    fun inDateRange(rule: DestinyRule, cal: Calendar = Calendar.getInstance()): Boolean {
+        if (!rule.dateRangeEnabled) return true
+        var a = rule.startYmd
+        var b = rule.endYmd
+        if (a <= 0 && b <= 0) return true
+        if (a > 0 && b > 0 && a > b) {
+            val t = a; a = b; b = t
+        }
+        val today = todayYmd(cal)
+        if (a > 0 && today < a) return false
+        if (b > 0 && today > b) return false
+        return true
+    }
+
     fun inScheduledWindow(rule: DestinyRule, cal: Calendar = Calendar.getInstance()): Boolean {
+        if (!inDateRange(rule, cal)) return false
         if (isoWeekday(cal) !in rule.weekdays) return false
         val now = minutesOfDay(cal)
         val s = rule.startMinutes.coerceIn(0, 1439)

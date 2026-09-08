@@ -250,6 +250,8 @@ enum class DestinyMode(val code: String, val label: String) {
  * @param confidence 置信度；同优先级时数字越大越优先；强制切换减 1，拒绝强制加 1
  * @param suppressedUntilEpoch 本时段强制跳过截止时间（毫秒）；0 表示未压制
  * @param remainingUses 生效次数；-1=无限（不衰减）；>0 每完成一个时段周期减 1，到 0 自动删除
+ * @param dateRangeEnabled 是否启用年月日范围；关闭则仅按星期+时分
+ * @param startYmd / endYmd 闭区间日期，格式 YYYYMMDD（如 20260909）；仅 dateRangeEnabled 时参与匹配
  * 冲突判定：先优先级 → 再置信度 → 再修改/创建时间
  */
 data class DestinyRule(
@@ -268,7 +270,11 @@ data class DestinyRule(
     /** 强制切换后：当前命中时段结束前不再生效 */
     val suppressedUntilEpoch: Long = 0L,
     /** -1 无限；正整数为剩余生效周期数 */
-    val remainingUses: Int = -1
+    val remainingUses: Int = -1,
+    val dateRangeEnabled: Boolean = false,
+    /** YYYYMMDD，如 20260909 */
+    val startYmd: Int = 0,
+    val endYmd: Int = 0
 ) {
     fun customPurity(): Purity = Purity.fromCode(customPurityCode)
 
@@ -277,6 +283,17 @@ data class DestinyRule(
 
     fun isSuppressed(now: Long = System.currentTimeMillis()): Boolean =
         suppressedUntilEpoch > 0L && now < suppressedUntilEpoch
+
+    fun ymdLabel(ymd: Int): String {
+        if (ymd < 10000101) return "—"
+        val y = ymd / 10000
+        val m = (ymd / 100) % 100
+        val d = ymd % 100
+        return "%d年%d月%d日".format(y, m, d)
+    }
+
+    fun dateRangeLabel(): String =
+        if (!dateRangeEnabled) "" else "${ymdLabel(startYmd)}～${ymdLabel(endYmd)}"
 }
 
 data class AppSettings(
