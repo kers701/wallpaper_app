@@ -397,17 +397,22 @@ class WallpaperForegroundService : Service() {
     private suspend fun tickDestinyPeriodDecay() {
         val repo = runCatching { SettingsRepository(applicationContext) }.getOrNull() ?: return
         val s = runCatching { repo.settingsFlow.first() }.getOrNull() ?: return
-        if (!s.destinyEnabled) return
+        // 即使总开关关闭，也清理已过期的年月日规则，避免堆积
         val rules = DestinyHelper.parseRules(s.destinyRulesJson)
         if (rules.isEmpty()) return
+        val afterExpiry = DestinyHelper.removeExpiredDateRangeRules(rules)
         val prev = ProcessBridgePrefs.readDestinyInWindow(this)
-        val (nextRules, nextIn) = DestinyHelper.applyPeriodEndDecay(rules, prev)
+        val (nextRules, nextIn) = if (s.destinyEnabled) {
+            DestinyHelper.applyPeriodEndDecay(afterExpiry, prev)
+        } else {
+            afterExpiry to prev.filterKeys { id -> afterExpiry.any { it.id == id } }
+        }
         ProcessBridgePrefs.writeDestinyInWindow(this, nextIn)
         if (nextRules.size != rules.size || nextRules.zip(rules).any { it.first != it.second }) {
             val json = DestinyHelper.toJson(nextRules)
             repo.save(s.copy(destinyRulesJson = json))
             ProcessBridgePrefs.writeDestiny(this, s.destinyEnabled, json)
-            RunLog.i(this, "destiny period decay rules ${rules.size}->${nextRules.size}")
+            RunLog.i(this, "destiny cleanup/decay rules ${rules.size}->${nextRules.size}")
         }
     }
 

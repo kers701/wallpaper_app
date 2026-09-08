@@ -64,6 +64,17 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
     var pendingDeleteIndex by remember { mutableStateOf<Int?>(null) }
     var pendingDeleteName by remember { mutableStateOf("") }
 
+    // 进入页面时清理已过期的年月日配置
+    androidx.compose.runtime.LaunchedEffect(settings.destinyRulesJson) {
+        val parsed = DestinyHelper.parseRules(settings.destinyRulesJson)
+        val cleaned = DestinyHelper.removeExpiredDateRangeRules(parsed)
+        if (cleaned.size != parsed.size) {
+            rules = cleaned.toMutableList()
+            vm.saveDestinyRules(cleaned)
+            status = "已自动删除过期的年月日配置"
+        }
+    }
+
     // editor state
     var startH by remember { mutableIntStateOf(2) }
     var startM by remember { mutableIntStateOf(15) }
@@ -124,6 +135,17 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
             endYear = startYear; endMonth = startMonth; endDay = startDay
         }
         showEditor = true
+    }
+
+    fun editorEndYmd(): Int {
+        val a = startYear.coerceIn(1970, 9999) * 10000 + startMonth.coerceIn(1, 12) * 100 + startDay.coerceIn(1, 31)
+        val b = endYear.coerceIn(1970, 9999) * 10000 + endMonth.coerceIn(1, 12) * 100 + endDay.coerceIn(1, 31)
+        return maxOf(a, b)
+    }
+
+    fun editorDateRangeInvalid(): Boolean {
+        if (!dateRangeOn) return false
+        return editorEndYmd() < DestinyHelper.todayYmd()
     }
 
     fun buildRuleFromEditor(name: String): DestinyRule {
@@ -515,6 +537,10 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
                         status = "请至少选择一个星期"
                         return@TextButton
                     }
+                    if (editorDateRangeInvalid()) {
+                        status = "结束日期不能早于今天，无法保存"
+                        return@TextButton
+                    }
                     val finalName = nameInput.trim().ifBlank {
                         "命运 ${fmt.format(Date(System.currentTimeMillis()))}"
                     }
@@ -555,6 +581,10 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
             },
             confirmButton = {
                 TextButton(onClick = {
+                    if (editorDateRangeInvalid()) {
+                        status = "结束日期不能早于今天，无法保存"
+                        return@TextButton
+                    }
                     val r = pendingSave!!.copy(
                         name = nameInput.ifBlank { pendingSave!!.name },
                         updatedAt = System.currentTimeMillis()

@@ -107,13 +107,34 @@ object DestinyHelper {
         var b = rule.endYmd
         if (a <= 0 && b <= 0) return true
         if (a > 0 && b > 0 && a > b) {
-            val t = a; a = b; b = t
+            val tmp = a; a = b; b = tmp
         }
         val today = todayYmd(cal)
         if (a > 0 && today < a) return false
         if (b > 0 && today > b) return false
         return true
     }
+
+    /** 开启年月日且今天已晚于结束日（闭区间外）→ 应删除，与生效次数无关 */
+    fun isDateRangeExpired(rule: DestinyRule, cal: Calendar = Calendar.getInstance()): Boolean {
+        if (!rule.dateRangeEnabled) return false
+        var a = rule.startYmd
+        var b = rule.endYmd
+        if (a <= 0 && b <= 0) return false
+        if (a > 0 && b > 0 && a > b) {
+            val tmp = a; a = b; b = tmp
+        }
+        val end = if (b > 0) b else a
+        if (end <= 0) return false
+        return todayYmd(cal) > end
+    }
+
+    /** 剔除已过期的「启用年月日」规则（忽略 remainingUses） */
+    fun removeExpiredDateRangeRules(
+        rules: List<DestinyRule>,
+        cal: Calendar = Calendar.getInstance()
+    ): List<DestinyRule> = rules.filterNot { isDateRangeExpired(it, cal) }
+
 
     fun inScheduledWindow(rule: DestinyRule, cal: Calendar = Calendar.getInstance()): Boolean {
         if (!inDateRange(rule, cal)) return false
@@ -204,6 +225,8 @@ object DestinyHelper {
         val nextIn = linkedMapOf<String, Boolean>()
         val out = mutableListOf<DestinyRule>()
         for (r in rules) {
+            // 年月日过期直接丢弃（不走生效次数）
+            if (isDateRangeExpired(r, cal)) continue
             val nowIn = r.enabled && inScheduledWindow(r, cal)
             val wasIn = prevInWindow[r.id] == true
             nextIn[r.id] = nowIn
