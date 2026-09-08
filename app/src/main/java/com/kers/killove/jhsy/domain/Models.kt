@@ -250,8 +250,9 @@ enum class DestinyMode(val code: String, val label: String) {
  * @param confidence 置信度；同优先级时数字越大越优先；强制切换减 1，拒绝强制加 1
  * @param suppressedUntilEpoch 本时段强制跳过截止时间（毫秒）；0 表示未压制
  * @param remainingUses 生效次数；-1=无限（不衰减）；>0 每完成一个时段周期减 1，到 0 自动删除
- * @param dateRangeEnabled 是否启用年月日范围；关闭则仅按星期+时分
- * @param startYmd / endYmd 闭区间日期，格式 YYYYMMDD（如 20260909）；仅 dateRangeEnabled 时参与匹配
+ * @param dateRangeEnabled / weekdaysEnabled / timeEnabled 三维开关；匹配顺序：日期→星期→时间
+ *   全部关闭则规则无效；关闭时间视为全天；关闭星期不限星期；关闭日期不限年月日
+ * @param startYmd / endYmd 闭区间日期 YYYYMMDD；仅 dateRangeEnabled 时参与匹配
  * 冲突判定：先优先级 → 再置信度 → 再修改/创建时间
  */
 data class DestinyRule(
@@ -274,7 +275,10 @@ data class DestinyRule(
     val dateRangeEnabled: Boolean = false,
     /** YYYYMMDD，如 20260909 */
     val startYmd: Int = 0,
-    val endYmd: Int = 0
+    val endYmd: Int = 0,
+    /** 默认 true，兼容旧配置 */
+    val weekdaysEnabled: Boolean = true,
+    val timeEnabled: Boolean = true
 ) {
     fun customPurity(): Purity = Purity.fromCode(customPurityCode)
 

@@ -41,7 +41,9 @@ object DestinyHelper {
                             remainingUses = o.optInt("remainingUses", -1),
                             dateRangeEnabled = o.optBoolean("dateRangeEnabled", false),
                             startYmd = o.optInt("startYmd", 0),
-                            endYmd = o.optInt("endYmd", 0)
+                            endYmd = o.optInt("endYmd", 0),
+                            weekdaysEnabled = o.optBoolean("weekdaysEnabled", true),
+                            timeEnabled = o.optBoolean("timeEnabled", true)
                         )
                     )
                 }
@@ -72,6 +74,8 @@ object DestinyHelper {
             o.put("dateRangeEnabled", r.dateRangeEnabled)
             o.put("startYmd", r.startYmd)
             o.put("endYmd", r.endYmd)
+            o.put("weekdaysEnabled", r.weekdaysEnabled)
+            o.put("timeEnabled", r.timeEnabled)
             arr.put(o)
         }
         return arr.toString()
@@ -136,13 +140,33 @@ object DestinyHelper {
     ): List<DestinyRule> = rules.filterNot { isDateRangeExpired(it, cal) }
 
 
+    /**
+     * 匹配顺序：日期 → 星期 → 时间。
+     * 三维全关 → 无效（永不命中）。
+     * 关时间 → 全天；关星期 → 不限星期；关日期 → 不限年月日。
+     */
     fun inScheduledWindow(rule: DestinyRule, cal: Calendar = Calendar.getInstance()): Boolean {
-        if (!inDateRange(rule, cal)) return false
-        if (isoWeekday(cal) !in rule.weekdays) return false
-        val now = minutesOfDay(cal)
-        val s = rule.startMinutes.coerceIn(0, 1439)
-        val e = rule.endMinutes.coerceIn(0, 1439)
-        return if (s <= e) now in s..e else (now >= s || now <= e)
+        val useDate = rule.dateRangeEnabled
+        val useWeek = rule.weekdaysEnabled
+        val useTime = rule.timeEnabled
+        if (!useDate && !useWeek && !useTime) return false
+
+        if (useDate && !inDateRange(rule, cal)) return false
+        if (useWeek) {
+            if (rule.weekdays.isEmpty()) return false
+            if (isoWeekday(cal) !in rule.weekdays) return false
+        }
+        if (useTime) {
+            val now = minutesOfDay(cal)
+            val s = rule.startMinutes.coerceIn(0, 1439)
+            val e = rule.endMinutes.coerceIn(0, 1439)
+            if (s <= e) {
+                if (now !in s..e) return false
+            } else {
+                if (!(now >= s || now <= e)) return false
+            }
+        }
+        return true
     }
 
     fun matches(rule: DestinyRule, cal: Calendar = Calendar.getInstance()): Boolean {

@@ -88,6 +88,8 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
     var remainingUsesInput by remember { mutableStateOf("-1") }
     var priorityInput by remember { mutableStateOf("100") }
     var dateRangeOn by remember { mutableStateOf(false) }
+    var weekdaysOn by remember { mutableStateOf(true) }
+    var timeOn by remember { mutableStateOf(true) }
     var startYear by remember { mutableIntStateOf(2026) }
     var startMonth by remember { mutableIntStateOf(1) }
     var startDay by remember { mutableIntStateOf(1) }
@@ -112,6 +114,8 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
             remainingUsesInput = existing.remainingUses.toString()
             priorityInput = existing.priority.toString()
             dateRangeOn = existing.dateRangeEnabled
+            weekdaysOn = existing.weekdaysEnabled
+            timeOn = existing.timeEnabled
             val sy = if (existing.startYmd > 0) existing.startYmd else {
                 val c = java.util.Calendar.getInstance()
                 c.get(java.util.Calendar.YEAR) * 10000 + (c.get(java.util.Calendar.MONTH) + 1) * 100 + c.get(java.util.Calendar.DAY_OF_MONTH)
@@ -128,6 +132,8 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
             remainingUsesInput = "-1"
             priorityInput = "100"
             dateRangeOn = false
+            weekdaysOn = true
+            timeOn = true
             val c = java.util.Calendar.getInstance()
             startYear = c.get(java.util.Calendar.YEAR)
             startMonth = c.get(java.util.Calendar.MONTH) + 1
@@ -178,7 +184,9 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
             startYmd = startYear.coerceIn(1970, 9999) * 10000 +
                 startMonth.coerceIn(1, 12) * 100 + startDay.coerceIn(1, 31),
             endYmd = endYear.coerceIn(1970, 9999) * 10000 +
-                endMonth.coerceIn(1, 12) * 100 + endDay.coerceIn(1, 31)
+                endMonth.coerceIn(1, 12) * 100 + endDay.coerceIn(1, 31),
+            weekdaysEnabled = weekdaysOn,
+            timeEnabled = timeOn
         )
     }
 
@@ -235,16 +243,22 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
-                    Text(
-                        "${rule.startLabel()}–${rule.endLabel()} · 周${rule.weekdays.joinToString("、") { DestinyHelper.weekdayLabel(it) }} · ${rule.mode.label}" +
-                            if (rule.mode == DestinyMode.Custom) "（${rule.customPurity().label}）" else "",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    if (rule.dateRangeEnabled) {
-                        Text(
-                            "日期：${rule.dateRangeLabel()}",
-                            style = MaterialTheme.typography.bodySmall
-                        )
+                    run {
+                        val parts = mutableListOf<String>()
+                        if (rule.dateRangeEnabled) parts += "日期 ${rule.dateRangeLabel()}"
+                        if (rule.weekdaysEnabled) {
+                            parts += "周${rule.weekdays.joinToString("、") { DestinyHelper.weekdayLabel(it) }}"
+                        }
+                        if (rule.timeEnabled) {
+                            parts += "${rule.startLabel()}–${rule.endLabel()}"
+                        } else if (rule.dateRangeEnabled || rule.weekdaysEnabled) {
+                            parts += "全天"
+                        }
+                        if (!rule.dateRangeEnabled && !rule.weekdaysEnabled && !rule.timeEnabled) {
+                            parts += "无效（三维全关）"
+                        }
+                        parts += rule.mode.label + if (rule.mode == DestinyMode.Custom) "（${rule.customPurity().label}）" else ""
+                        Text(parts.joinToString(" · "), style = MaterialTheme.typography.bodySmall)
                     }
                     Text(
                         "生效次数：" + if (rule.remainingUses < 0) "无限" else "${rule.remainingUses}",
@@ -345,6 +359,15 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("启用时间范围", style = MaterialTheme.typography.bodyMedium)
+                        Switch(checked = timeOn, onCheckedChange = { timeOn = it })
+                    }
+                    if (timeOn) {
                     Text("开始时间（24 小时）")
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(
@@ -379,6 +402,16 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
                             singleLine = true
                         )
                     }
+                    } // timeOn
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("启用星期", style = MaterialTheme.typography.bodyMedium)
+                        Switch(checked = weekdaysOn, onCheckedChange = { weekdaysOn = it })
+                    }
+                    if (weekdaysOn) {
                     Text("生效星期（周一～周日）")
                     // 两行排布，避免窄屏挤掉「日」
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
@@ -415,6 +448,7 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
                         // 占位对齐，使五六日与上行等宽感
                         Spacer(Modifier.weight(1f))
                     }
+                    } // weekdaysOn
                     Text("先机模式")
                     var modeExpanded by remember { mutableStateOf(false) }
                     ExposedDropdownMenuBox(expanded = modeExpanded, onExpandedChange = { modeExpanded = it }) {
@@ -533,7 +567,11 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
             },
             confirmButton = {
                 TextButton(onClick = {
-                    if (days.isEmpty()) {
+                    if (!dateRangeOn && !weekdaysOn && !timeOn) {
+                        status = "日期、星期、时间不能全部关闭（配置无效）"
+                        return@TextButton
+                    }
+                    if (weekdaysOn && days.isEmpty()) {
                         status = "请至少选择一个星期"
                         return@TextButton
                     }
