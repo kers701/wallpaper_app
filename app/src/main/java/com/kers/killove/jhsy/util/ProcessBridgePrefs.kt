@@ -20,11 +20,12 @@ object ProcessBridgePrefs {
             .putInt("interval", s.intervalMinutes)
             .putLong("last_change", s.lastChangeAt)
         if (writeEnabled) {
-            // 若跨进程文件已存在，以文件为准，防止 :svc 全量 save 用内存旧值覆盖磁贴关断
-            val en = if (enabledFile(context).exists()) enabled(context) else s.enabled
+            val recentMs = System.currentTimeMillis() - sp(context).getLong("enabled_written_at", 0L)
+            val protect = enabledFile(context).exists() && recentMs in 0..20_000L
+            val en = if (protect) enabled(context) else s.enabled
             ed.putBoolean("enabled", en)
-            if (!enabledFile(context).exists()) {
-                writeEnabledFile(context, en)
+            if (!protect) {
+                atomicWrite(enabledFile(context), if (en) "1" else "0")
             }
         }
         ed.commit()
@@ -40,7 +41,10 @@ object ProcessBridgePrefs {
     fun writeEnabledFile(context: Context, enabled: Boolean) {
         runCatching {
             atomicWrite(enabledFile(context), if (enabled) "1" else "0")
-            sp(context).edit().putBoolean("enabled", enabled).commit()
+            sp(context).edit()
+                .putBoolean("enabled", enabled)
+                .putLong("enabled_written_at", System.currentTimeMillis())
+                .commit()
         }
     }
 
