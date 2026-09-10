@@ -19,10 +19,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
-/**
- * 状态栏快捷设置磁贴：一键开关「自动更换」。
- * 状态仅反映 settings.enabled（跨进程文件），与「超级服务」解耦。
- */
 @RequiresApi(Build.VERSION_CODES.N)
 class ServiceToggleTileService : TileService() {
 
@@ -43,6 +39,7 @@ class ServiceToggleTileService : TileService() {
         val tile = qsTile ?: return
         val currentlyOn = ProcessBridgePrefs.enabled(applicationContext)
         val targetOn = !currentlyOn
+        // 先写跨进程文件，避免 :svc 旧值回写
         ProcessBridgePrefs.writeEnabledFile(applicationContext, targetOn)
         applyTileUi(targetOn)
         scope.launch {
@@ -90,7 +87,9 @@ class ServiceToggleTileService : TileService() {
         val repo = SettingsRepository(ctx)
         val s = repo.settingsFlow.first()
         val next = s.copy(enabled = enable)
-        repo.save(next, writeEnabled = true)
+        repo.save(next)
+        // save 会 sync enabled；再写一次文件，防止竞态覆盖
+        ProcessBridgePrefs.writeEnabledFile(ctx, enable)
         if (enable) {
             WallpaperForegroundService.start(ctx)
             ChangeWallpaperWorker.enqueue(ctx, next.intervalMinutes)
