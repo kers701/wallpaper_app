@@ -656,6 +656,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val current = settings.value.copy(enabled = enabled)
             settingsRepo.save(current)
             applySchedule(current)
+            // 立即刷新概览服务状态，避免 settings Flow 滞后仍显示「运行中」
+            if (!enabled) {
+                _serviceStatus.value = ServiceStatus.Stopped
+            } else {
+                refreshServiceStatus()
+            }
             _status.value = if (enabled) "已开启自动更换" else "已停止"
             RunLog.i(getApplication(), "enabled=$enabled")
         }
@@ -922,23 +928,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val ctx = getApplication<Application>()
             val s = settings.value
-            val enabled = s.enabled || s.superServiceEnabled
+            // 概览「运行中」跟自动更换开关对齐：关闭自动更换即显示已关闭
+            // （不再用 superServiceEnabled 把状态撑成运行中）
+            if (!s.enabled) {
+                _serviceStatus.value = ServiceStatus.Stopped
+                return@launch
+            }
             // :svc 独立进程：getRunningServices 在新系统上几乎永远看不到，改查进程名
             val svcAlive = isSvcProcessAlive(ctx)
-            // 未开 FGS/超级服务时，仅靠 WorkManager 也算「调度正常」
             val expectsDedicatedProcess = s.useForegroundService || s.superServiceEnabled
             _serviceStatus.value = when {
-                !enabled -> ServiceStatus.Stopped
                 expectsDedicatedProcess && svcAlive -> ServiceStatus.Running
-                expectsDedicatedProcess && !svcAlive -> {
-                    // 尝试拉起后再判一次
-                    try { WallpaperForegroundService.start(ctx) } catch (_: Exception) {}
-                    if (isSvcProcessAlive(ctx)) ServiceStatus.Running
-                    else ServiceStatus.Abnormal
-                }
-                // 仅 Worker / 已开启自动：视为运行中（后台受限不标异常）
-                enabled -> ServiceStatus.Running
-                else -> ServiceStatus.Stopped
+                expectsDedicatedProcess && !svcAlive -> ServiceStatus.Abnormal
+                // 仅 Worker：已开启自动即视为运行中（后台受限不标异常）
+                else -> ServiceStatus.Running
             }
         }
     }
