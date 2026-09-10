@@ -3,10 +3,6 @@ package com.kers.killove.jhsy.util
 import android.content.Context
 import com.kers.killove.jhsy.domain.AppSettings
 
-/**
- * 主进程写、服务进程读的轻量桥接。
- * 独立进程无法安全共用 DataStore，故用 SharedPreferences + 文件同步关键开关。
- */
 object ProcessBridgePrefs {
     private const val NAME = "jhsy_bridge"
     private const val AUTO_CHANGE_DEBOUNCE_MS = 90_000L
@@ -24,12 +20,14 @@ object ProcessBridgePrefs {
             .putInt("interval", s.intervalMinutes)
             .putLong("last_change", s.lastChangeAt)
         if (writeEnabled) {
-            ed.putBoolean("enabled", s.enabled)
+            // 若跨进程文件已存在，以文件为准，防止 :svc 全量 save 用内存旧值覆盖磁贴关断
+            val en = if (enabledFile(context).exists()) enabled(context) else s.enabled
+            ed.putBoolean("enabled", en)
+            if (!enabledFile(context).exists()) {
+                writeEnabledFile(context, en)
+            }
         }
         ed.commit()
-        if (writeEnabled) {
-            writeEnabledFile(context, s.enabled)
-        }
         if (s.lastChangeAt > 0L) writeClockFile(context, s.lastChangeAt)
         writeBlacklist(context, s.blacklistPackages)
         writeAvoidLocationsJson(context, s.avoidanceLocationsJson.ifBlank { "[]" })
@@ -76,18 +74,12 @@ object ProcessBridgePrefs {
         sp(context).getLong("last_change", 0L)
 
     fun setLastChangeAt(context: Context, ts: Long) {
-        sp(context).edit()
-            .putLong("last_change", ts)
-            .putBoolean("changing", false)
-            .commit()
+        sp(context).edit().putLong("last_change", ts).putBoolean("changing", false).commit()
         writeClockFile(context, ts)
     }
 
-    fun effectiveLastChangeAt(context: Context): Long {
-        val fromSp = sp(context).getLong("last_change", 0L)
-        val fromFile = readClockFile(context)
-        return maxOf(fromSp, fromFile)
-    }
+    fun effectiveLastChangeAt(context: Context): Long =
+        maxOf(sp(context).getLong("last_change", 0L), readClockFile(context))
 
     private fun clockFile(context: Context): java.io.File =
         java.io.File(context.applicationContext.filesDir, "jhsy_last_change.clock")
@@ -105,14 +97,13 @@ object ProcessBridgePrefs {
         }
     }
 
-    private fun readClockFile(context: Context): Long {
-        return try {
+    private fun readClockFile(context: Context): Long =
+        try {
             val f = clockFile(context)
             if (!f.exists()) 0L else f.readText(Charsets.UTF_8).trim().toLongOrNull() ?: 0L
         } catch (_: Exception) {
             0L
         }
-    }
 
     private fun blacklistFile(context: Context): java.io.File =
         java.io.File(context.applicationContext.filesDir, "jhsy_blacklist.txt")
@@ -135,15 +126,14 @@ object ProcessBridgePrefs {
     fun avoidFileExists(context: Context): Boolean =
         try { avoidFile(context).exists() } catch (_: Exception) { false }
 
-    fun readBlacklist(context: Context): List<String> {
-        return try {
+    fun readBlacklist(context: Context): List<String> =
+        try {
             val f = blacklistFile(context)
             if (!f.exists()) emptyList()
             else f.readText(Charsets.UTF_8).split('\n', ',', ';').map { it.trim() }.filter { it.isNotEmpty() }.distinct()
         } catch (_: Exception) {
             emptyList()
         }
-    }
 
     @Suppress("UNUSED_PARAMETER")
     fun mergeBlacklist(context: Context, fromStore: List<String> = emptyList()): List<String> =
@@ -166,8 +156,8 @@ object ProcessBridgePrefs {
         }
     }
 
-    fun readAvoidLocationsJson(context: Context): String? {
-        return try {
+    fun readAvoidLocationsJson(context: Context): String? =
+        try {
             val f = avoidFile(context)
             if (!f.exists()) null
             else {
@@ -177,7 +167,6 @@ object ProcessBridgePrefs {
         } catch (_: Exception) {
             null
         }
-    }
 
     fun effectiveAvoidLocationsJson(context: Context, fromStore: String = "[]"): String {
         val fromFile = readAvoidLocationsJson(context)
@@ -205,24 +194,14 @@ object ProcessBridgePrefs {
             val now = System.currentTimeMillis()
             val changing = prefs.getBoolean("changing", false)
             val changingAt = prefs.getLong("changing_at", 0L)
-            if (changing && now - changingAt < CHANGING_STALE_MS) {
-                return false
-            }
+            if (changing && now - changingAt < CHANGING_STALE_MS) return false
             if (!force) {
                 val last = prefs.getLong("last_change", 0L)
-                if (last > 0L && now - last < AUTO_CHANGE_DEBOUNCE_MS) {
-                    return false
-                }
+                if (last > 0L && now - last < AUTO_CHANGE_DEBOUNCE_MS) return false
                 val lastAttempt = prefs.getLong("last_attempt", 0L)
-                if (lastAttempt > 0L && now - lastAttempt < AUTO_CHANGE_DEBOUNCE_MS) {
-                    return false
-                }
+                if (lastAttempt > 0L && now - lastAttempt < AUTO_CHANGE_DEBOUNCE_MS) return false
             }
-            prefs.edit()
-                .putBoolean("changing", true)
-                .putLong("changing_at", now)
-                .putLong("last_attempt", now)
-                .commit()
+            prefs.edit().putBoolean("changing", true).putLong("changing_at", now).putLong("last_attempt", now).commit()
             return true
         }
     }
@@ -247,31 +226,23 @@ object ProcessBridgePrefs {
         sp(context).edit().putString("status_hint", text).putLong("status_hint_at", System.currentTimeMillis()).apply()
     }
 
-    fun statusHint(context: Context): String =
-        sp(context).getString("status_hint", "") ?: ""
-
-    fun statusHintAt(context: Context): Long =
-        sp(context).getLong("status_hint_at", 0L)
+    fun statusHint(context: Context): String = sp(context).getString("status_hint", "") ?: ""
+    fun statusHintAt(context: Context): Long = sp(context).getLong("status_hint_at", 0L)
 
     private fun destinyEnabledFile(context: Context): java.io.File =
         java.io.File(context.applicationContext.filesDir, "jhsy_destiny_enabled.txt")
-
     private fun destinyRulesFile(context: Context): java.io.File =
         java.io.File(context.applicationContext.filesDir, "jhsy_destiny_rules.json")
-
     private fun destinyInWindowFile(context: Context): java.io.File =
         java.io.File(context.applicationContext.filesDir, "jhsy_destiny_in_window.json")
 
-    fun readDestinyInWindow(context: Context): Map<String, Boolean> {
-        return runCatching {
+    fun readDestinyInWindow(context: Context): Map<String, Boolean> =
+        runCatching {
             val f = destinyInWindowFile(context)
             if (!f.exists()) return emptyMap()
             val o = org.json.JSONObject(f.readText())
-            buildMap {
-                o.keys().forEach { k -> put(k, o.optBoolean(k, false)) }
-            }
+            buildMap { o.keys().forEach { k -> put(k, o.optBoolean(k, false)) } }
         }.getOrDefault(emptyMap())
-    }
 
     fun writeDestinyInWindow(context: Context, map: Map<String, Boolean>) {
         runCatching {
@@ -287,10 +258,7 @@ object ProcessBridgePrefs {
                 destinyEnabledFile(context).writeText(if (enabled) "1" else "0")
                 destinyRulesFile(context).writeText(rulesJson.ifBlank { "[]" })
             }
-            sp(context).edit()
-                .putBoolean("destiny_enabled", enabled)
-                .putString("destiny_rules", rulesJson.ifBlank { "[]" })
-                .commit()
+            sp(context).edit().putBoolean("destiny_enabled", enabled).putString("destiny_rules", rulesJson.ifBlank { "[]" }).commit()
         }
     }
 
@@ -324,9 +292,7 @@ object ProcessBridgePrefs {
         val fromFile = try {
             val f = purityModeFile(context)
             if (f.exists()) f.readText(Charsets.UTF_8).trim() else ""
-        } catch (_: Exception) {
-            ""
-        }
+        } catch (_: Exception) { "" }
         val fromSp = sp(context).getString("purity_mode", MODE_NORMAL) ?: MODE_NORMAL
         val m = when {
             fromFile in listOf(MODE_HEALTH, MODE_HEARTBEAT, MODE_NORMAL) -> fromFile
@@ -353,8 +319,7 @@ object ProcessBridgePrefs {
                 f.writeText(m, Charsets.UTF_8)
                 tmp.delete()
             }
-        } catch (_: Exception) {
-        }
+        } catch (_: Exception) {}
     }
 
     fun cyclePurityMode(context: Context): String {
