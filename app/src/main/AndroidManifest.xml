@@ -76,6 +76,20 @@
                 android:value="one_shot_manual_wallpaper_change" />
         </service>
 
+        <!-- 状态栏快捷设置磁贴：开关自动更换服务 -->
+        <service
+            android:name=".service.ServiceToggleTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_notification"
+            android:label="@string/tile_service_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.TOGGLEABLE_TILE"
+                android:value="true" />
+        </service>
         <service
             android:name=".service.KeepAliveAccessibilityService"
             android:exported="true"
