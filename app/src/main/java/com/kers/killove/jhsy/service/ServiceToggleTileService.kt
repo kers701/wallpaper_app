@@ -17,6 +17,10 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/**
+ * 状态栏快捷设置磁贴：一键开关「自动更换」。
+ * 状态仅反映 settings.enabled，与「超级服务」解耦（超级服务只保活进程，不点亮磁贴）。
+ */
 @RequiresApi(Build.VERSION_CODES.N)
 class ServiceToggleTileService : TileService() {
 
@@ -34,16 +38,15 @@ class ServiceToggleTileService : TileService() {
     override fun onClick() {
         super.onClick()
         val tile = qsTile ?: return
-        val currentlyActive = tile.state == Tile.STATE_ACTIVE
-        applyTileUi(!currentlyActive)
+        // 以桥接文件为准，避免 UI 与 DataStore 短暂不一致
+        val currentlyOn = ProcessBridgePrefs.enabled(applicationContext)
+        applyTileUi(!currentlyOn)
         scope.launch {
             try {
-                toggleService(!currentlyActive)
-                withContext(Dispatchers.Main) {
-                    refreshTile()
-                }
+                toggleService(!currentlyOn)
             } catch (e: Exception) {
                 RunLog.i(applicationContext, "tile toggle failed: ${e.message}")
+            } finally {
                 withContext(Dispatchers.Main) {
                     refreshTile()
                 }
@@ -57,9 +60,8 @@ class ServiceToggleTileService : TileService() {
     }
 
     private fun refreshTile() {
-        val on = ProcessBridgePrefs.enabled(applicationContext) ||
-            ProcessBridgePrefs.superService(applicationContext)
-        applyTileUi(on)
+        // 只反映「自动更换」开关，超级服务开启时磁贴仍可为灰色
+        applyTileUi(ProcessBridgePrefs.enabled(applicationContext))
     }
 
     private fun applyTileUi(active: Boolean) {
@@ -84,14 +86,18 @@ class ServiceToggleTileService : TileService() {
         val next = s.copy(enabled = enable)
         repo.save(next)
         ProcessBridgePrefs.sync(ctx, next)
-        if (!enable && !next.superServiceEnabled) {
-            ChangeWallpaperWorker.cancel(ctx)
-            WallpaperForegroundService.stop(ctx)
-            RunLog.i(ctx, "tile: auto change OFF")
-        } else {
+        if (enable) {
             WallpaperForegroundService.start(ctx)
             ChangeWallpaperWorker.enqueue(ctx, next.intervalMinutes)
             RunLog.i(ctx, "tile: auto change ON")
+        } else {
+            // 关闭自动更换：取消定时任务；仅当超级服务也关闭时才停 FGS
+            ChangeWallpaperWorker.cancel(ctx)
+            if (!next.superServiceEnabled) {
+                WallpaperForegroundService.stop(ctx)
+            }
+            // 超级服务仍开：进程可保活，但 runLoop 不再因 enabled=false 执行自动更换
+            RunLog.i(ctx, "tile: auto change OFF (super=${next.superServiceEnabled})")
         }
     }
 }
