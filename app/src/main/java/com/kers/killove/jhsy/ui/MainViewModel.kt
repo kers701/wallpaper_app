@@ -1,0 +1,1427 @@
+package com.kers.killove.jhsy.ui
+
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.kers.killove.jhsy.data.local.LocalFallbackStore
+import com.kers.killove.jhsy.data.local.WallpaperDatabase
+import com.kers.killove.jhsy.data.prefs.SettingsRepository
+import com.kers.killove.jhsy.data.remote.ProxyHttp
+import com.kers.killove.jhsy.data.remote.ProxySubscription
+import com.kers.killove.jhsy.domain.ProxySelectMode
+import com.kers.killove.jhsy.domain.ProxyType
+import com.kers.killove.jhsy.domain.ProxyNode
+import com.kers.killove.jhsy.data.remote.WallhavenApi
+import com.kers.killove.jhsy.data.wallpaper.SystemWallpaperSetter
+import com.kers.killove.jhsy.domain.AppSettings
+import com.kers.killove.jhsy.domain.DestinyRule
+import com.kers.killove.jhsy.util.DestinyHelper
+import com.kers.killove.jhsy.domain.ChangeResult
+import com.kers.killove.jhsy.domain.TriggerType
+import com.kers.killove.jhsy.domain.AvoidanceLocation
+import com.kers.killove.jhsy.util.LocationHelper
+import com.kers.killove.jhsy.data.translate.KeywordTranslator
+import com.kers.killove.jhsy.domain.WallpaperChanger
+import com.kers.killove.jhsy.domain.WallpaperTarget
+import com.kers.killove.jhsy.domain.WallpaperFitMode
+import com.kers.killove.jhsy.service.ManualChangeService
+import com.kers.killove.jhsy.service.WallpaperForegroundService
+import com.kers.killove.jhsy.util.SuperServiceController
+import com.kers.killove.jhsy.util.ConfigBackup
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import com.kers.killove.jhsy.util.AnnihilationStore
+import com.kers.killove.jhsy.util.ProcessBridgePrefs
+import com.kers.killove.jhsy.util.SuperProxyController
+import com.kers.killove.jhsy.util.RunLog
+import com.kers.killove.jhsy.util.PinSecurity
+import com.kers.killove.jhsy.worker.ChangeWallpaperWorker
+import com.kers.killove.jhsy.util.ForegroundAppHelper
+import android.app.ActivityManager
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import android.content.SharedPreferences
+import android.net.Uri
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
+
+class MainViewModel(app: Application) : AndroidViewModel(app) {
+
+    private val settingsRepo = SettingsRepository(app)
+    private val dao = WallpaperDatabase.get(app).dao()
+    private val api = WallhavenApi()
+    private val localStore = LocalFallbackStore(app)
+    private val translator = KeywordTranslator()
+    private val changer = WallpaperChanger(
+        context = app,
+        settingsRepo = settingsRepo,
+        api = api,
+        setter = SystemWallpaperSetter(app),
+        dao = dao,
+        onProgress = { frac, label ->
+            _downloadProgress.value = frac
+            _downloadLabel.value = label
+            if (label.isNotBlank()) _status.value = label
+        },
+        localStore = localStore
+    )
+
+    val settings: StateFlow<AppSettings> = settingsRepo.settingsFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AppSettings())
+
+    init {
+        viewModelScope.launch {
+            settingsRepo.settingsFlow.collect { s ->
+                ProxyHttp.applySettings(s)
+                refreshJumpTranslation(s)
+            }
+        }
+        // 定期从时钟文件 / bridge 同步 last_change 回 DataStore（不依赖进程内存联动）
+        viewModelScope.launch {
+            val app = getApplication<Application>()
+            while (true) {
+                runCatching { pullChangeClock(app) }
+                kotlinx.coroutines.delay(2_000)
+            }
+        }
+    }
+
+    private suspend fun pullChangeClock(app: Application) {
+        val b = ProcessBridgePrefs.effectiveLastChangeAt(app)
+        _bridgeLastChange.value = b
+        val ds = settings.value.lastChangeAt
+        if (b > 0L && b > ds + 500L) {
+            settingsRepo.setLastChangeAt(b)
+        }
+    }
+
+    /** 界面 resume 时立刻同步一次桥接时间 */
+    fun syncChangeClockFromBridge() {
+        viewModelScope.launch {
+            pullChangeClock(getApplication())
+        }
+    }
+
+    /**
+     * 概览/首页手动刷新：读时钟文件 → 写回 DataStore，并刷新服务状态与缓存大小。
+     */
+
+    /**
+     * 本周热词：某词使用超过 20 次则写入本地关键词列表；
+     * 已有该词不写入；本地关键词 ≥701 时跳过。
+     */
+    fun promoteWeeklyHotKeywords() {
+        viewModelScope.launch {
+            try {
+                val s = settings.value
+                if (s.keywords.size >= 701) return@launch
+                val weekMs = 7L * 24 * 60 * 60 * 1000
+                val now = System.currentTimeMillis()
+                val weekList = dao.recentList(500).filter { now - it.setAt <= weekMs }
+                val counts = weekList
+                    .map { it.keyword.trim() }
+                    .filter { it.isNotEmpty() }
+                    .groupingBy { it }
+                    .eachCount()
+                val existing = s.keywords.map { it.trim().lowercase() }.toHashSet()
+                val toAdd = counts
+                    .filter { (kw, c) -> c > 20 && kw.lowercase() !in existing }
+                    .keys
+                    .toList()
+                if (toAdd.isEmpty()) return@launch
+                val room = (701 - s.keywords.size).coerceAtLeast(0)
+                if (room <= 0) return@launch
+                val added = toAdd.take(room)
+                val next = s.copy(keywords = s.keywords + added)
+                settingsRepo.save(next)
+                _status.value = "本周热词已写入本地关键词：${added.joinToString("、")}（+${added.size}）"
+            } catch (e: Exception) {
+                // 静默失败，不影响概览
+            }
+        }
+    }
+
+    fun refreshOverview() {
+        viewModelScope.launch {
+            val app = getApplication<Application>()
+            pullChangeClock(app)
+            refreshServiceStatus()
+            refreshCacheSize()
+            promoteWeeklyHotKeywords()
+            val ts = ProcessBridgePrefs.effectiveLastChangeAt(app)
+            _status.value = if (ts > 0L) {
+                val fmt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+                "已刷新 · 上次更换 ${fmt.format(Date(ts))}"
+            } else {
+                "已刷新 · 尚无更换记录"
+            }
+        }
+    }
+
+    /** 用于 UI 倒计时：取 DataStore 与时钟文件较大者 */
+    fun effectiveLastChangeAt(): Long {
+        val app = getApplication<Application>()
+        return maxOf(settings.value.lastChangeAt, ProcessBridgePrefs.effectiveLastChangeAt(app))
+    }
+
+    private suspend fun refreshJumpTranslation(s: AppSettings) {
+        val ctx = getApplication<Application>()
+        val anniWords = withContext(Dispatchers.IO) {
+            AnnihilationStore.lastRoundBlocked(ctx)
+        }
+        if (s.translateProvider.name == "Off") {
+            _jumpKeywordsZh.value = emptyMap()
+            _annihilationZh.value = emptyMap()
+            return
+        }
+        if (s.jumpKeywords.isEmpty()) {
+            _jumpKeywordsZh.value = emptyMap()
+        } else {
+            _jumpKeywordsZh.value = translator.translateList(s.jumpKeywords, s)
+        }
+        if (anniWords.isEmpty()) {
+            _annihilationZh.value = emptyMap()
+        } else {
+            _annihilationZh.value = translator.translateList(anniWords, s)
+        }
+    }
+
+    val recent = dao.recent(30)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val _status = MutableStateFlow("就绪")
+    val status: StateFlow<String> = _status.asStateFlow()
+
+    /** 跨进程桥接中的上次更换时间（:svc/:manual 写入，主进程可能更准） */
+    private val _bridgeLastChange = MutableStateFlow(0L)
+    val bridgeLastChange: StateFlow<Long> = _bridgeLastChange.asStateFlow()
+
+    private val _busy = MutableStateFlow(false)
+    val busy: StateFlow<Boolean> = _busy.asStateFlow()
+
+    private val _downloadProgress = MutableStateFlow(0f)
+    val downloadProgress: StateFlow<Float> = _downloadProgress.asStateFlow()
+    private val _downloadLabel = MutableStateFlow("")
+    val downloadLabel: StateFlow<String> = _downloadLabel.asStateFlow()
+
+    private val _networkProbe = MutableStateFlow("点击下方按钮检测：本机网络 · Wallhaven · 兜底 API 延迟")
+    val networkProbe: StateFlow<String> = _networkProbe.asStateFlow()
+
+    private val _probing = MutableStateFlow(false)
+    val probing: StateFlow<Boolean> = _probing.asStateFlow()
+
+    private val _jumpKeywordsZh = MutableStateFlow<Map<String, String>>(emptyMap())
+    val jumpKeywordsZh: StateFlow<Map<String, String>> = _jumpKeywordsZh.asStateFlow()
+
+    /** 上一轮被湮灭关键词的中文（展示用） */
+    private val _annihilationZh = MutableStateFlow<Map<String, String>>(emptyMap())
+    val annihilationZh: StateFlow<Map<String, String>> = _annihilationZh.asStateFlow()
+
+    /** 会话内是否已解锁（进程重启后需重新输入 PIN） */
+    private val _unlocked = MutableStateFlow(false)
+    val unlocked: StateFlow<Boolean> = _unlocked.asStateFlow()
+
+    private val _pinMessage = MutableStateFlow<String?>(null)
+    val pinMessage: StateFlow<String?> = _pinMessage.asStateFlow()
+
+    enum class ServiceStatus { Running, Stopped, Abnormal }
+
+    private val _serviceStatus = MutableStateFlow(ServiceStatus.Stopped)
+    val serviceStatus: StateFlow<ServiceStatus> = _serviceStatus.asStateFlow()
+
+    private val _cacheBytes = MutableStateFlow(0L)
+    val cacheBytes: StateFlow<Long> = _cacheBytes.asStateFlow()
+
+    private val _proxyTestBusy = MutableStateFlow(false)
+    val proxyTestBusy = _proxyTestBusy.asStateFlow()
+    private var proxyTestJob: Job? = null
+
+    private val _launcherApps = MutableStateFlow<List<com.kers.killove.jhsy.util.LauncherAppInfo>>(emptyList())
+    val launcherApps: StateFlow<List<com.kers.killove.jhsy.util.LauncherAppInfo>> = _launcherApps.asStateFlow()
+
+    private val prefs: SharedPreferences =
+        getApplication<Application>().getSharedPreferences("jhsy_meta", Context.MODE_PRIVATE)
+
+    private val _onboardingDone = MutableStateFlow(prefs.getBoolean("onboarding_done", false))
+    val onboardingDone: StateFlow<Boolean> = _onboardingDone.asStateFlow()
+
+    fun finishOnboarding() {
+        prefs.edit().putBoolean("onboarding_done", true).apply()
+        _onboardingDone.value = true
+    }
+
+    /** 敏感字段是否可见：密钥 / 关键词 / 兜底 API */
+    fun keysVisible(s: AppSettings = settings.value): Boolean {
+        if (!s.pinEnabled || s.pinHash.isBlank()) return true
+        return _unlocked.value
+    }
+
+    fun saveSettings(s: AppSettings) {
+        viewModelScope.launch {
+            val oldFit = settings.value.fitMode
+            // 锁定状态下不允许改写敏感字段
+            val final = if (!keysVisible(s) && s.pinEnabled) {
+                s.copy(
+                    apiKeys = settings.value.apiKeys,
+                    keywords = settings.value.keywords,
+                    keywordsRemoteUrl = settings.value.keywordsRemoteUrl,
+                    fallbackApiUrl = settings.value.fallbackApiUrl,
+                    jumpKeywords = settings.value.jumpKeywords
+                )
+            } else s
+            val wasSuper = settings.value.superProxyEnabled && settings.value.proxyEnabled
+            val nowSuper = final.superProxyEnabled && final.proxyEnabled
+            settingsRepo.save(final)
+            if (wasSuper && !nowSuper) {
+                withContext(Dispatchers.IO) {
+                    SuperProxyController.stop(getApplication())
+                }
+                ProxyHttp.setSuperRunning(false)
+                ProxyHttp.applySettings(getApplication(), final)
+            }
+            RunLog.i(getApplication(), "settings saved enabled=${final.enabled} interval=${final.intervalMinutes} dataSaver=${final.dataSaverEnabled}")
+            applySchedule(final)
+            if (final.fitMode != oldFit) {
+                reapplyCurrentWallpapers(final)
+            } else {
+                _status.value =
+                    "设置已保存（关键词 ${final.keywords.size} 个，跃迁 ${final.jumpKeywords.size} 个，密钥 ${final.apiKeys.size} 个）"
+            }
+        }
+    }
+
+    /**
+     * 不重新下载，用历史记录里最近的桌面/锁屏缓存图，按当前铺满方式再设一次。
+     */
+    fun reapplyCurrentWallpapers(s: AppSettings = settings.value) {
+        viewModelScope.launch {
+            reapplyCurrentWallpapersSuspend(s)
+        }
+    }
+
+    private suspend fun reapplyCurrentWallpapersSuspend(s: AppSettings) {
+        _busy.value = true
+        _status.value = "铺满方式已更新，正在用当前壁纸重新设置…"
+        try {
+            val list = dao.recentList(40)
+            fun match(e: com.kers.killove.jhsy.data.local.WallpaperEntity, keys: List<String>): Boolean {
+                val path = e.path.lowercase()
+                val id = e.id.lowercase()
+                return keys.any { path.contains(it) || id.contains(it) }
+            }
+            val homeEnt = list.firstOrNull { match(it, listOf("_home", "home")) }
+                ?: list.firstOrNull { match(it, listOf("_both", "both")) }
+                ?: list.firstOrNull()
+            val lockEnt = list.firstOrNull { match(it, listOf("_lock", "lock")) }
+                ?: list.firstOrNull { match(it, listOf("_both", "both")) }
+                ?: homeEnt
+
+            val setter = SystemWallpaperSetter(getApplication())
+            var ok = 0
+            var fail = 0
+
+            suspend fun applyOne(path: String?, target: WallpaperTarget) {
+                if (path.isNullOrBlank()) {
+                    fail++
+                    return
+                }
+                val f = File(path)
+                if (!f.exists() || f.length() < 32L) {
+                    fail++
+                    return
+                }
+                if (setter.setFromFile(f, target, s.fitMode)) ok++ else fail++
+            }
+
+            when (s.target) {
+                WallpaperTarget.Home -> applyOne(homeEnt?.path, WallpaperTarget.Home)
+                WallpaperTarget.Lock -> applyOne(lockEnt?.path, WallpaperTarget.Lock)
+                WallpaperTarget.Both -> {
+                    if (s.isolateHomeLock) {
+                        applyOne(homeEnt?.path, WallpaperTarget.Home)
+                        applyOne(lockEnt?.path, WallpaperTarget.Lock)
+                    } else {
+                        // 非隔离：用最新一张对 Both
+                        val any = homeEnt ?: lockEnt
+                        applyOne(any?.path, WallpaperTarget.Both)
+                    }
+                }
+            }
+
+            _status.value = when {
+                ok > 0 && fail == 0 -> "铺满方式「${s.fitMode.label}」已应用到当前壁纸（未重新下载）"
+                ok > 0 -> "铺满已部分应用（成功 $ok，失败 $fail），请确认缓存图仍在"
+                else -> "没有可用的本地壁纸缓存，请先更换一次壁纸"
+            }
+        } catch (e: Exception) {
+            _status.value = "重新设置失败：${e.message}"
+        } finally {
+            _busy.value = false
+        }
+    }
+
+
+    /** 备份配置到应用专属目录，并复制 JSON 到剪贴板。不含 PIN。 */
+    fun backupConfig() {
+        viewModelScope.launch {
+            try {
+                val s = settings.value
+                val file = ConfigBackup.writeToFile(getApplication(), s)
+                val json = ConfigBackup.toJson(s)
+                val cm = getApplication<Application>().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                cm.setPrimaryClip(ClipData.newPlainText("jhsy_config", json))
+                _status.value = "配置已备份（不含 PIN）\n${file.absolutePath}\n并已复制到剪贴板"
+            } catch (e: Exception) {
+                _status.value = "备份失败：${e.message}"
+            }
+        }
+    }
+
+    /** 从默认备份文件恢复；保留当前 PIN。 */
+    fun restoreConfigFromFile() {
+        viewModelScope.launch {
+            try {
+                val ctx = getApplication<Application>()
+                val file = ConfigBackup.defaultFile(ctx)
+                if (!file.exists()) {
+                    _status.value = "备份文件不存在\n${file.absolutePath}\n请先点「备份配置」或使用「从 JSON 恢复」"
+                    return@launch
+                }
+                val restored = ConfigBackup.readFromFile(ctx, settings.value, file)
+                applyRestored(restored, "默认文件")
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _status.value = "恢复失败：${e.message ?: e.javaClass.simpleName}"
+            }
+        }
+    }
+
+    /** 从任意路径/内容恢复（SAF 选文件后调用） */
+    fun restoreConfigFromPath(path: String) {
+        viewModelScope.launch {
+            try {
+                val f = File(path)
+                if (!f.exists() || !f.canRead()) {
+                    _status.value = "无法读取：$path"
+                    return@launch
+                }
+                val restored = ConfigBackup.fromJson(f.readText(Charsets.UTF_8), settings.value)
+                applyRestored(restored, "所选路径")
+            } catch (e: Exception) {
+                _status.value = "恢复失败：${e.message}"
+            }
+        }
+    }
+
+    fun restoreConfigFromUriText(text: String) {
+        restoreConfigFromJson(text)
+    }
+
+    
+    /**
+     * 将缓存壁纸写入系统相册 Pictures/JHSY。
+     * [onDone] 主线程回调 (成功, 提示文案)，预览页即时反馈并防连点。
+     */
+    fun saveWallpaperToGallery(path: String, onDone: ((Boolean, String) -> Unit)? = null) {
+        viewModelScope.launch {
+            try {
+                val ok = withContext(Dispatchers.IO) {
+                    saveFileToGallery(getApplication(), path)
+                }
+                val msg = if (ok) "已保存到相册 Pictures/JHSY" else "保存失败：文件不存在或无法写入"
+                _status.value = msg
+                onDone?.invoke(ok, msg)
+            } catch (e: Exception) {
+                val msg = "保存到相册失败：${e.message}"
+                _status.value = msg
+                onDone?.invoke(false, msg)
+            }
+        }
+    }
+
+    private fun saveFileToGallery(context: android.content.Context, path: String): Boolean {
+        val file = java.io.File(path)
+        if (!file.isFile) return false
+        val resolver = context.contentResolver
+        val name = file.name.ifBlank { "jhsy_${System.currentTimeMillis()}.jpg" }
+        val mime = when {
+            name.endsWith(".png", true) -> "image/png"
+            name.endsWith(".webp", true) -> "image/webp"
+            else -> "image/jpeg"
+        }
+        val values = android.content.ContentValues().apply {
+            put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, name)
+            put(android.provider.MediaStore.Images.Media.MIME_TYPE, mime)
+            if (android.os.Build.VERSION.SDK_INT >= 29) {
+                put(
+                    android.provider.MediaStore.Images.Media.RELATIVE_PATH,
+                    android.os.Environment.DIRECTORY_PICTURES + "/JHSY"
+                )
+                put(android.provider.MediaStore.Images.Media.IS_PENDING, 1)
+            }
+        }
+        val uri = resolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+            ?: return false
+        resolver.openOutputStream(uri)?.use { out ->
+            file.inputStream().use { ins -> ins.copyTo(out) }
+        } ?: return false
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
+            values.clear()
+            values.put(android.provider.MediaStore.Images.Media.IS_PENDING, 0)
+            resolver.update(uri, values, null, null)
+        }
+        return true
+    }
+
+    fun exportHistoryToUri(uri: Uri) {
+        viewModelScope.launch {
+            try {
+                val list = dao.recentList(200)
+                val fmt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+                fun esc(s: String): String {
+                    val v = s.replace("\"", "\"\"")
+                    return if (v.contains(',') || v.contains('"') || v.contains('\n')) "\"$v\"" else v
+                }
+                val sb = StringBuilder()
+                sb.append("id,setAt,trigger,source,category,purity,keyword,width,height,fileSizeBytes,path,sourceUrl\n")
+                for (item in list) {
+                    val trigger = com.kers.killove.jhsy.domain.TriggerType.fromCode(item.triggerType).label
+                    sb.append(
+                        listOf(
+                            esc(item.id),
+                            esc(fmt.format(Date(item.setAt))),
+                            esc(trigger),
+                            esc(item.source),
+                            esc(item.category),
+                            esc(item.purity),
+                            esc(item.keyword),
+                            item.width.toString(),
+                            item.height.toString(),
+                            item.fileSize.toString(),
+                            esc(item.path),
+                            esc(item.sourceUrl)
+                        ).joinToString(",")
+                    )
+                    sb.append('\n')
+                }
+                getApplication<Application>().contentResolver.openOutputStream(uri)?.use { out ->
+                    // UTF-8 BOM for Excel
+                    out.write(byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()))
+                    out.write(sb.toString().toByteArray(Charsets.UTF_8))
+                } ?: throw IllegalStateException("无法写入所选位置")
+                _status.value = "已导出 ${list.size} 条更换记录到所选文件"
+            } catch (e: Exception) {
+                _status.value = "导出更换记录失败：${e.message}"
+            }
+        }
+    }
+
+
+
+    /** 拉取远程加速节点 JSON 列表。 */
+    fun refreshAccelNodes(url: String = settings.value.accelNodesRemoteUrl) {
+        val u = url.trim()
+        viewModelScope.launch {
+            try {
+                if (u.isEmpty()) {
+                    com.kers.killove.jhsy.data.remote.BuiltinAccelNodes.setRemoteNodes(emptyList())
+                    return@launch
+                }
+                val text = withContext(Dispatchers.IO) {
+                    val conn = java.net.URL(u).openConnection() as java.net.HttpURLConnection
+                    conn.connectTimeout = 12_000
+                    conn.readTimeout = 20_000
+                    conn.instanceFollowRedirects = true
+                    conn.requestMethod = "GET"
+                    conn.setRequestProperty("User-Agent", "JHSY-AccelNodes/1")
+                    val code = conn.responseCode
+                    val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+                    val body = stream?.bufferedReader()?.readText().orEmpty()
+                    conn.disconnect()
+                    if (code !in 200..299) throw IllegalStateException("HTTP $code")
+                    body
+                }
+                val nodes = com.kers.killove.jhsy.data.remote.BuiltinAccelNodes.parseJson(text)
+                com.kers.killove.jhsy.data.remote.BuiltinAccelNodes.setRemoteNodes(nodes)
+                _status.value = "加速节点已更新：${nodes.size} 个"
+            } catch (e: Exception) {
+                _status.value = "加速节点拉取失败：${e.message}"
+            }
+        }
+    }
+
+    fun backupFilePath(): String = ConfigBackup.defaultFile(getApplication()).absolutePath
+
+    fun backupConfigToUri(uri: Uri) {
+        viewModelScope.launch {
+            try {
+                val json = ConfigBackup.toJson(settings.value)
+                getApplication<Application>().contentResolver.openOutputStream(uri)?.use { out ->
+                    out.write(json.toByteArray(Charsets.UTF_8))
+                } ?: throw IllegalStateException("无法写入所选位置")
+                // 同时写默认文件
+                ConfigBackup.writeToFile(getApplication(), settings.value)
+                _status.value = "已备份到所选公共位置（不含 PIN）"
+            } catch (e: Exception) {
+                _status.value = "备份失败：${e.message}"
+            }
+        }
+    }
+
+    fun restoreConfigFromUri(uri: Uri) {
+        viewModelScope.launch {
+            try {
+                val text = getApplication<Application>().contentResolver.openInputStream(uri)?.use { ins ->
+                    BufferedReader(InputStreamReader(ins, Charsets.UTF_8)).readText()
+                } ?: throw IllegalStateException("无法读取所选文件")
+                val restored = ConfigBackup.fromJson(text, settings.value)
+                applyRestored(restored, "所选文件")
+            } catch (e: Exception) {
+                _status.value = "恢复失败：${e.message}"
+            }
+        }
+    }
+
+
+    /** 从粘贴的 JSON 恢复；保留当前 PIN。 */
+    fun restoreConfigFromJson(json: String) {
+        if (json.isBlank()) {
+            _status.value = "请先粘贴备份 JSON"
+            return
+        }
+        viewModelScope.launch {
+            try {
+                applyRestored(ConfigBackup.fromJson(json, settings.value), "JSON")
+            } catch (e: Exception) {
+                _status.value = "恢复失败：${e.message}"
+            }
+        }
+    }
+
+    /**
+     * 从远程 URL 导入完整配置备份（JSON）。
+     * 不含 PIN；超级代理本机路径换机后需重新选择文件。
+     */
+    fun importRemoteConfig(url: String) {
+        val u = url.trim()
+        if (u.isEmpty()) {
+            _status.value = "请填写远程配置 URL"
+            return
+        }
+        viewModelScope.launch {
+            try {
+                _status.value = "正在拉取远程配置…"
+                val json = withContext(Dispatchers.IO) {
+                    ConfigBackup.fetchRemoteJson(u)
+                }
+                applyRestored(ConfigBackup.fromJson(json, settings.value), "远程配置")
+            } catch (e: Exception) {
+                _status.value = "远程配置导入失败：${e.message}"
+            }
+        }
+    }
+
+    private suspend fun applyRestored(restored: AppSettings, source: String) {
+        // 关闭超级代理开关时若内核在跑，先停（路径可能已变）
+        if (!restored.superProxyEnabled || !restored.proxyEnabled) {
+            withContext(Dispatchers.IO) {
+                SuperProxyController.stop(getApplication())
+            }
+            ProxyHttp.setSuperRunning(false)
+        }
+        settingsRepo.save(restored)
+        applySchedule(restored)
+        ProxyHttp.applySettings(getApplication(), restored)
+        _status.value = "已从${source}恢复（不含 PIN；本机 PIN 未改动）"
+    }
+
+    fun setEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            val current = settings.value.copy(enabled = enabled)
+            settingsRepo.save(current)
+            applySchedule(current)
+            _status.value = if (enabled) "已开启自动更换" else "已停止"
+            RunLog.i(getApplication(), "enabled=$enabled")
+        }
+    }
+
+    fun changeNow() {
+        if (_busy.value) return
+        viewModelScope.launch {
+            val ctx = getApplication<Application>()
+            if (ProcessBridgePrefs.isChanging(ctx)) {
+                _status.value = "已有更换在进行中，请稍候"
+                return@launch
+            }
+            _busy.value = true
+            _downloadProgress.value = 0f
+            _downloadLabel.value = ""
+            _status.value = "已交由 :manual 进程当场下载更换…"
+            ProcessBridgePrefs.setStatusHint(ctx, "已交由 :manual 进程当场下载更换…")
+            // 第三进程 :manual：当场下载、不用预缓存、不触发定时，换完即死
+            ManualChangeService.start(ctx)
+            // 轮询跨进程 bridge 文件（最长 3 分钟）
+            val started = System.currentTimeMillis()
+            var lastHint = ""
+            var sawBusy = false
+            while (System.currentTimeMillis() - started < 180_000L) {
+                delay(400)
+                val changing = ProcessBridgePrefs.isChanging(ctx)
+                if (changing) sawBusy = true
+                val hint = ProcessBridgePrefs.statusHint(ctx)
+                if (hint.isNotBlank() && hint != lastHint) {
+                    lastHint = hint
+                    _status.value = hint
+                }
+                // 曾进入更换且已释放锁 → 结束
+                if (sawBusy && !changing) {
+                    val finalHint = ProcessBridgePrefs.statusHint(ctx)
+                    if (finalHint.isNotBlank()) _status.value = finalHint
+                    break
+                }
+                // 未抢到锁但已有终态文案
+                if (!changing &&
+                    ProcessBridgePrefs.statusHintAt(ctx) >= started &&
+                    hint.isNotBlank() &&
+                    (hint.startsWith("已设置") || hint.startsWith("失败") || hint.contains("已有更换"))
+                ) {
+                    _status.value = hint
+                    break
+                }
+            }
+            if (_status.value.contains("已交由")) {
+                val h = ProcessBridgePrefs.statusHint(ctx)
+                if (h.isNotBlank() && !h.contains("已交由")) _status.value = h
+                else if (_status.value.contains("已交由")) _status.value = "更换流程已结束"
+            }
+            // 手动不改定时时钟；仅刷新桥接读数供展示（仍是自动上次时间）
+            _bridgeLastChange.value = ProcessBridgePrefs.lastChangeAt(ctx)
+            _busy.value = false
+            _downloadProgress.value = 0f
+            _downloadLabel.value = ""
+        }
+    }
+
+    fun importKeywordsFromUrl(url: String, replace: Boolean = true) {
+        if (url.isBlank()) {
+            _status.value = "请填写远程关键词 URL"
+            return
+        }
+        viewModelScope.launch {
+            _busy.value = true
+            _status.value = "正在导入关键词…"
+            try {
+                val remote = api.fetchRemoteKeywordList(url.trim())
+                if (remote.isEmpty()) {
+                    _status.value = "远程列表为空"
+                } else {
+                    val merged = if (replace) remote
+                    else (settings.value.keywords + remote).distinct()
+                    val next = settings.value.copy(
+                        keywords = merged,
+                        keywordsRemoteUrl = url.trim()
+                    )
+                    settingsRepo.save(next)
+                    _status.value = "已导入 ${remote.size} 个关键词"
+                }
+            } catch (e: Exception) {
+                _status.value = "导入失败：${e.message}"
+            }
+            _busy.value = false
+        }
+    }
+
+    fun localFallbackInfo(): String {
+        val s = settings.value
+        val dir = localStore.resolveDir(s)
+        val n = localStore.listImages(s).size
+        return "${dir.absolutePath}（${n} 张图）"
+    }
+
+    fun unlock(pin: String) {
+        val s = settings.value
+        if (!s.pinEnabled || s.pinHash.isBlank()) {
+            _unlocked.value = true
+            _pinMessage.value = null
+            return
+        }
+        if (PinSecurity.verify(pin, s.pinHash)) {
+            _unlocked.value = true
+            _pinMessage.value = "已解锁"
+            _status.value = "PIN 解锁成功"
+        } else {
+            _pinMessage.value = "PIN 错误"
+        }
+    }
+
+    fun lockNow() {
+        _unlocked.value = false
+        _pinMessage.value = "已锁定"
+        _status.value = "已锁定，密钥/关键词/兜底 API 已隐藏"
+    }
+
+    fun setPinWithConfirm(newPin: String, confirmPin: String) {
+        if (newPin != confirmPin) {
+            _pinMessage.value = "两次 PIN 不一致"
+            return
+        }
+        setPin(newPin, enable = true)
+    }
+
+    fun setPin(newPin: String, enable: Boolean) {
+        viewModelScope.launch {
+            if (enable) {
+                if (!PinSecurity.isValidPinFormat(newPin)) {
+                    _pinMessage.value = "PIN 需为 4～8 位数字"
+                    return@launch
+                }
+                val next = settings.value.copy(
+                    pinEnabled = true,
+                    pinHash = PinSecurity.hash(newPin)
+                )
+                settingsRepo.save(next)
+                _unlocked.value = true
+                _pinMessage.value = "PIN 已设置"
+                _status.value = "PIN 已启用"
+            } else {
+                if (settings.value.pinEnabled && !_unlocked.value) {
+                    _pinMessage.value = "请先解锁再关闭 PIN"
+                    return@launch
+                }
+                val next = settings.value.copy(pinEnabled = false, pinHash = "")
+                settingsRepo.save(next)
+                _unlocked.value = true
+                _pinMessage.value = "PIN 已关闭"
+                _status.value = "PIN 已关闭"
+            }
+        }
+    }
+
+
+    fun testNetwork() {
+        if (_probing.value) return
+        viewModelScope.launch {
+            _probing.value = true
+            _networkProbe.value = "检测中…"
+            val s = settings.value
+            val lines = mutableListOf<String>()
+
+            // 本机网络
+            val cm = getApplication<Application>()
+                .getSystemService(android.content.Context.CONNECTIVITY_SERVICE)
+                as android.net.ConnectivityManager
+            val net = cm.activeNetwork
+            val caps = net?.let { cm.getNetworkCapabilities(it) }
+            val hasNet = caps?.hasCapability(
+                android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET
+            ) == true
+            val validated = caps?.hasCapability(
+                android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED
+            ) == true
+            lines += if (hasNet) {
+                "本机网络：已连接" + if (validated) "（已验证）" else "（未验证）"
+            } else {
+                "本机网络：不可用"
+            }
+
+            // Wallhaven
+            val wh = api.probeWallhaven(s.nextApiKey())
+            lines += if (wh.ok) {
+                "Wallhaven：${wh.latencyMs} ms · ${wh.detail}"
+            } else {
+                "Wallhaven：失败 ${wh.latencyMs} ms · ${wh.detail}"
+            }
+
+            // 兜底 API（支持多行多个）
+            val fbList = s.fallbackApiUrls()
+            if (fbList.isEmpty()) {
+                lines += "兜底 API：未配置有效 URL"
+            } else {
+                lines += "兜底 API：共 ${fbList.size} 个"
+                for ((i, raw) in fbList.withIndex()) {
+                    val url = raw
+                        .replace("{width}", s.minWidth.toString())
+                        .replace("{height}", s.minHeight.toString())
+                        .replace("{w}", s.minWidth.toString())
+                        .replace("{h}", s.minHeight.toString())
+                    val r = api.probeUrl("兜底#${i + 1}", url)
+                    lines += if (r.ok) {
+                        "  #${i + 1}：${r.latencyMs} ms · ${r.detail}"
+                    } else {
+                        "  #${i + 1}：失败 ${r.latencyMs} ms · ${r.detail}"
+                    }
+                }
+            }
+
+            // 背景 API（若与任一兜底不同）
+            val bg = s.bgApiUrl.trim()
+            if (bg.isNotBlank() && bg !in fbList) {
+                val r = api.probeUrl("背景 API", bg)
+                lines += if (r.ok) {
+                    "背景 API：${r.latencyMs} ms · ${r.detail}"
+                } else {
+                    "背景 API：失败 ${r.latencyMs} ms · ${r.detail}"
+                }
+            }
+
+            _networkProbe.value = lines.joinToString("\n")
+            _probing.value = false
+        }
+    }
+
+
+    fun setOverviewMinimal(enabled: Boolean) {
+        viewModelScope.launch {
+            val next = settings.value.copy(overviewMinimalMode = enabled)
+            settingsRepo.save(next)
+            _status.value = if (enabled) "已开启极简模式" else "已关闭极简模式"
+        }
+    }
+
+    fun setBlacklist(packages: List<String>) {
+        viewModelScope.launch {
+            val list = packages.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+            // 标记文件为唯一真相源：整表覆盖写，:svc 只读文件
+            ProcessBridgePrefs.writeBlacklist(getApplication(), list)
+            val next = settings.value.copy(blacklistPackages = list)
+            settingsRepo.save(next)
+            _status.value = "黑名单已更新（${list.size} 个应用）"
+        }
+    }
+
+    fun toggleBlacklistPackage(pkg: String) {
+        // 以标记文件当前内容为基准增删，避免 DataStore 缓存里的旧项
+        val cur = ProcessBridgePrefs.effectiveBlacklist(getApplication()).toMutableList()
+        if (pkg in cur) cur.remove(pkg) else cur.add(pkg)
+        setBlacklist(cur)
+    }
+
+    fun loadLauncherApps() {
+        viewModelScope.launch {
+            _launcherApps.value = ForegroundAppHelper.listLaunchableApps(getApplication())
+        }
+    }
+
+    fun refreshServiceStatus() {
+        viewModelScope.launch {
+            val ctx = getApplication<Application>()
+            val s = settings.value
+            val enabled = s.enabled || s.superServiceEnabled
+            // :svc 独立进程：getRunningServices 在新系统上几乎永远看不到，改查进程名
+            val svcAlive = isSvcProcessAlive(ctx)
+            // 未开 FGS/超级服务时，仅靠 WorkManager 也算「调度正常」
+            val expectsDedicatedProcess = s.useForegroundService || s.superServiceEnabled
+            _serviceStatus.value = when {
+                !enabled -> ServiceStatus.Stopped
+                expectsDedicatedProcess && svcAlive -> ServiceStatus.Running
+                expectsDedicatedProcess && !svcAlive -> {
+                    // 尝试拉起后再判一次
+                    try { WallpaperForegroundService.start(ctx) } catch (_: Exception) {}
+                    if (isSvcProcessAlive(ctx)) ServiceStatus.Running
+                    else ServiceStatus.Abnormal
+                }
+                // 仅 Worker / 已开启自动：视为运行中（后台受限不标异常）
+                enabled -> ServiceStatus.Running
+                else -> ServiceStatus.Stopped
+            }
+        }
+    }
+
+    private fun isSvcProcessAlive(ctx: Context): Boolean {
+        return try {
+            val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            val pkg = ctx.packageName
+            val names = setOf("$pkg:svc", pkg)
+            am.runningAppProcesses?.any { p ->
+                p.processName == "$pkg:svc" ||
+                    (p.processName.endsWith(":svc") && p.processName.startsWith(pkg.substringBefore(".debug")))
+            } == true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    fun refreshCacheSize() {
+        viewModelScope.launch {
+            try {
+                val dir = File(getApplication<Application>().filesDir, "wallpapers")
+                var sum = 0L
+                if (dir.isDirectory) {
+                    dir.walkTopDown().forEach { if (it.isFile) sum += it.length() }
+                }
+                _cacheBytes.value = sum
+            } catch (_: Exception) {
+                _cacheBytes.value = 0L
+            }
+        }
+    }
+
+    fun openUsageAccessSettings() {
+        ForegroundAppHelper.openUsageAccessSettings(getApplication())
+    }
+
+    fun hasUsageAccess(): Boolean = ForegroundAppHelper.hasUsageAccess(getApplication())
+
+
+
+    fun clearWallpaperCache() {
+        viewModelScope.launch {
+            try {
+                val dir = File(getApplication<Application>().filesDir, "wallpapers")
+                var n = 0
+                if (dir.isDirectory) {
+                    dir.listFiles()?.forEach { if (it.isFile) { it.delete(); n++ } }
+                }
+                val frames = File(getApplication<Application>().cacheDir, "video_frames")
+                if (frames.isDirectory) {
+                    frames.listFiles()?.forEach { if (it.isFile) { it.delete(); n++ } }
+                }
+                refreshCacheSize()
+                _status.value = "已清空壁纸缓存（$n 个文件）"
+            } catch (e: Exception) {
+                _status.value = "清空缓存失败：${e.message}"
+            }
+        }
+    }
+
+    fun saveDestinyRules(rules: List<DestinyRule>) {
+        viewModelScope.launch {
+            val s = settingsRepo.settingsFlow.first()
+            settingsRepo.save(
+                s.copy(
+                    destinyRulesJson = DestinyHelper.toJson(rules),
+                    destinyEnabled = s.destinyEnabled
+                )
+            )
+            _status.value = "命运先机配置已保存"
+        }
+    }
+
+    fun setDestinyEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            val s = settingsRepo.settingsFlow.first()
+            settingsRepo.save(s.copy(destinyEnabled = enabled))
+        }
+    }
+
+    fun clearLogs() {
+        viewModelScope.launch {
+            try {
+                dao.deleteAll()
+                _status.value = "已清空更换记录（日志）"
+            } catch (e: Exception) {
+                _status.value = "清空记录失败：${e.message}"
+            }
+        }
+    }
+
+
+
+    fun searchAvoidPlaces(keyword: String, onResult: (List<LocationHelper.PlaceHit>) -> Unit) {
+        viewModelScope.launch {
+            val key = settings.value.amapApiKey
+            val hits = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                LocationHelper.searchPlaces(key, keyword)
+            }
+            onResult(hits)
+        }
+    }
+
+
+    /** 将当前位置加入避让列表；[label] 为空则尝试高德逆地理，再不行用坐标名 */
+    fun addCurrentLocationAsAvoid(label: String = "") {
+        viewModelScope.launch {
+            val ctx = getApplication<Application>()
+            if (!LocationHelper.hasLocationPermission(ctx)) {
+                _status.value = "请先授予定位权限"
+                return@launch
+            }
+            val cur = LocationHelper.currentLocation(ctx)
+            if (cur == null) {
+                _status.value = "暂无定位，请打开系统定位后重试"
+                return@launch
+            }
+            val name = label.trim().ifBlank {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    LocationHelper.reverseGeocode(settings.value.amapApiKey, cur.latitude, cur.longitude)
+                } ?: String.format(java.util.Locale.US, "当前位置 %.5f,%.5f", cur.latitude, cur.longitude)
+            }
+            val id = "cur_${System.currentTimeMillis()}"
+            addAvoidanceLocation(
+                AvoidanceLocation(id, name, cur.latitude, cur.longitude)
+            )
+            _status.value = "已将当前位置加入避让：$name"
+        }
+    }
+
+    /** 仅解析当前位置地名（不写入列表） */
+    fun resolveCurrentPlaceName(onResult: (String?) -> Unit) {
+        viewModelScope.launch {
+            val ctx = getApplication<Application>()
+            val cur = LocationHelper.currentLocation(ctx)
+            if (cur == null) {
+                onResult(null)
+                return@launch
+            }
+            val name = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                LocationHelper.reverseGeocode(settings.value.amapApiKey, cur.latitude, cur.longitude)
+            }
+            onResult(name)
+        }
+    }
+
+    fun addAvoidanceLocation(loc: AvoidanceLocation) {
+        viewModelScope.launch {
+            val ctx = getApplication<Application>()
+            // 以标记文件为基准增删
+            val fileJson = ProcessBridgePrefs.effectiveAvoidLocationsJson(ctx, settings.value.avoidanceLocationsJson)
+            val cur = settings.value.copy(avoidanceLocationsJson = fileJson).avoidanceLocations().toMutableList()
+            if (cur.none { it.id == loc.id }) cur.add(loc)
+            val json = LocationHelper.locationsToJson(cur)
+            ProcessBridgePrefs.writeAvoidLocationsJson(ctx, json)
+            settingsRepo.save(settings.value.copy(avoidanceLocationsJson = json))
+            _status.value = "已加入避让：${loc.name}"
+        }
+    }
+
+    fun setAvoidRadiusMeters(meters: Int) {
+        viewModelScope.launch {
+            val m = meters.coerceIn(5, 500)
+            settingsRepo.save(settings.value.copy(locationAvoidRadiusMeters = m))
+            _status.value = "避让触发范围已设为 ${m} 米"
+        }
+    }
+
+    fun removeAvoidanceLocation(id: String) {
+        viewModelScope.launch {
+            val ctx = getApplication<Application>()
+            val fileJson = ProcessBridgePrefs.effectiveAvoidLocationsJson(ctx, settings.value.avoidanceLocationsJson)
+            val cur = settings.value.copy(avoidanceLocationsJson = fileJson).avoidanceLocations()
+                .filter { it.id != id }
+            val json = LocationHelper.locationsToJson(cur)
+            // 整表覆盖写标记文件（空列表写 []），:svc 只读文件
+            ProcessBridgePrefs.writeAvoidLocationsJson(ctx, json)
+            settingsRepo.save(settings.value.copy(avoidanceLocationsJson = json))
+            _status.value = "已移除避让点（剩余 ${cur.size}）"
+        }
+    }
+
+
+
+    /** 从 SAF 选择内核文件 → 复制到私有目录并写路径。 */
+    fun importSuperProxyBin(uri: android.net.Uri) {
+        viewModelScope.launch {
+            _status.value = "正在导入内核…"
+            val result = withContext(Dispatchers.IO) {
+                SuperProxyController.importBinFromUri(getApplication(), uri)
+            }
+            if (!result.ok) {
+                _status.value = result.message
+                return@launch
+            }
+            val next = settings.value.copy(
+                superProxyEnabled = true,
+                superProxyBinPath = result.path
+            )
+            withContext(Dispatchers.IO) { settingsRepo.save(next) }
+            _status.value = result.message
+        }
+    }
+
+    /** 从 SAF 选择配置文件 → 复制到私有目录并写路径。 */
+    fun importSuperProxyConfig(uri: android.net.Uri) {
+        viewModelScope.launch {
+            _status.value = "正在导入配置…"
+            val result = withContext(Dispatchers.IO) {
+                SuperProxyController.importConfigFromUri(getApplication(), uri)
+            }
+            if (!result.ok) {
+                _status.value = result.message
+                return@launch
+            }
+            val next = settings.value.copy(
+                superProxyEnabled = true,
+                superProxyConfigPath = result.path
+            )
+            withContext(Dispatchers.IO) { settingsRepo.save(next) }
+            _status.value = result.message
+        }
+    }
+
+    /**
+     * 启动超级代理内核。
+     * @param draft 若传入（设置页当前表单），会先写入 DataStore 再启动，避免「改了没保存点启动无反应」。
+     */
+    fun startSuperProxy(draft: AppSettings? = null) {
+        viewModelScope.launch {
+            val s = if (draft != null) {
+                val merged = settings.value.copy(
+                    superProxyEnabled = draft.superProxyEnabled,
+                    superProxyBinPath = draft.superProxyBinPath,
+                    superProxyConfigPath = draft.superProxyConfigPath,
+                    superProxySubUrl = draft.superProxySubUrl,
+                    superProxyArgs = draft.superProxyArgs,
+                    superProxyLocalPort = draft.superProxyLocalPort
+                )
+                withContext(Dispatchers.IO) {
+                    settingsRepo.save(merged)
+                }
+                merged
+            } else {
+                settings.value
+            }
+            if (!s.proxyEnabled) {
+                _status.value = "请先启用「代理」，再开超级代理"
+                return@launch
+            }
+            if (!s.superProxyEnabled) {
+                _status.value = "请先打开「启用超级代理」开关"
+                return@launch
+            }
+            if (s.superProxyBinPath.isBlank()) {
+                _status.value = "请先点「选择内核文件并导入」"
+                return@launch
+            }
+            _status.value = "正在解析配置并启动超级代理内核…"
+            val err = withContext(Dispatchers.IO) {
+                SuperProxyController.start(getApplication(), s)
+            }
+            if (err == null) {
+                ProxyHttp.applySettings(getApplication(), s)
+                ProxyHttp.setSuperRunning(true)
+                _status.value = SuperProxyController.status(getApplication(), s).message
+            } else {
+                ProxyHttp.setSuperRunning(false)
+                ProxyHttp.applySettings(getApplication(), s)
+                _status.value = "超级代理启动失败：$err（已回退普通代理/系统网络）"
+            }
+        }
+    }
+
+    fun stopSuperProxy() {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                SuperProxyController.stop(getApplication())
+            }
+            ProxyHttp.setSuperRunning(false)
+            ProxyHttp.applySettings(getApplication(), settings.value)
+            _status.value = "超级代理内核已停止（已回退普通代理/系统网络）"
+        }
+    }
+
+    fun importProxySubscription(urlOrBody: String) {
+        viewModelScope.launch {
+            _status.value = "正在解析代理订阅…"
+            val result = withContext(Dispatchers.IO) {
+                ProxySubscription.fetchAndParse(urlOrBody)
+            }
+            if (result.nodes.isEmpty()) {
+                _status.value = result.message
+                return@launch
+            }
+            val json = ProxySubscription.nodesToJson(result.nodes)
+            val first = result.nodes.first()
+            val next = settings.value.copy(
+                proxyEnabled = true,
+                proxySubUrl = urlOrBody.trim().take(2000),
+                proxyNodesJson = json,
+                proxySelectedNodeId = first.id,
+                proxyType = first.type,
+                proxyHost = first.host,
+                proxyPort = first.port,
+                proxyUser = first.user,
+                proxyPassword = first.password
+            )
+            settingsRepo.save(next)
+            ProxyHttp.applySettings(next)
+            _status.value = result.message + "，已选用：${first.name}"
+        }
+    }
+
+    fun setProxySelectMode(mode: ProxySelectMode) {
+        viewModelScope.launch {
+            val next = settings.value.copy(proxySelectMode = mode)
+            settingsRepo.save(next)
+            if (mode == ProxySelectMode.Auto) {
+                autoSelectBestProxyNode()
+            }
+            _status.value = "代理选择模式：${mode.label}"
+        }
+    }
+
+    fun setProxyAutoTestInterval(minutes: Int) {
+        viewModelScope.launch {
+            val m = minutes.coerceIn(5, 180)
+            settingsRepo.save(settings.value.copy(proxyAutoTestIntervalMinutes = m))
+            _status.value = "自动测速间隔：${m} 分钟"
+        }
+    }
+
+    fun selectProxyNode(nodeId: String) {
+        viewModelScope.launch {
+            val list = settings.value.proxyNodes()
+            val node = list.find { it.id == nodeId } ?: return@launch
+            applyProxyNode(node, selectMode = ProxySelectMode.Manual)
+            _status.value = "已选用节点：${node.name}"
+        }
+    }
+
+    private suspend fun applyProxyNode(node: ProxyNode, selectMode: ProxySelectMode? = null) {
+        val base = settings.value
+        val next = base.copy(
+            proxyEnabled = true,
+            proxySelectedNodeId = node.id,
+            proxyType = node.type,
+            proxyHost = node.host,
+            proxyPort = node.port,
+            proxyUser = node.user,
+            proxyPassword = node.password,
+            proxySelectMode = selectMode ?: base.proxySelectMode
+        )
+        settingsRepo.save(next)
+        ProxyHttp.applySettings(next)
+    }
+
+    fun testAllProxyNodes() {
+        proxyTestJob?.cancel()
+        proxyTestJob = viewModelScope.launch {
+            val list = settings.value.proxyNodes()
+            if (list.isEmpty()) {
+                _status.value = "无节点可测"
+                return@launch
+            }
+            _proxyTestBusy.value = true
+            _status.value = "测速中 0/${list.size}…"
+            try {
+                val updated = mutableListOf<ProxyNode>()
+                for ((i, n) in list.withIndex()) {
+                    ensureActive()
+                    if (!isActive) break
+                    _status.value = "测速 ${i + 1}/${list.size}：${n.name}"
+                    val ms = withContext(Dispatchers.IO) {
+                        ensureActive()
+                        ProxyHttp.measureLatencyMs(
+                            ProxyHttp.Config(
+                                enabled = true,
+                                type = n.type,
+                                host = n.host,
+                                port = n.port,
+                                user = n.user,
+                                password = n.password
+                            )
+                        )
+                    }
+                    updated += n.copy(latencyMs = if (ms < 0) -1L else ms)
+                    // 边测边写，中断时也保留已测结果
+                    if ((i + 1) % 3 == 0 || i == list.lastIndex) {
+                        val partial = ProxySubscription.nodesToJson(
+                            list.map { old -> updated.find { it.id == old.id } ?: old }
+                        )
+                        settingsRepo.save(settings.value.copy(proxyNodesJson = partial))
+                    }
+                }
+                ensureActive()
+                val merged = list.map { old -> updated.find { it.id == old.id } ?: old }
+                val json = ProxySubscription.nodesToJson(merged)
+                settingsRepo.save(
+                    settings.value.copy(
+                        proxyNodesJson = json,
+                        proxyLastAutoTestAt = System.currentTimeMillis()
+                    )
+                )
+                val ok = merged.count { it.latencyMs >= 0 }
+                _status.value = "测速完成：可用 $ok/${merged.size}"
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                _status.value = "测速已中断（已保存已测节点）"
+                throw e
+            } finally {
+                _proxyTestBusy.value = false
+            }
+        }
+    }
+
+    /** 强制中断正在进行的节点测速。 */
+    fun cancelProxyTest() {
+        proxyTestJob?.cancel()
+        proxyTestJob = null
+        _proxyTestBusy.value = false
+        _status.value = "测速已中断"
+    }
+
+    fun autoSelectBestProxyNode() {
+        viewModelScope.launch {
+            var list = settings.value.proxyNodes()
+            if (list.isEmpty()) {
+                _status.value = "无节点"
+                return@launch
+            }
+            // 若全未测或间隔到了，先测一遍
+            val needTest = list.all { it.latencyMs < 0 } ||
+                (System.currentTimeMillis() - settings.value.proxyLastAutoTestAt) >
+                settings.value.proxyAutoTestIntervalMinutes.coerceIn(5, 180) * 60_000L
+            if (needTest) {
+                testAllProxyNodes()
+                // wait busy
+                while (_proxyTestBusy.value) {
+                    kotlinx.coroutines.delay(200)
+                }
+                list = settings.value.proxyNodes()
+            }
+            val best = list.filter { it.latencyMs >= 0 }.minByOrNull { it.latencyMs }
+            if (best == null) {
+                _status.value = "没有可用节点（全部超时）"
+                return@launch
+            }
+            applyProxyNode(best, selectMode = ProxySelectMode.Auto)
+            _status.value = "自动选用最快：${best.name}（${best.latencyMs}ms）"
+        }
+    }
+
+    /** 更换壁纸前：自动模式且间隔到期则重测并选最快 */
+    fun maybeRefreshAutoProxy() {
+        viewModelScope.launch {
+            val s = settings.value
+            if (!s.proxyEnabled || s.proxySelectMode != ProxySelectMode.Auto) return@launch
+            if (s.proxyNodes().isEmpty()) return@launch
+            val iv = s.proxyAutoTestIntervalMinutes.coerceIn(5, 180) * 60_000L
+            if (s.proxyLastAutoTestAt > 0L && System.currentTimeMillis() - s.proxyLastAutoTestAt < iv) return@launch
+            autoSelectBestProxyNode()
+        }
+    }
+
+
+    private fun applySchedule(s: AppSettings) {
+        val ctx = getApplication<Application>()
+        ProcessBridgePrefs.sync(ctx, s)
+        if (!s.enabled && !s.superServiceEnabled) {
+            ChangeWallpaperWorker.cancel(ctx)
+            WallpaperForegroundService.stop(ctx)
+            SuperServiceController.disable(ctx)
+            return
+        }
+        // UI 进程只负责调度；真正换壁纸在 :svc 独立进程
+        WallpaperForegroundService.start(ctx)
+        ChangeWallpaperWorker.enqueue(ctx, s.intervalMinutes)
+        if (s.superServiceEnabled) {
+            SuperServiceController.enable(ctx)
+        } else {
+            SuperServiceController.disable(ctx)
+        }
+    }
+}
