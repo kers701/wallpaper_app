@@ -1,63 +1,79 @@
 package com.kers.killove.jhsy.util
 
 import android.content.Context
-import org.json.JSONArray
-import org.json.JSONObject
+import java.io.File
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 /**
- * 虚妄模式：本轮跃迁湮灭后剩余关键词中，与本次使用关键词存在子串包含关系的词组进入虚妄。
+ * 虚妄模式：在跃迁+溺灭过滤之后，把「包含本次搜索词」的候选打入虚妄，仅剩余可进跃迁。
  */
 object IllusionStore {
-    private const val FILE = "illusion_last_round.json"
+    private const val LAST_ROUND_FILE = "illusion_last_round.txt"
+    private const val LAST_ROUND_META = "illusion_last_round_meta.txt"
+    private val lock = ReentrantLock()
 
-    data class Round(
-        val usedKeyword: String,
-        val illusioned: List<String>,
-        val remaining: List<String>,
-        val at: Long
-    )
+    private fun lastRoundFile(context: Context): File =
+        File(context.applicationContext.filesDir, LAST_ROUND_FILE)
 
-    fun save(context: Context, usedKeyword: String, illusioned: List<String>, remaining: List<String>) {
-        runCatching {
-            val o = JSONObject()
-            o.put("usedKeyword", usedKeyword)
-            o.put("at", System.currentTimeMillis())
-            val a = JSONArray()
-            illusioned.forEach { a.put(it) }
-            o.put("illusioned", a)
-            val r = JSONArray()
-            remaining.forEach { r.put(it) }
-            o.put("remaining", r)
-            context.applicationContext.filesDir.resolve(FILE).writeText(o.toString())
+    private fun lastRoundMetaFile(context: Context): File =
+        File(context.applicationContext.filesDir, LAST_ROUND_META)
+
+    fun lastRoundIllusory(context: Context): List<String> = lock.withLock {
+        val f = lastRoundFile(context)
+        if (!f.exists()) return emptyList()
+        f.readLines().map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+    }
+
+    fun hasLastRound(context: Context): Boolean = lock.withLock {
+        lastRoundMetaFile(context).exists()
+    }
+
+    fun lastRoundNone(context: Context): Boolean = lock.withLock {
+        val f = lastRoundMetaFile(context)
+        if (!f.exists()) return false
+        f.readText().trim() == "none"
+    }
+
+    fun filterForJump(
+        context: Context,
+        candidates: List<String>,
+        usedKeyword: String?
+    ): Pair<List<String>, List<String>> = lock.withLock {
+        if (candidates.isEmpty()) {
+            saveLastRound(context, emptyList(), none = true)
+            return emptyList<String>() to emptyList()
         }
-    }
-
-    fun load(context: Context): Round? {
-        return runCatching {
-            val f = context.applicationContext.filesDir.resolve(FILE)
-            if (!f.exists()) return null
-            val o = JSONObject(f.readText())
-            val ill = buildList {
-                val a = o.optJSONArray("illusioned") ?: return@buildList
-                for (i in 0 until a.length()) add(a.optString(i))
-            }
-            val rem = buildList {
-                val a = o.optJSONArray("remaining") ?: return@buildList
-                for (i in 0 until a.length()) add(a.optString(i))
-            }
-            Round(o.optString("usedKeyword"), ill, rem, o.optLong("at"))
-        }.getOrNull()
-    }
-
-    fun filterForJump(candidates: List<String>, usedKeyword: String): Pair<List<String>, List<String>> {
-        val used = usedKeyword.trim().lowercase()
-        if (used.isEmpty()) return emptyList<String>() to candidates
-        val illusioned = mutableListOf<String>()
-        val remain = mutableListOf<String>()
-        for (c in candidates) {
+        val needles = needlesFrom(usedKeyword)
+        if (needles.isEmpty()) {
+            saveLastRound(context, emptyList(), none = true)
+            return candidates to emptyList()
+        }
+        val illusory = candidates.filter { c ->
             val low = c.lowercase()
-            if (low.contains(used) || used.contains(low)) illusioned += c else remain += c
+            needles.any { n -> low.contains(n) }
         }
-        return illusioned to remain
+        val kept = candidates.filter { c ->
+            val low = c.lowercase()
+            needles.none { n -> low.contains(n) }
+        }
+        saveLastRound(context, illusory, none = illusory.isEmpty())
+        kept to illusory
+    }
+
+    fun needlesFrom(usedKeyword: String?): List<String> {
+        val raw = usedKeyword?.trim().orEmpty()
+        if (raw.isEmpty()) return emptyList()
+        val set = linkedSetOf<String>()
+        set += raw.lowercase()
+        raw.split(Regex("\\s+")).map { it.trim() }.filter { it.length >= 2 }.forEach {
+            set += it.lowercase()
+        }
+        return set.toList()
+    }
+
+    private fun saveLastRound(context: Context, illusory: List<String>, none: Boolean) {
+        lastRoundFile(context).writeText(illusory.joinToString("\n"))
+        lastRoundMetaFile(context).writeText(if (none) "none" else "hit")
     }
 }

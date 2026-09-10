@@ -17,10 +17,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/**
- * 状态栏快捷设置磁贴：一键开关「自动更换」服务。
- * 需用户在系统「编辑图块」中手动添加。
- */
 @RequiresApi(Build.VERSION_CODES.N)
 class ServiceToggleTileService : TileService() {
 
@@ -40,7 +36,6 @@ class ServiceToggleTileService : TileService() {
         val tile = qsTile ?: return
         val currentlyActive = tile.state == Tile.STATE_ACTIVE
         applyTileUi(!currentlyActive)
-        val pending = goAsync()
         scope.launch {
             try {
                 toggleService(!currentlyActive)
@@ -52,8 +47,6 @@ class ServiceToggleTileService : TileService() {
                 withContext(Dispatchers.Main) {
                     refreshTile()
                 }
-            } finally {
-                pending.finish()
             }
         }
     }
