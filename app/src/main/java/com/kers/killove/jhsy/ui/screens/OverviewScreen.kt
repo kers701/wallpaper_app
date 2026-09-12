@@ -205,7 +205,19 @@ fun OverviewScreen(vm: MainViewModel) {
                 Text("虚妄模式：开启", color = textColor)
             }
 
-            Text("纯度：${settings.purity.label} · 类别：${settings.categoryMode.label}", color = textColor)
+            Text(
+                    run {
+                        val mode = com.kers.killove.jhsy.util.ProcessBridgePrefs.purityMode(context)
+                        val green = settings.locationAvoidEnabled &&
+                            settings.locationFallbackEnabled &&
+                            settings.locationInAvoidZone
+                        val eff = com.kers.killove.jhsy.util.DestinyHelper.effectiveDisplayPurity(
+                            settings, mode, green
+                        )
+                        "纯度：${eff.label} · 类别：${settings.categoryMode.label}"
+                    },
+                    color = textColor
+                )
             Text(
                 "目标：${settings.target.label}" + if (settings.isolateHomeLock) " · 桌面锁屏隔离" else "",
                 color = textColor

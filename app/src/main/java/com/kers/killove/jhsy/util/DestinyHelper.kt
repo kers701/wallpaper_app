@@ -224,6 +224,30 @@ object DestinyHelper {
         return pickWinner(parseRules(ProcessBridgePrefs.destinyRulesJson(context)), cal)
     }
 
+    /**
+     * 首页/概览展示用：当前实际生效纯度（命运/绿色/健康/心跳接管优先于用户设定）。
+     */
+    fun effectiveDisplayPurity(
+        settings: AppSettings,
+        purityMode: String = ProcessBridgePrefs.MODE_NORMAL,
+        greenActive: Boolean = false
+    ): Purity {
+        resolveActive(settings)?.let { rule ->
+            return when (rule.mode) {
+                DestinyMode.Health -> Purity.SketchyOnly
+                DestinyMode.Heartbeat -> Purity.SketchyNsfw
+                DestinyMode.Custom -> rule.customPurity()
+                DestinyMode.User -> settings.purity
+            }
+        }
+        if (greenActive) return Purity.SfwSketchy
+        return when (purityMode) {
+            ProcessBridgePrefs.MODE_HEALTH -> Purity.SketchyOnly
+            ProcessBridgePrefs.MODE_HEARTBEAT -> Purity.SketchyNsfw
+            else -> settings.purity
+        }
+    }
+
     private fun pickWinner(rules: List<DestinyRule>, cal: Calendar): DestinyRule? {
         val hit = rules.filter { matches(it, cal) }
         if (hit.isEmpty()) return null

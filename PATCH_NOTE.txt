@@ -1,0 +1,14 @@
+增量补丁：命运模式下首页/概览纯度与设置一致（不推送仓库）
+
+问题：
+- 设置页正确显示「纯度被命运劫持（模糊级）」等
+- 首页、概览仍显示进入命运前的用户设定纯度（如 模糊+限制）
+
+修改：
+1. DestinyHelper.effectiveDisplayPurity()：统一计算实际生效纯度（命运 > 绿色 > 健康/心跳 > 用户设定）
+2. HomeScreen / OverviewScreen：纯度行改用生效纯度，不再直接读 settings.purity
+
+覆盖路径：
+app/src/main/java/com/kers/killove/jhsy/util/DestinyHelper.kt
+app/src/main/java/com/kers/killove/jhsy/ui/screens/HomeScreen.kt
+app/src/main/java/com/kers/killove/jhsy/ui/screens/OverviewScreen.kt
