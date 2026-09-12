@@ -339,7 +339,9 @@ fun OverviewScreen(vm: MainViewModel) {
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .clickable { illuExpanded = !illuExpanded }
+                        .clickable(enabled = illuHas && !illuNone && illuList.isNotEmpty()) {
+                            illuExpanded = !illuExpanded
+                        }
                 ) {
                     Text("虚妄关键词", style = MaterialTheme.typography.titleMedium, color = textColor)
                     Text(
@@ -352,7 +354,7 @@ fun OverviewScreen(vm: MainViewModel) {
                         style = MaterialTheme.typography.bodySmall,
                         color = textColor.copy(alpha = 0.85f)
                     )
-                    if (illuExpanded && illuList.isNotEmpty()) {
+                    if (illuHas && !illuNone && illuExpanded && illuList.isNotEmpty()) {
                         Spacer(Modifier.height(6.dp))
                         Text(illuList.joinToString("、"), color = textColor, style = MaterialTheme.typography.bodySmall)
                     }

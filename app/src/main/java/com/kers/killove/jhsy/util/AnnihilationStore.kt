@@ -40,9 +40,13 @@ object AnnihilationStore {
 
     /** 上一轮因命中缓存而未进入跃迁的关键词 */
     fun lastRoundBlocked(context: Context): List<String> = lock.withLock {
-        val f = lastRoundFile(context)
-        if (!f.exists()) return emptyList()
-        f.readLines().map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        val meta = lastRoundMetaFile(context)
+        if (meta.exists() && meta.readText().trim() == "ascended") {
+            val f = lastRoundFile(context)
+            if (f.exists() && f.length() > 0L) runCatching { f.writeText("") }
+            return emptyList()
+        }
+        readCleanLines(lastRoundFile(context))
     }
 
     /** 上一轮是否「全员飞升」（无一命中湮灭缓存） */
@@ -114,12 +118,44 @@ object AnnihilationStore {
         lastRoundMetaFile(context).writeText(if (allAscended) "ascended" else "blocked")
     }
 
-    private fun listUnlocked(context: Context): List<String> {
-        val f = file(context)
-        if (!f.exists()) return emptyList()
-        return f.readLines()
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
-            .distinct()
+    private fun listUnlocked(context: Context): List<String> =
+        readCleanLines(file(context))
+
+    private fun isCleanKeywordLine(line: String): Boolean {
+        val t = line.trim()
+        if (t.isEmpty() || t.length > 120) return false
+        val low = t.lowercase()
+        if (low.startsWith("sqlite format")) return false
+        if (low.contains("create table")) return false
+        if (low.contains("sqlite_stat")) return false
+        if (t.contains('\u0000')) return false
+        if (t.any { ch -> val c = ch.code; c < 0x09 || (c in 0x0B..0x1F) || c == 0x7F }) return false
+        return true
+    }
+
+    private fun readCleanLines(f: File): List<String> {
+        if (!f.exists() || f.length() == 0L) return emptyList()
+        val header = runCatching {
+            f.inputStream().use { ins ->
+                val buf = ByteArray(16)
+                val n = ins.read(buf)
+                if (n <= 0) return@use ""
+                buf.copyOf(n).toString(Charsets.ISO_8859_1)
+            }
+        }.getOrDefault("")
+        if (header.startsWith("SQLite format")) {
+            runCatching { f.writeText("") }
+            return emptyList()
+        }
+        return runCatching {
+            f.readLines(Charsets.UTF_8)
+                .asSequence()
+                .map { it.trim() }
+                .filter { isCleanKeywordLine(it) }
+                .distinct()
+                .take(500)
+                .toList()
+        }.getOrDefault(emptyList())
     }
 }
+

@@ -603,7 +603,7 @@ fun HomeScreen(vm: MainViewModel, onOpenHelp: (() -> Unit)? = null) {
                     Modifier
                         .padding(16.dp)
                         .fillMaxWidth()
-                        .clickable(enabled = illuList.isNotEmpty()) { illuExpanded = !illuExpanded },
+                        .clickable(enabled = illuHas && !illuNone && illuList.isNotEmpty()) { illuExpanded = !illuExpanded },
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text("虚妄关键词", style = MaterialTheme.typography.titleMedium, color = textColor)
@@ -617,7 +617,7 @@ fun HomeScreen(vm: MainViewModel, onOpenHelp: (() -> Unit)? = null) {
                         style = MaterialTheme.typography.bodySmall,
                         color = textColor.copy(alpha = 0.85f)
                     )
-                    if (illuList.isNotEmpty() && illuExpanded) {
+                    if (illuHas && !illuNone && illuList.isNotEmpty() && illuExpanded) {
                         Text(illuList.joinToString("、"), color = textColor)
                     }
                     Text(
