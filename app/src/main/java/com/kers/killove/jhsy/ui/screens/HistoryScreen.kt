@@ -110,7 +110,11 @@ fun HistoryScreen(vm: MainViewModel) {
                             val res = if (item.width > 0 && item.height > 0) {
                                 "${item.width}×${item.height}"
                             } else "分辨率未知"
-                            Text("分辨率: $res · 大小: ${formatFileSize(item.fileSize)}", color = textColor)
+                            val ratioStr = if (item.width > 0 && item.height > 0) {
+                                val r = item.width.toDouble() / item.height.toDouble()
+                                " · 宽高比 ${"%.3f".format(r)}"
+                            } else ""
+                            Text("分辨率: $res$ratioStr · 大小: ${formatFileSize(item.fileSize)}", color = textColor)
                             val triggerLabel = com.kers.killove.jhsy.domain.TriggerType.fromCode(item.triggerType).label
                             Text(
                                 "触发: $triggerLabel · ${fmt.format(Date(item.setAt))}",

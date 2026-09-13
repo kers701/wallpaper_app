@@ -90,7 +90,7 @@ class WallhavenApi {
                 throw IllegalStateException("Wallhaven HTTP ${response.code}")
             }
             val body = response.body?.string() ?: throw IllegalStateException("空响应")
-            parseSearch(body, categoryCode)
+            parseSearch(body, categoryCode, settings)
         }
     }
 
@@ -332,7 +332,7 @@ class WallhavenApi {
         return null
     }
 
-    private fun parseSearch(json: String, categoryCode: String): SearchPageResult {
+    private fun parseSearch(json: String, categoryCode: String, settings: AppSettings? = null): SearchPageResult {
         val root = JSONObject(json)
         val data = root.optJSONArray("data")
         val meta = root.optJSONObject("meta")
@@ -374,7 +374,10 @@ class WallhavenApi {
                 )
             )
         }
-        return SearchPageResult(list, lastPage, currentPage)
+        val filtered = if (settings != null) {
+            list.filter { settings.matchesAspectRatio(it.width, it.height) }
+        } else list
+        return SearchPageResult(ArrayList(filtered), lastPage, currentPage)
     }
 
 

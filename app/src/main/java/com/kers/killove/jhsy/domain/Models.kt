@@ -316,6 +316,16 @@ data class AppSettings(
 
     /** 方向过滤（三选一） */
     val orientationFilter: OrientationFilter = OrientationFilter.None,
+    /**
+     * 宽高比过滤（width/height）。
+     * 开启后按 [aspectRatioMin]～[aspectRatioMax] 过滤；≤0 表示该端不限制。
+     * 两端都不限制时视为关闭。
+     */
+    val aspectRatioFilterEnabled: Boolean = false,
+    /** 最低宽高比（宽÷高），≤0 不限制 */
+    val aspectRatioMin: Float = 0f,
+    /** 最高宽高比（宽÷高），≤0 不限制 */
+    val aspectRatioMax: Float = 0f,
     /** 壁纸铺满方式 */
     val fitMode: WallpaperFitMode = WallpaperFitMode.Fill,
     /** 桌面/锁屏隔离：先下一张设桌面，再下一张设锁屏（可用不同关键词） */
@@ -491,6 +501,24 @@ data class AppSettings(
     val filterLandscape: Boolean get() = orientationFilter == OrientationFilter.NoLandscape
     val filterPortrait: Boolean get() = orientationFilter == OrientationFilter.NoPortrait
     val cropFill: Boolean get() = fitMode == WallpaperFitMode.Fill
+
+    /** 宽高比是否落在设定区间内（未开启过滤时恒 true） */
+    fun matchesAspectRatio(width: Int, height: Int): Boolean {
+        val enabled = aspectRatioFilterEnabled && (aspectRatioMin > 0f || aspectRatioMax > 0f)
+        if (!enabled) return true
+        if (width <= 0 || height <= 0) return false
+        val r = width.toDouble() / height.toDouble()
+        if (aspectRatioMin > 0f && r < aspectRatioMin) return false
+        if (aspectRatioMax > 0f && r > aspectRatioMax) return false
+        return true
+    }
+
+    fun aspectRatioFilterLabel(): String {
+        if (!aspectRatioFilterEnabled || (aspectRatioMin <= 0f && aspectRatioMax <= 0f)) return "宽高比：不限制"
+        val lo = if (aspectRatioMin > 0f) "%.2f".format(aspectRatioMin) else "不限"
+        val hi = if (aspectRatioMax > 0f) "%.2f".format(aspectRatioMax) else "不限"
+        return "宽高比：$lo～$hi"
+    }
 
     /** 距下次更换剩余分钟；未开启或未换过返回 -1 */
     fun minutesUntilNext(): Int {

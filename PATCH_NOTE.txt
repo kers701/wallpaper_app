@@ -1,23 +1,11 @@
-合并增量补丁（不推送仓库）
+增量补丁：宽高比过滤（不推送）
 
-包含：
-A. 湮灭写入修复
-   - 关键词选中后立刻写入
-   - 用哪个记哪个（整句不拆词）
-   - 格式：MM-dd HH:mm | 关键词
-   - 同词不占新行；文件锁 + 原子写
-   - 全命中仍升纪元；满 777 强制清空
+基础设置：
+- 开关「宽高比过滤（宽÷高）」
+- 最低 / 最高输入框；留空=该端不限制
+- 两端都空时保存自动关闭开关
 
-B. 过滤顺序
-   - 仅跃迁：清洗本次用词
-   - 跃迁+湮灭：清洗 → 湮灭
-   - 跃迁+湮灭+虚妄：清洗 → 虚妄 → 湮灭（最后）
+搜索：Wallhaven 结果按 width/height 过滤
+记录：历史与 CSV 显示宽高比
 
-覆盖路径：
-app/src/main/java/com/kers/killove/jhsy/util/AnnihilationStore.kt
-app/src/main/java/com/kers/killove/jhsy/domain/WallpaperChanger.kt
-app/src/main/java/com/kers/killove/jhsy/domain/Models.kt
-app/src/main/java/com/kers/killove/jhsy/ui/screens/SettingsScreen.kt
-app/src/main/java/com/kers/killove/jhsy/ui/screens/HelpGuideScreen.kt
-
-建议安装后清空旧 annihilation_keywords.txt，去掉历史拆词碎片。
+覆盖路径见 zip 内文件。

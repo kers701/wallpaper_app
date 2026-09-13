@@ -499,7 +499,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     return if (v.contains(',') || v.contains('"') || v.contains('\n')) "\"$v\"" else v
                 }
                 val sb = StringBuilder()
-                sb.append("id,setAt,trigger,source,category,purity,keyword,width,height,fileSizeBytes,path,sourceUrl\n")
+                sb.append("id,setAt,trigger,source,category,purity,keyword,width,height,aspectRatio,fileSizeBytes,path,sourceUrl\n")
                 for (item in list) {
                     val trigger = com.kers.killove.jhsy.domain.TriggerType.fromCode(item.triggerType).label
                     sb.append(
@@ -513,6 +513,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             esc(item.keyword),
                             item.width.toString(),
                             item.height.toString(),
+                            if (item.width > 0 && item.height > 0)
+                                "%.4f".format(item.width.toDouble() / item.height.toDouble())
+                            else "",
                             item.fileSize.toString(),
                             esc(item.path),
                             esc(item.sourceUrl)

@@ -59,6 +59,9 @@ object ConfigBackup {
         o.put("useForegroundService", settings.useForegroundService)
         o.put("skipWhenScreenOff", settings.skipWhenScreenOff)
         o.put("orientationFilter", settings.orientationFilter.name)
+        o.put("aspectRatioFilterEnabled", settings.aspectRatioFilterEnabled)
+        o.put("aspectRatioMin", settings.aspectRatioMin.toDouble())
+        o.put("aspectRatioMax", settings.aspectRatioMax.toDouble())
         o.put("fitMode", settings.fitMode.name)
         o.put("isolateHomeLock", settings.isolateHomeLock)
         o.put("powerSaveEnabled", settings.powerSaveEnabled)
@@ -199,6 +202,9 @@ object ConfigBackup {
             useForegroundService = o.optBoolean("useForegroundService", base.useForegroundService),
             skipWhenScreenOff = o.optBoolean("skipWhenScreenOff", base.skipWhenScreenOff),
             orientationFilter = runCatching { OrientationFilter.valueOf(o.optString("orientationFilter", base.orientationFilter.name)) }.getOrDefault(base.orientationFilter),
+            aspectRatioFilterEnabled = o.optBoolean("aspectRatioFilterEnabled", base.aspectRatioFilterEnabled),
+            aspectRatioMin = o.optDouble("aspectRatioMin", base.aspectRatioMin.toDouble()).toFloat(),
+            aspectRatioMax = o.optDouble("aspectRatioMax", base.aspectRatioMax.toDouble()).toFloat(),
             fitMode = runCatching { WallpaperFitMode.valueOf(o.optString("fitMode", base.fitMode.name)) }.getOrDefault(base.fitMode),
             isolateHomeLock = o.optBoolean("isolateHomeLock", base.isolateHomeLock),
             powerSaveEnabled = o.optBoolean("powerSaveEnabled", base.powerSaveEnabled),

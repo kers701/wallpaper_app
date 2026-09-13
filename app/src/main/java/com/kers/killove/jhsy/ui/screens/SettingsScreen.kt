@@ -113,6 +113,15 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
     var fgs by remember(settings.useForegroundService) { mutableStateOf(settings.useForegroundService) }
     var skipOff by remember(settings.skipWhenScreenOff) { mutableStateOf(settings.skipWhenScreenOff) }
     var orientFilter by remember(settings.orientationFilter) { mutableStateOf(settings.orientationFilter) }
+    var aspectRatioOn by remember(settings.aspectRatioFilterEnabled) {
+        mutableStateOf(settings.aspectRatioFilterEnabled)
+    }
+    var aspectRatioMinText by remember(settings.aspectRatioMin) {
+        mutableStateOf(if (settings.aspectRatioMin > 0f) settings.aspectRatioMin.toString() else "")
+    }
+    var aspectRatioMaxText by remember(settings.aspectRatioMax) {
+        mutableStateOf(if (settings.aspectRatioMax > 0f) settings.aspectRatioMax.toString() else "")
+    }
     var fitMode by remember(settings.fitMode) { mutableStateOf(settings.fitMode) }
     var isolate by remember(settings.isolateHomeLock) { mutableStateOf(settings.isolateHomeLock) }
     var powerSave by remember(settings.powerSaveEnabled) { mutableStateOf(settings.powerSaveEnabled) }
@@ -944,6 +953,31 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             style = MaterialTheme.typography.bodySmall
         )
         EnumDropdown("方向过滤", OrientationFilter.entries, orientFilter) { orientFilter = it }
+        RowSwitch("宽高比过滤（宽÷高）", aspectRatioOn) { aspectRatioOn = it }
+        if (aspectRatioOn) {
+            Text(
+                "写入最低/最高宽高比；任一端留空表示该端不限制。两端都空则保存时自动关闭。例：竖屏约 0.45～0.7，横屏约 1.4～2.0。",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = aspectRatioMinText,
+                    onValueChange = { aspectRatioMinText = it },
+                    label = { Text("最低宽高比") },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    placeholder = { Text("不限制") }
+                )
+                OutlinedTextField(
+                    value = aspectRatioMaxText,
+                    onValueChange = { aspectRatioMaxText = it },
+                    label = { Text("最高宽高比") },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    placeholder = { Text("不限制") }
+                )
+            }
+        }
         EnumDropdown("壁纸铺满方式", WallpaperFitMode.entries, fitMode) { fitMode = it }
         Text("填充=等比铺满；适应=完整显示留边；居中=原图居中裁多余；拉伸=强制变形铺满。修改后保存会用当前壁纸重设（不重新下载）", style = MaterialTheme.typography.bodySmall)
         RowSwitch("桌面锁屏隔离（两次下载，可用不同关键词）", isolate) { isolate = it }
@@ -1316,6 +1350,14 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                         useForegroundService = fgs,
                         skipWhenScreenOff = skipOff,
                         orientationFilter = orientFilter,
+                        aspectRatioMin = aspectRatioMinText.trim().toFloatOrNull()?.takeIf { it > 0f } ?: 0f,
+                        aspectRatioMax = aspectRatioMaxText.trim().toFloatOrNull()?.takeIf { it > 0f } ?: 0f,
+                        aspectRatioFilterEnabled = run {
+                            val lo = aspectRatioMinText.trim().toFloatOrNull()?.takeIf { it > 0f }
+                            val hi = aspectRatioMaxText.trim().toFloatOrNull()?.takeIf { it > 0f }
+                            val on = aspectRatioOn && (lo != null || hi != null)
+                            on
+                        },
                         fitMode = fitMode,
                         isolateHomeLock = isolate,
                         powerSaveEnabled = powerSave,

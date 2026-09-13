@@ -46,6 +46,9 @@ class SettingsRepository(private val context: Context) {
         val FGS = booleanPreferencesKey("use_fgs")
         val SKIP_OFF = booleanPreferencesKey("skip_screen_off")
         val ORIENT_FILTER = stringPreferencesKey("orientation_filter")
+        val ASPECT_RATIO_ON = booleanPreferencesKey("aspect_ratio_filter")
+        val ASPECT_RATIO_MIN = floatPreferencesKey("aspect_ratio_min")
+        val ASPECT_RATIO_MAX = floatPreferencesKey("aspect_ratio_max")
         val FIT_MODE = stringPreferencesKey("fit_mode")
         val ISOLATE_HL = booleanPreferencesKey("isolate_home_lock")
         val POWER_SAVE = booleanPreferencesKey("power_save")
@@ -153,6 +156,9 @@ class SettingsRepository(private val context: Context) {
             useForegroundService = p[Keys.FGS] ?: false,
             skipWhenScreenOff = p[Keys.SKIP_OFF] ?: false,
             orientationFilter = OrientationFilter.fromCode(p[Keys.ORIENT_FILTER] ?: "none"),
+            aspectRatioFilterEnabled = p[Keys.ASPECT_RATIO_ON] ?: false,
+            aspectRatioMin = p[Keys.ASPECT_RATIO_MIN] ?: 0f,
+            aspectRatioMax = p[Keys.ASPECT_RATIO_MAX] ?: 0f,
             fitMode = WallpaperFitMode.fromCode(p[Keys.FIT_MODE] ?: "fill"),
             isolateHomeLock = p[Keys.ISOLATE_HL] ?: false,
             powerSaveEnabled = p[Keys.POWER_SAVE] ?: false,
@@ -262,6 +268,9 @@ class SettingsRepository(private val context: Context) {
             p[Keys.FGS] = settings.useForegroundService
             p[Keys.SKIP_OFF] = settings.skipWhenScreenOff
             p[Keys.ORIENT_FILTER] = settings.orientationFilter.code
+            p[Keys.ASPECT_RATIO_ON] = settings.aspectRatioFilterEnabled
+            p[Keys.ASPECT_RATIO_MIN] = settings.aspectRatioMin
+            p[Keys.ASPECT_RATIO_MAX] = settings.aspectRatioMax
             p[Keys.FIT_MODE] = settings.fitMode.code
             p[Keys.ISOLATE_HL] = settings.isolateHomeLock
             p[Keys.POWER_SAVE] = settings.powerSaveEnabled
