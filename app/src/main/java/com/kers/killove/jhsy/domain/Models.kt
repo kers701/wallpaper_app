@@ -359,7 +359,7 @@ data class AppSettings(
     val annihilationEpoch: Int = 1,
     /**
      * 虚妄模式（需跃迁+湮灭均开启）：
-     * 湮灭后剩余候选中，包含本次搜索词的全部进入虚妄，其余才写入跃迁。
+     * 清洗后先虚妄（含本次搜索词者入虚妄），再湮灭；湮灭为最后过滤节点。
      */
     val illusionModeEnabled: Boolean = false,
 

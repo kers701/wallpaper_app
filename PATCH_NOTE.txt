@@ -1,21 +1,23 @@
-增量补丁：虚妄关键词看板 SQLite 乱码（不推送仓库）
+合并增量补丁（不推送仓库）
 
-现象：
-虚妄模式显示「全员升华」，点击展开却出现 SQLite format 3 / CREATE TABLE 等乱码。
+包含：
+A. 湮灭写入修复
+   - 关键词选中后立刻写入
+   - 用哪个记哪个（整句不拆词）
+   - 格式：MM-dd HH:mm | 关键词
+   - 同词不占新行；文件锁 + 原子写
+   - 全命中仍升纪元；满 777 强制清空
 
-原因：
-illusion_last_round.txt 被读成了含 SQLite 库头的二进制/脏数据；
-概览卡片在列表非空时可展开，未与「全员升华」状态互斥。
-
-修复：
-1. IllusionStore：检测 SQLite 魔数则清空；只接受干净关键词行；meta=none 时强制空列表；原子写入
-2. AnnihilationStore：同样做脏数据过滤（防止湮灭看板同类问题）
-3. Home/Overview：仅在「有本轮记录且非全员升华且列表非空」时允许展开
+B. 过滤顺序
+   - 仅跃迁：清洗本次用词
+   - 跃迁+湮灭：清洗 → 湮灭
+   - 跃迁+湮灭+虚妄：清洗 → 虚妄 → 湮灭（最后）
 
 覆盖路径：
-app/src/main/java/com/kers/killove/jhsy/util/IllusionStore.kt
 app/src/main/java/com/kers/killove/jhsy/util/AnnihilationStore.kt
-app/src/main/java/com/kers/killove/jhsy/ui/screens/HomeScreen.kt
-app/src/main/java/com/kers/killove/jhsy/ui/screens/OverviewScreen.kt
+app/src/main/java/com/kers/killove/jhsy/domain/WallpaperChanger.kt
+app/src/main/java/com/kers/killove/jhsy/domain/Models.kt
+app/src/main/java/com/kers/killove/jhsy/ui/screens/SettingsScreen.kt
+app/src/main/java/com/kers/killove/jhsy/ui/screens/HelpGuideScreen.kt
 
-说明：安装后首次进入会自动清掉已损坏的虚妄文件；下次真正命中虚妄词后才会可展开。
+建议安装后清空旧 annihilation_keywords.txt，去掉历史拆词碎片。

@@ -531,7 +531,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             style = MaterialTheme.typography.bodySmall
         )
         if (jumpMode) {
-            RowSwitch("湮灭模式（用过的词不进入跃迁；全命中则新纪元）", annihilMode) {
+            RowSwitch("湮灭模式（选中即整词入缓存；全命中则新纪元）", annihilMode) {
                 annihilMode = it
                 if (!it) illusionMode = false
             }
@@ -545,7 +545,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                 }
                 if (illusionMode) {
                     Text(
-                        "身前虚妄，身后亦是虚妄——湮灭后剩余词中，包含本次用词者进入虚妄，不写入跃迁。",
+                        "身前虚妄，身后亦是虚妄——清洗后先虚妄（含本次用词者），再湮灭；湮灭为最后节点。",
                         style = MaterialTheme.typography.bodySmall
                     )
                 }

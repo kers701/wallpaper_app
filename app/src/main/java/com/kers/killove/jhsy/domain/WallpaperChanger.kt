@@ -174,6 +174,15 @@ class WallpaperChanger(
         ) {
             val kwHome = pickKeyword(settings, offset = 0)
             val kwLock = pickKeyword(settings, offset = 1)
+            // 关键词选中后立刻写入湮灭缓存（用哪个记哪个）
+            if (settings.jumpModeEnabled && settings.annihilationModeEnabled) {
+                val forced = com.kers.killove.jhsy.util.AnnihilationStore.recordUsed(context, kwHome) ||
+                    com.kers.killove.jhsy.util.AnnihilationStore.recordUsed(context, kwLock)
+                if (forced) {
+                    settingsRepo.setAnnihilationEpoch(settings.annihilationEpoch + 1)
+                    RunLog.i(context, "annihilation force clear at 777 (isolate pick)")
+                }
+            }
             val home = changeForTarget(
                 settings, WallpaperTarget.Home, emptySet(), forceKeyword = kwHome,
                 skipPrefetchUse = liveDownloadOnly, countChange = false,
@@ -271,6 +280,13 @@ class WallpaperChanger(
 
         val category = api.nextCategory(settings)
         val keyword = forceKeyword ?: pickKeyword(settings, offset = 0)
+        // 选中后立刻记入湮灭（同词幂等）；隔离外层已记时此处只刷新时间
+        if (settings.jumpModeEnabled && settings.annihilationModeEnabled) {
+            if (com.kers.killove.jhsy.util.AnnihilationStore.recordUsed(context, keyword)) {
+                settingsRepo.setAnnihilationEpoch(settings.annihilationEpoch + 1)
+                RunLog.i(context, "annihilation force clear at 777 (pick)")
+            }
+        }
         val (dw, dh) = setter.screenSize()
 
         var candidates: List<WallpaperItem> = emptyList()
@@ -546,17 +562,12 @@ class WallpaperChanger(
                     api.fetchWallpaperTags(item.id, settings.nextApiKey())
                 }.getOrDefault(emptyList())
             }
+            // 过滤链（互锁：跃迁 → 可湮灭 → 可虚妄）：
+            // 仅跃迁：清洗本次用词
+            // 跃迁+湮灭：清洗 → 湮灭
+            // 跃迁+湮灭+虚妄：清洗 → 虚妄 → 湮灭（湮灭必须最后）
             val cleaned = filterJumpTags(tags, usedKeyword)
             var forJump = cleaned
-            if (settings.jumpModeEnabled && settings.annihilationModeEnabled && cleaned.isNotEmpty()) {
-                val (filtered, newEpoch) = com.kers.killove.jhsy.util.AnnihilationStore.filterForJump(context, cleaned)
-                forJump = filtered
-                if (newEpoch) {
-                    settingsRepo.setAnnihilationEpoch(settings.annihilationEpoch + 1)
-                    RunLog.i(context, "annihilation epoch -> ${settings.annihilationEpoch + 1} (all hit, cache cleared)")
-                }
-            }
-            // 虚妄：包含本次搜索词的候选进入虚妄，其余才进跃迁
             if (settings.jumpModeEnabled && settings.annihilationModeEnabled &&
                 settings.illusionModeEnabled && forJump.isNotEmpty()
             ) {
@@ -569,18 +580,20 @@ class WallpaperChanger(
                     "illusion blocked=${illusory.size} kept=${kept.size} used=${usedKeyword ?: ""}"
                 )
             }
+            if (settings.jumpModeEnabled && settings.annihilationModeEnabled && forJump.isNotEmpty()) {
+                val (filtered, newEpoch) = com.kers.killove.jhsy.util.AnnihilationStore.filterForJump(
+                    context, forJump
+                )
+                forJump = filtered
+                if (newEpoch) {
+                    settingsRepo.setAnnihilationEpoch(settings.annihilationEpoch + 1)
+                    RunLog.i(context, "annihilation epoch -> ${settings.annihilationEpoch + 1} (all hit, cache cleared)")
+                }
+            }
             if (forJump.isNotEmpty()) {
                 settingsRepo.setJumpKeywords(forJump)
             }
-            // 若过滤后为空：不覆盖旧跃迁列表，避免被清空后无法继续跃迁
-            // 湮灭：记录本次使用的关键词
-            if (settings.jumpModeEnabled && settings.annihilationModeEnabled) {
-                val forced = com.kers.killove.jhsy.util.AnnihilationStore.recordUsed(context, usedKeyword)
-                if (forced) {
-                    settingsRepo.setAnnihilationEpoch(settings.annihilationEpoch + 1)
-                    RunLog.i(context, "annihilation force clear at 777, epoch -> ${settings.annihilationEpoch + 1}")
-                }
-            }
+            // 若过滤后为空：不覆盖旧跃迁列表；湮灭写入已在关键词选中时完成
         }
 
         // 非隔离路径才在这里 +1；隔离在外层 +2
@@ -627,6 +640,11 @@ class WallpaperChanger(
                         nextStore.clearFail(target)
                     }
                     val kw = pickKeyword(settings, offset = i)
+                    if (settings.jumpModeEnabled && settings.annihilationModeEnabled) {
+                        if (com.kers.killove.jhsy.util.AnnihilationStore.recordUsed(context, kw)) {
+                            settingsRepo.setAnnihilationEpoch(settings.annihilationEpoch + 1)
+                        }
+                    }
                     prefetchDownload(settings, target, excludeIds, kw)
                 }
             }
@@ -645,6 +663,11 @@ class WallpaperChanger(
             if (nextStore.shouldRetryOnce(target)) {
                 onProgress(0f, "预下载重试中…")
                 val kw = pickKeyword(settings, offset = i)
+                    if (settings.jumpModeEnabled && settings.annihilationModeEnabled) {
+                        if (com.kers.killove.jhsy.util.AnnihilationStore.recordUsed(context, kw)) {
+                            settingsRepo.setAnnihilationEpoch(settings.annihilationEpoch + 1)
+                        }
+                    }
                 prefetchDownload(settings, target, emptySet(), kw)
             }
         }
@@ -662,6 +685,13 @@ class WallpaperChanger(
     ) {
         val category = api.nextCategory(settings)
         val keyword = forceKeyword ?: pickKeyword(settings, offset = 0)
+        // 选中后立刻记入湮灭（同词幂等）；隔离外层已记时此处只刷新时间
+        if (settings.jumpModeEnabled && settings.annihilationModeEnabled) {
+            if (com.kers.killove.jhsy.util.AnnihilationStore.recordUsed(context, keyword)) {
+                settingsRepo.setAnnihilationEpoch(settings.annihilationEpoch + 1)
+                RunLog.i(context, "annihilation force clear at 777 (pick)")
+            }
+        }
         val (dw, dh) = setter.screenSize()
         var lastError: String? = null
 

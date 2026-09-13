@@ -2,16 +2,23 @@ package com.kers.killove.jhsy.util
 
 import android.content.Context
 import java.io.File
+import java.io.RandomAccessFile
+import java.nio.channels.FileLock
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
 /**
  * 湮灭模式关键词缓存（本机文件）。
- * - 使用过的关键词写入缓存
- * - 跃迁提取时命中缓存的不进入跃迁列表
- * - 若本轮候选全部命中 → 清空缓存并进入下一纪元（全部进入跃迁）
+ *
+ * 规则（与产品一致）：
+ * - 关键词**一被选中用于搜索**即写入缓存（用哪个记哪个，整句不拆词）
+ * - 文件每行：`MM-dd HH:mm | 关键词`
+ * - 跃迁提取时，标签与缓存中任一关键词全等（忽略大小写）则不进跃迁
+ * - 本轮候选全部命中 → 清空缓存并进入下一纪元（候选全部放行进跃迁）
  * - 条目 ≥ [MAX_ENTRIES] 强制清空
- * - 首页/概览只展示「上一轮被湮灭」的词；若无一命中则为「全员飞升」
  */
 object AnnihilationStore {
     const val MAX_ENTRIES = 777
@@ -19,6 +26,7 @@ object AnnihilationStore {
     private const val LAST_ROUND_FILE = "annihilation_last_round.txt"
     private const val LAST_ROUND_META = "annihilation_last_round_meta.txt"
     private val lock = ReentrantLock()
+    private val timeFmt = SimpleDateFormat("MM-dd HH:mm", Locale.US)
 
     private fun file(context: Context): File =
         File(context.applicationContext.filesDir, FILE_NAME)
@@ -29,13 +37,15 @@ object AnnihilationStore {
     private fun lastRoundMetaFile(context: Context): File =
         File(context.applicationContext.filesDir, LAST_ROUND_META)
 
-    fun list(context: Context): List<String> = lock.withLock { listUnlocked(context) }
+    /** 仅关键词列表（供 UI 数量 / 匹配） */
+    fun list(context: Context): List<String> = lock.withLock {
+        loadEntries(context).map { it.keyword }.distinct()
+    }
 
     fun size(context: Context): Int = list(context).size
 
     fun clear(context: Context) = lock.withLock {
-        val f = file(context)
-        if (f.exists()) f.writeText("")
+        writeEntries(context, emptyList())
     }
 
     /** 上一轮因命中缓存而未进入跃迁的关键词 */
@@ -46,10 +56,9 @@ object AnnihilationStore {
             if (f.exists() && f.length() > 0L) runCatching { f.writeText("") }
             return emptyList()
         }
-        readCleanLines(lastRoundFile(context))
+        readPlainKeywordLines(lastRoundFile(context))
     }
 
-    /** 上一轮是否「全员飞升」（无一命中湮灭缓存） */
     fun lastRoundAllAscended(context: Context): Boolean = lock.withLock {
         val f = lastRoundMetaFile(context)
         if (!f.exists()) return false
@@ -61,29 +70,28 @@ object AnnihilationStore {
     }
 
     /**
-     * 记录本次使用的搜索词（整句 + 分词）。
+     * 关键词选中后立刻写入：整句原样，不拆词。
+     * 同关键词（忽略大小写）已存在则只更新时间，不重复占行。
      * @return true 若因达到上限而强制清空
      */
     fun recordUsed(context: Context, usedKeyword: String?): Boolean = lock.withLock {
         val raw = usedKeyword?.trim().orEmpty()
         if (raw.isEmpty()) return false
-        val toAdd = linkedSetOf<String>()
-        toAdd += raw
-        raw.split(Regex("\\s+")).map { it.trim() }.filter { it.isNotEmpty() }.forEach { toAdd += it }
+        if (!isCleanKeyword(raw)) return false
 
-        val existing = listUnlocked(context).toMutableList()
-        val lower = existing.map { it.lowercase() }.toMutableSet()
-        for (w in toAdd) {
-            if (w.lowercase() !in lower) {
-                existing += w
-                lower += w.lowercase()
-            }
+        val now = timeFmt.format(Date())
+        val entries = loadEntries(context).toMutableList()
+        val idx = entries.indexOfFirst { it.keyword.equals(raw, ignoreCase = true) }
+        if (idx >= 0) {
+            entries[idx] = Entry(now, entries[idx].keyword) // 保留首次写法，刷新时间
+        } else {
+            entries += Entry(now, raw)
         }
-        if (existing.size >= MAX_ENTRIES) {
-            file(context).writeText("")
+        if (entries.size >= MAX_ENTRIES) {
+            writeEntries(context, emptyList())
             return true
         }
-        file(context).writeText(existing.joinToString("\n"))
+        writeEntries(context, entries)
         false
     }
 
@@ -97,7 +105,7 @@ object AnnihilationStore {
                 saveLastRound(context, emptyList(), allAscended = true)
                 return candidates to false
             }
-            val cacheLower = listUnlocked(context).map { it.lowercase() }.toSet()
+            val cacheLower = loadEntries(context).map { it.keyword.lowercase() }.toSet()
             if (cacheLower.isEmpty()) {
                 saveLastRound(context, emptyList(), allAscended = true)
                 return candidates to false
@@ -105,7 +113,8 @@ object AnnihilationStore {
             val blocked = candidates.filter { it.lowercase() in cacheLower }
             val kept = candidates.filter { it.lowercase() !in cacheLower }
             if (kept.isEmpty()) {
-                file(context).writeText("")
+                // 全命中：清空缓存，本轮候选全部放行，调用方升纪元
+                writeEntries(context, emptyList())
                 saveLastRound(context, blocked, allAscended = false)
                 return candidates to true
             }
@@ -113,15 +122,90 @@ object AnnihilationStore {
             kept to false
         }
 
-    private fun saveLastRound(context: Context, blocked: List<String>, allAscended: Boolean) {
-        lastRoundFile(context).writeText(blocked.joinToString("\n"))
-        lastRoundMetaFile(context).writeText(if (allAscended) "ascended" else "blocked")
+    // ----- 内部 -----
+
+    private data class Entry(val time: String, val keyword: String) {
+        fun line(): String = "$time | $keyword"
     }
 
-    private fun listUnlocked(context: Context): List<String> =
-        readCleanLines(file(context))
+    /** 解析一行：`MM-dd HH:mm | keyword`；兼容旧版纯关键词行 */
+    private fun parseLine(line: String): Entry? {
+        val t = line.trim()
+        if (t.isEmpty()) return null
+        val sep = " | "
+        val i = t.indexOf(sep)
+        return if (i >= 0) {
+            val time = t.substring(0, i).trim()
+            val kw = t.substring(i + sep.length).trim()
+            if (kw.isEmpty() || !isCleanKeyword(kw)) null
+            else Entry(time.ifEmpty { timeFmt.format(Date()) }, kw)
+        } else {
+            // 旧格式：整行即关键词（可能是历史拆词残留，仍按整行一条匹配）
+            if (!isCleanKeyword(t)) null else Entry("??-?? ??:??", t)
+        }
+    }
 
-    private fun isCleanKeywordLine(line: String): Boolean {
+    private fun loadEntries(context: Context): List<Entry> {
+        val f = file(context)
+        if (!f.exists() || f.length() == 0L) return emptyList()
+        if (looksLikeSqlite(f)) {
+            runCatching { f.writeText("") }
+            return emptyList()
+        }
+        return runCatching {
+            f.readLines(Charsets.UTF_8)
+                .mapNotNull { parseLine(it) }
+                // 同词保留最后一次
+                .fold(linkedMapOf<String, Entry>()) { acc, e ->
+                    acc[e.keyword.lowercase()] = e
+                    acc
+                }
+                .values
+                .toList()
+        }.getOrDefault(emptyList())
+    }
+
+    private fun writeEntries(context: Context, entries: List<Entry>) {
+        val f = file(context)
+        val text = entries.joinToString("\n") { it.line() }
+        val tmp = File(f.parentFile, f.name + ".tmp")
+        // 进程内锁 + 文件锁，降低 :svc / 主进程互盖
+        withFileLock(f) {
+            tmp.writeText(text, Charsets.UTF_8)
+            if (!tmp.renameTo(f)) {
+                f.writeText(text, Charsets.UTF_8)
+                tmp.delete()
+            }
+        }
+    }
+
+    private fun withFileLock(target: File, block: () -> Unit) {
+        val lockFile = File(target.parentFile, target.name + ".lock")
+        runCatching {
+            RandomAccessFile(lockFile, "rw").channel.use { ch ->
+                var fl: FileLock? = null
+                try {
+                    fl = ch.lock()
+                    block()
+                } finally {
+                    runCatching { fl?.release() }
+                }
+            }
+        }.onFailure {
+            // 锁失败仍尽量写，避免功能全断
+            block()
+        }
+    }
+
+    private fun saveLastRound(context: Context, blocked: List<String>, allAscended: Boolean) {
+        lastRoundFile(context).writeText(
+            blocked.filter { isCleanKeyword(it) }.distinct().joinToString("\n"),
+            Charsets.UTF_8
+        )
+        lastRoundMetaFile(context).writeText(if (allAscended) "ascended" else "blocked", Charsets.UTF_8)
+    }
+
+    private fun isCleanKeyword(line: String): Boolean {
         val t = line.trim()
         if (t.isEmpty() || t.length > 120) return false
         val low = t.lowercase()
@@ -129,12 +213,15 @@ object AnnihilationStore {
         if (low.contains("create table")) return false
         if (low.contains("sqlite_stat")) return false
         if (t.contains('\u0000')) return false
-        if (t.any { ch -> val c = ch.code; c < 0x09 || (c in 0x0B..0x1F) || c == 0x7F }) return false
+        if (t.any { ch ->
+                val c = ch.code
+                c < 0x09 || (c in 0x0B..0x1F) || c == 0x7F
+            }
+        ) return false
         return true
     }
 
-    private fun readCleanLines(f: File): List<String> {
-        if (!f.exists() || f.length() == 0L) return emptyList()
+    private fun looksLikeSqlite(f: File): Boolean {
         val header = runCatching {
             f.inputStream().use { ins ->
                 val buf = ByteArray(16)
@@ -143,19 +230,22 @@ object AnnihilationStore {
                 buf.copyOf(n).toString(Charsets.ISO_8859_1)
             }
         }.getOrDefault("")
-        if (header.startsWith("SQLite format")) {
+        return header.startsWith("SQLite format")
+    }
+
+    private fun readPlainKeywordLines(f: File): List<String> {
+        if (!f.exists() || f.length() == 0L) return emptyList()
+        if (looksLikeSqlite(f)) {
             runCatching { f.writeText("") }
             return emptyList()
         }
         return runCatching {
             f.readLines(Charsets.UTF_8)
-                .asSequence()
                 .map { it.trim() }
-                .filter { isCleanKeywordLine(it) }
+                .filter { isCleanKeyword(it) }
                 .distinct()
                 .take(500)
                 .toList()
         }.getOrDefault(emptyList())
     }
 }
-
