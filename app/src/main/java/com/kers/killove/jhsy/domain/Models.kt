@@ -86,10 +86,14 @@ enum class WallpaperFitMode(val code: String, val label: String) {
     Fill("fill", "填充"),
     /** 完整显示，可能留边 */
     Fit("fit", "适应"),
-    /** 原图居中，超出屏幕的部分裁掉（Windows「居中」） */
-    Center("center", "居中"),
     /** 拉伸到屏幕尺寸（可能变形） */
-    Stretch("stretch", "拉伸");
+    Stretch("stretch", "拉伸"),
+    /** 以原始像素大小重复绘制（Windows「平铺」） */
+    Tile("tile", "平铺"),
+    /** 原图居中，超出画布的部分裁掉（Windows「居中」） */
+    Center("center", "居中"),
+    /** 在整个壁纸画布上显示一张连续图片（Windows「跨区」） */
+    Span("span", "跨区");
 
     companion object {
         fun fromCode(code: String): WallpaperFitMode =

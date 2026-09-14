@@ -979,7 +979,7 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
             }
         }
         EnumDropdown("壁纸铺满方式", WallpaperFitMode.entries, fitMode) { fitMode = it }
-        Text("填充=等比铺满；适应=完整显示留边；居中=原图居中裁多余；拉伸=强制变形铺满。修改后保存会用当前壁纸重设（不重新下载）", style = MaterialTheme.typography.bodySmall)
+        Text("填充=等比铺满裁边；适应=完整显示留边；拉伸=强制变形铺满；平铺=按原图大小重复；居中=原图居中；跨区=在整个壁纸画布显示一张连续图片。修改后保存会用当前壁纸重设（不重新下载）", style = MaterialTheme.typography.bodySmall)
         RowSwitch("桌面锁屏隔离（两次下载，可用不同关键词）", isolate) { isolate = it }
         RowSwitch("省电模式", powerSave) { powerSave = it }
         RowSwitch("省流量模式", dataSaver) { dataSaver = it }

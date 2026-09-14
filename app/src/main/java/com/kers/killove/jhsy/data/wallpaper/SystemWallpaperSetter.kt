@@ -343,11 +343,33 @@ class SystemWallpaperSetter(private val context: Context) {
                 val top = (canvasH - h) / 2f
                 canvas.drawBitmap(src, null, RectF(left, top, left + w, top + h), paint)
             }
+            WallpaperFitMode.Tile -> {
+                // Windows「平铺」保持原图像素尺寸，从左上角开始重复，不缩放、不居中。
+                var y = 0f
+                while (y < canvasH) {
+                    var x = 0f
+                    while (x < canvasW) {
+                        canvas.drawBitmap(src, x, y, paint)
+                        x += src.width.toFloat()
+                    }
+                    y += src.height.toFloat()
+                }
+            }
             WallpaperFitMode.Center -> {
                 // 原图像素居中；大于画布的部分自然被裁切，小于则留黑边
                 val left = (canvasW - src.width) / 2f
                 val top = (canvasH - src.height) / 2f
                 canvas.drawBitmap(src, left, top, paint)
+            }
+            WallpaperFitMode.Span -> {
+                // Android 的 wallpaper canvas 是系统提供的跨屏画布；在此画布上
+                // 只绘制一张连续图片，避免按单屏重复或分别裁切。
+                val scale = max(canvasW.toFloat() / src.width, canvasH.toFloat() / src.height)
+                val w = src.width * scale
+                val h = src.height * scale
+                val left = (canvasW - w) / 2f
+                val top = (canvasH - h) / 2f
+                canvas.drawBitmap(src, null, RectF(left, top, left + w, top + h), paint)
             }
         }
         return out
