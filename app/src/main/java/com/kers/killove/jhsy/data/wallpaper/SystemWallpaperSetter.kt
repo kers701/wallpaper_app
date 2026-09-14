@@ -20,6 +20,7 @@ import java.io.File
 import java.io.FileInputStream
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 class SystemWallpaperSetter(private val context: Context) {
 
@@ -329,11 +330,13 @@ class SystemWallpaperSetter(private val context: Context) {
             }
             WallpaperFitMode.Fit -> {
                 val scale = min(canvasW.toFloat() / src.width, canvasH.toFloat() / src.height)
-                val w = src.width * scale
-                val h = src.height * scale
-                val left = (canvasW - w) / 2f
-                val top = (canvasH - h) / 2f
-                canvas.drawBitmap(src, null, RectF(left, top, left + w, top + h), paint)
+                // 先取整目标尺寸，再用剩余像素从两侧对称留边；避免浮点
+                // RectF 在不同设备上取整后出现一侧有黑边、另一侧没有。
+                val w = max(1, (src.width * scale).roundToInt().coerceAtMost(canvasW))
+                val h = max(1, (src.height * scale).roundToInt().coerceAtMost(canvasH))
+                val left = (canvasW - w) / 2
+                val top = (canvasH - h) / 2
+                canvas.drawBitmap(src, null, RectF(left.toFloat(), top.toFloat(), (left + w).toFloat(), (top + h).toFloat()), paint)
             }
             WallpaperFitMode.Fill -> {
                 val scale = max(canvasW.toFloat() / src.width, canvasH.toFloat() / src.height)
