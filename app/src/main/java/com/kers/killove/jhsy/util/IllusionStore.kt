@@ -6,7 +6,7 @@ import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
 /**
- * 虚妄模式：在跃迁+湮灭过滤之后，把「包含本次搜索词」的候选打入虚妄，仅剩余可进跃迁。
+ * 虚妄模式：清洗本次用词之后、湮灭之前，把「包含本次搜索词」的候选打入虚妄，其余再交湮灭。
  * 「我们从过去走出，应舍弃前尘，从此，身前虚妄，身后亦是虚妄，我们没有过去，也没有未来，但我们却有着千丝万缕的联系」
  */
 object IllusionStore {

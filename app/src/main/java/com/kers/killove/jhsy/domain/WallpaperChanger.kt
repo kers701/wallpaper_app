@@ -568,8 +568,10 @@ class WallpaperChanger(
             // 跃迁+湮灭+虚妄：清洗 → 虚妄 → 湮灭（湮灭必须最后）
             val cleaned = filterJumpTags(tags, usedKeyword)
             var forJump = cleaned
+            // 虚妄/湮灭：无论候选是否为空都要跑，否则 last_round meta 不更新
+            // → 虚妄长期「尚无本轮记录」、湮灭看板卡在旧词（如 low-angle）
             if (settings.jumpModeEnabled && settings.annihilationModeEnabled &&
-                settings.illusionModeEnabled && forJump.isNotEmpty()
+                settings.illusionModeEnabled
             ) {
                 val (kept, illusory) = com.kers.killove.jhsy.util.IllusionStore.filterForJump(
                     context, forJump, usedKeyword
@@ -580,7 +582,7 @@ class WallpaperChanger(
                     "illusion blocked=${illusory.size} kept=${kept.size} used=${usedKeyword ?: ""}"
                 )
             }
-            if (settings.jumpModeEnabled && settings.annihilationModeEnabled && forJump.isNotEmpty()) {
+            if (settings.jumpModeEnabled && settings.annihilationModeEnabled) {
                 val (filtered, newEpoch) = com.kers.killove.jhsy.util.AnnihilationStore.filterForJump(
                     context, forJump
                 )
