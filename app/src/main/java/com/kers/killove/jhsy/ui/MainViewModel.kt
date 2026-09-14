@@ -703,6 +703,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             settingsRepo.setLastChangeAt(scheduledLastChangeAt)
             ProcessBridgePrefs.setLastChangeAt(app, scheduledLastChangeAt)
             _bridgeLastChange.value = scheduledLastChangeAt
+            // 同时注册系统到点唤醒；即使 :svc 被系统挂起，也会在到期时进入自动更换流程。
+            WallpaperForegroundService.scheduleDueAlarm(app, nextAt)
             // 归零按钮不能只改时间戳；确保 :svc 已运行，之后走与正常到期完全相同的流程。
             WallpaperForegroundService.start(app)
             _status.value = "等待时间已归零，将在约 1 分钟后执行正常更换"

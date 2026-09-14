@@ -87,6 +87,11 @@ class WallpaperForegroundService : Service() {
                     ensureForegroundAndLoop()
                 }
             }
+            ACTION_DUE_CHECK -> {
+                // AlarmManager 到点唤醒：直接走自动补换流程，不依赖循环恰好在运行。
+                ensureForegroundAndLoop()
+                scope.launch { runForcedChange(TriggerType.Auto, forceIgnoreScreenOff = false) }
+            }
             ACTION_AVOID_PROMPT -> {
                 pendingConfirm = "avoid"
                 lastStatusText = "确认将「当前位置」加入定位避让？"
@@ -351,6 +356,7 @@ class WallpaperForegroundService : Service() {
                         val changedAt = System.currentTimeMillis()
                         ProcessBridgePrefs.setLastChangeAt(this, changedAt)
                         settingsRepo?.setLastChangeAt(changedAt)
+                        scheduleDueAlarm(this, changedAt + intervalMs)
                         lastStatusText = resolveNotificationText(null)
                         refreshNotification(lastStatusText)
                     } finally {
@@ -621,7 +627,10 @@ private suspend fun handleAddAvoidHere() {
 
 
     /** 亮屏/Worker 到期补换：在本进程执行，触发类型细分，不走 ManualChangeService */
-    private suspend fun runForcedChange(triggerType: TriggerType) {
+    private suspend fun runForcedChange(
+        triggerType: TriggerType,
+        forceIgnoreScreenOff: Boolean = true
+    ) {
         if (!ProcessBridgePrefs.tryBeginChange(this, force = true)) {
             refreshNotification("已有更换在进行中")
             return
@@ -651,11 +660,15 @@ private suspend fun handleAddAvoidHere() {
                 }
             )
             changer.changeOnce(
-                forceIgnoreScreenOff = true,
+                forceIgnoreScreenOff = forceIgnoreScreenOff,
                 triggerType = triggerType,
                 liveDownloadOnly = false
             )
-            ProcessBridgePrefs.setLastChangeAt(this, System.currentTimeMillis())
+            val changedAt = System.currentTimeMillis()
+            ProcessBridgePrefs.setLastChangeAt(this, changedAt)
+            settingsRepo.setLastChangeAt(changedAt)
+            val nextInterval = settingsRepo.settingsFlow.first().intervalMinutes.coerceIn(5, 180)
+            scheduleDueAlarm(this, changedAt + nextInterval * 60_000L)
             lastStatusText = resolveNotificationText(null)
             refreshNotification(lastStatusText)
         } catch (e: Exception) {
@@ -841,6 +854,7 @@ private suspend fun handleAddAvoidHere() {
         private const val NOTIFICATION_ID = 1001
         const val ACTION_STOP = "com.kers.killove.jhsy.STOP"
         const val ACTION_CHANGE_NOW = "com.kers.killove.jhsy.CHANGE_NOW"
+        const val ACTION_DUE_CHECK = "com.kers.killove.jhsy.DUE_CHECK"
         const val ACTION_ADD_AVOID_HERE = "com.kers.killove.jhsy.ADD_AVOID_HERE"
         const val ACTION_ADD_FG_BLACKLIST = "com.kers.killove.jhsy.ADD_FG_BLACKLIST"
         const val ACTION_AVOID_PROMPT = "com.kers.killove.jhsy.AVOID_PROMPT"
@@ -848,6 +862,7 @@ private suspend fun handleAddAvoidHere() {
         const val ACTION_CONFIRM_PENDING = "com.kers.killove.jhsy.CONFIRM_PENDING"
         const val ACTION_CANCEL_PENDING = "com.kers.killove.jhsy.CANCEL_PENDING"
         const val ACTION_CYCLE_PURITY_MODE = "com.kers.killove.jhsy.CYCLE_PURITY_MODE"
+        private const val DUE_ALARM_REQUEST_CODE = 1002
 
         fun start(context: Context) {
             val i = Intent(context, WallpaperForegroundService::class.java)
@@ -856,6 +871,29 @@ private suspend fun handleAddAvoidHere() {
                     context.startForegroundService(i)
                 } else {
                     context.startService(i)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
+        /** 注册下一次到期的系统唤醒，作为前台循环被挂起时的可靠兜底。 */
+        fun scheduleDueAlarm(context: Context, atMillis: Long) {
+            if (atMillis <= 0L) return
+            try {
+                val alarm = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+                val intent = Intent(context, WallpaperForegroundService::class.java)
+                    .setAction(ACTION_DUE_CHECK)
+                val pi = PendingIntent.getService(
+                    context,
+                    DUE_ALARM_REQUEST_CODE,
+                    intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    alarm.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMillis, pi)
+                } else {
+                    alarm.setExact(AlarmManager.RTC_WAKEUP, atMillis, pi)
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
