@@ -1,23 +1,23 @@
-合并修复包（基于远程 4.2.28 + 看板 meta 修复，不推送）
+修复：虚妄无记录 + 湮灭看板卡在 low-angle（不推送）
 
-【问题说明】
-此前「没事」只核对了 4.2.27/28 文件是否都在，没有核对运行逻辑。
-真正的问题：虚妄/湮灭过滤包在 forJump.isNotEmpty() 里，
-候选为空时不调用 → 不写 last_round meta：
-  - 虚妄：一直「尚无本轮记录」
-  - 湮灭：看板卡在旧词（如 low-angle），看起来像「始终过滤它」
+根因（代码已核对）：
+自动换图大量走「预下载 applyReadySlot」。
+该路径只设壁纸、写历史，从不：
+  - 拉 tags
+  - 跑虚妄 filterForJump（写 illusion_last_round_meta）
+  - 跑湮灭 filterForJump（刷新 annihilation_last_round）
+  - 更新跃迁词池
 
-【本包包含】
-1. 湮灭写入：选中即写、整词不拆、格式 MM-dd HH:mm | 关键词
-2. 过滤顺序：清洗 → 虚妄 → 湮灭（最后）
-3. 宽高比过滤（4.2.28 已有，完整文件一并带上避免半覆盖）
-4. 看板修复：开启虚妄/湮灭时无论候选是否为空都写本轮 meta
-   （空 → 全员升华/全员飞升；有命中 → 显示列表）
+因此：
+  - 虚妄 meta 不存在 → 一直「尚无本轮记录」
+  - 湮灭 last_round 停在某次现场下载的旧结果（如 low-angle）→ 看板不刷新
 
-【覆盖后建议】
-删除应用私有目录下旧看板文件（可选，换图后也会刷新）：
-  files/illusion_last_round.txt
-  files/illusion_last_round_meta.txt
-  files/annihilation_last_round.txt
-  files/annihilation_last_round_meta.txt
-然后换一次壁纸验证看板。
+修复：
+抽出 applyJumpFilterChain，现场下载与预下载成功后都调用。
+
+覆盖：
+app/src/main/java/com/kers/killove/jhsy/domain/WallpaperChanger.kt
+
+合入后建议删一次看板文件再换图验证：
+  illusion_last_round*.txt
+  annihilation_last_round*.txt

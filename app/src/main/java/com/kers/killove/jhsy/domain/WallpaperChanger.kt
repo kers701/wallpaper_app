@@ -554,48 +554,9 @@ class WallpaperChanger(
             settingsRepo.setLastCategory(category)
         }
 
-        // 跃迁：用本图标签覆盖跃迁列表，但排除「本次搜索用过的关键词」，避免原地打转
+        // 跃迁/虚妄/湮灭：现场下载与预下载共用
         if (fromWallhaven && item.source == "wallhaven") {
-            var tags = item.tags
-            if (tags.isEmpty()) {
-                tags = runCatching {
-                    api.fetchWallpaperTags(item.id, settings.nextApiKey())
-                }.getOrDefault(emptyList())
-            }
-            // 过滤链（互锁：跃迁 → 可湮灭 → 可虚妄）：
-            // 仅跃迁：清洗本次用词
-            // 跃迁+湮灭：清洗 → 湮灭
-            // 跃迁+湮灭+虚妄：清洗 → 虚妄 → 湮灭（湮灭必须最后）
-            val cleaned = filterJumpTags(tags, usedKeyword)
-            var forJump = cleaned
-            // 虚妄/湮灭：无论候选是否为空都要跑，否则 last_round meta 不更新
-            // → 虚妄长期「尚无本轮记录」、湮灭看板卡在旧词（如 low-angle）
-            if (settings.jumpModeEnabled && settings.annihilationModeEnabled &&
-                settings.illusionModeEnabled
-            ) {
-                val (kept, illusory) = com.kers.killove.jhsy.util.IllusionStore.filterForJump(
-                    context, forJump, usedKeyword
-                )
-                forJump = kept
-                RunLog.i(
-                    context,
-                    "illusion blocked=${illusory.size} kept=${kept.size} used=${usedKeyword ?: ""}"
-                )
-            }
-            if (settings.jumpModeEnabled && settings.annihilationModeEnabled) {
-                val (filtered, newEpoch) = com.kers.killove.jhsy.util.AnnihilationStore.filterForJump(
-                    context, forJump
-                )
-                forJump = filtered
-                if (newEpoch) {
-                    settingsRepo.setAnnihilationEpoch(settings.annihilationEpoch + 1)
-                    RunLog.i(context, "annihilation epoch -> ${settings.annihilationEpoch + 1} (all hit, cache cleared)")
-                }
-            }
-            if (forJump.isNotEmpty()) {
-                settingsRepo.setJumpKeywords(forJump)
-            }
-            // 若过滤后为空：不覆盖旧跃迁列表；湮灭写入已在关键词选中时完成
+            applyJumpFilterChain(settings, item.id, item.tags, usedKeyword)
         }
 
         // 非隔离路径才在这里 +1；隔离在外层 +2
@@ -853,11 +814,67 @@ class WallpaperChanger(
             source = slot.source,
             fileSize = fileSize
         )
+        // 预下载路径此前不跑跃迁/虚妄/湮灭 → 看板卡死、虚妄无记录
+        if (slot.source == "wallhaven") {
+            // 预取时可能已 recordUsed；此处幂等刷新时间，并拉 tags 写看板
+            if (settings.jumpModeEnabled && settings.annihilationModeEnabled) {
+                if (com.kers.killove.jhsy.util.AnnihilationStore.recordUsed(context, slot.keyword)) {
+                    settingsRepo.setAnnihilationEpoch(settings.annihilationEpoch + 1)
+                }
+            }
+            applyJumpFilterChain(settings, slot.id, emptyList(), slot.keyword.ifBlank { null })
+        }
         return ChangeResult.Success(
             item,
             useFile.absolutePath,
             detail = "${target.label}（预下载）" + if (slot.keyword.isNotBlank()) " · 词:${slot.keyword}" else ""
         )
+    }
+
+    /**
+     * 换图成功后更新跃迁词池 + 虚妄/湮灭本轮记录。
+     * 现场下载与「使用预下载」必须都走这里，否则看板 meta 不刷新。
+     */
+    private suspend fun applyJumpFilterChain(
+        settings: AppSettings,
+        wallpaperId: String,
+        initialTags: List<String>,
+        usedKeyword: String?
+    ) {
+        if (!settings.jumpModeEnabled) return
+        var tags = initialTags
+        if (tags.isEmpty()) {
+            tags = runCatching {
+                api.fetchWallpaperTags(wallpaperId, settings.nextApiKey())
+            }.getOrDefault(emptyList())
+        }
+        // 清洗 →（虚妄）→（湮灭）；虚妄/湮灭无论候选是否为空都执行以写 meta
+        val cleaned = filterJumpTags(tags, usedKeyword)
+        var forJump = cleaned
+        if (settings.annihilationModeEnabled && settings.illusionModeEnabled) {
+            val (kept, illusory) = com.kers.killove.jhsy.util.IllusionStore.filterForJump(
+                context, forJump, usedKeyword
+            )
+            forJump = kept
+            RunLog.i(
+                context,
+                "illusion blocked=${illusory.size} kept=${kept.size} used=${usedKeyword ?: ""} id=$wallpaperId"
+            )
+        }
+        if (settings.annihilationModeEnabled) {
+            val (filtered, newEpoch) = com.kers.killove.jhsy.util.AnnihilationStore.filterForJump(
+                context, forJump
+            )
+            forJump = filtered
+            if (newEpoch) {
+                settingsRepo.setAnnihilationEpoch(settings.annihilationEpoch + 1)
+                RunLog.i(context, "annihilation epoch -> ${settings.annihilationEpoch + 1} (all hit) id=$wallpaperId")
+            }
+        }
+        if (forJump.isNotEmpty()) {
+            settingsRepo.setJumpKeywords(forJump)
+        }
+        // forJump 为空：不覆盖旧跃迁列表
     }
 
     private fun filterJumpTags(tags: List<String>, usedKeyword: String?): List<String> {
