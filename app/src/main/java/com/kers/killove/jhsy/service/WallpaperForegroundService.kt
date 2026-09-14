@@ -326,7 +326,9 @@ class WallpaperForegroundService : Service() {
                 }
 
                 val intervalMs = intervalMin.coerceIn(5, 240) * 60_000L
-                val due = last <= 0L || System.currentTimeMillis() - last >= intervalMs
+                val now = System.currentTimeMillis()
+                val dueAt = if (last > 0L) last + intervalMs else 0L
+                val due = last <= 0L || now >= dueAt
                 if (due && changer != null) {
                     // 自动轮询：90s 防抖 + changing 锁，避免与 Worker/亮屏 双开
                     if (!ProcessBridgePrefs.tryBeginChange(this, force = false)) {
@@ -335,11 +337,20 @@ class WallpaperForegroundService : Service() {
                     }
                     // 换之前再刷一次前台通知（用户手滑清通知后尽量挂回）
                     ensureForegroundAndLoop()
+                    lastStatusText = if (last <= 0L) {
+                        "尚无更换记录，正在执行自动更换…"
+                    } else {
+                        "下次更换已到期，正在执行自动更换…"
+                    }
+                    refreshNotification(lastStatusText)
                     acquireWake()
                     try {
-                        // changeOnce 内已含黑名单判断
+                        // 到期、归零和普通周期都走同一套完整流程：预下载/下载、
+                        // 设置桌面锁屏、历史记录、缓存、统计、时间戳和通知刷新。
                         changer.changeOnce(forceIgnoreScreenOff = false, triggerType = TriggerType.Auto)
-                        ProcessBridgePrefs.setLastChangeAt(this, System.currentTimeMillis())
+                        val changedAt = System.currentTimeMillis()
+                        ProcessBridgePrefs.setLastChangeAt(this, changedAt)
+                        settingsRepo?.setLastChangeAt(changedAt)
                         lastStatusText = resolveNotificationText(null)
                         refreshNotification(lastStatusText)
                     } finally {

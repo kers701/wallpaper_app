@@ -684,8 +684,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * 等待时间归零：把上次更换时钟拨到「已到期」，服务约 30s 内会触发下次自动更换。
-     * 仅应在预下载成功时由 UI 调用。
+     * 将下一次自动更换安排到约 1 分钟后，并立即唤起正常自动更换服务。
+     * 不能把上次更换时间直接写成过去时间，否则服务未运行时不会自行醒来，
+     * 且跨进程时钟可能继续显示旧的下次更换时间。
      */
     fun zeroWaitTimer() {
         viewModelScope.launch {
@@ -695,12 +696,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 _status.value = "预下载未成功，无法归零等待"
                 return@launch
             }
+            val now = System.currentTimeMillis()
             val intervalMs = s.intervalMinutes.coerceIn(5, 180) * 60_000L
-            val dueAt = System.currentTimeMillis() - intervalMs - 1_000L
-            settingsRepo.setLastChangeAt(dueAt)
-            ProcessBridgePrefs.setLastChangeAt(app, dueAt)
-            _bridgeLastChange.value = dueAt
-            _status.value = "等待时间已归零，即将触发下次更换"
+            val nextAt = now + 60_000L
+            val scheduledLastChangeAt = nextAt - intervalMs
+            settingsRepo.setLastChangeAt(scheduledLastChangeAt)
+            ProcessBridgePrefs.setLastChangeAt(app, scheduledLastChangeAt)
+            _bridgeLastChange.value = scheduledLastChangeAt
+            // 归零按钮不能只改时间戳；确保 :svc 已运行，之后走与正常到期完全相同的流程。
+            WallpaperForegroundService.start(app)
+            _status.value = "等待时间已归零，将在约 1 分钟后执行正常更换"
         }
     }
 
