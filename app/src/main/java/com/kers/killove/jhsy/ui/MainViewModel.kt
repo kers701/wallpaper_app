@@ -8,6 +8,7 @@ import com.kers.killove.jhsy.data.local.WallpaperDatabase
 import com.kers.killove.jhsy.data.prefs.SettingsRepository
 import com.kers.killove.jhsy.data.remote.ProxyHttp
 import com.kers.killove.jhsy.data.remote.ProxySubscription
+import com.kers.killove.jhsy.data.local.NextWallpaperStore
 import com.kers.killove.jhsy.domain.ProxySelectMode
 import com.kers.killove.jhsy.domain.ProxyType
 import com.kers.killove.jhsy.domain.ProxyNode
@@ -667,6 +668,39 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             _status.value = if (enabled) "已开启自动更换" else "已停止"
             RunLog.i(getApplication(), "enabled=$enabled")
+        }
+    }
+
+
+    /** 壁纸预下载状态：成功 / 失败 / 未完成 */
+    fun prefetchStatusLabel(): String {
+        val s = settings.value
+        return NextWallpaperStore(getApplication()).statusLabel(s.target, s.isolateHomeLock)
+    }
+
+    fun isPrefetchReady(): Boolean {
+        val s = settings.value
+        return NextWallpaperStore(getApplication()).isReadyForSettings(s.target, s.isolateHomeLock)
+    }
+
+    /**
+     * 等待时间归零：把上次更换时钟拨到「已到期」，服务约 30s 内会触发下次自动更换。
+     * 仅应在预下载成功时由 UI 调用。
+     */
+    fun zeroWaitTimer() {
+        viewModelScope.launch {
+            val app = getApplication<Application>()
+            val s = settings.value
+            if (!NextWallpaperStore(app).isReadyForSettings(s.target, s.isolateHomeLock)) {
+                _status.value = "预下载未成功，无法归零等待"
+                return@launch
+            }
+            val intervalMs = s.intervalMinutes.coerceIn(5, 180) * 60_000L
+            val dueAt = System.currentTimeMillis() - intervalMs - 1_000L
+            settingsRepo.setLastChangeAt(dueAt)
+            ProcessBridgePrefs.setLastChangeAt(app, dueAt)
+            _bridgeLastChange.value = dueAt
+            _status.value = "等待时间已归零，即将触发下次更换"
         }
     }
 

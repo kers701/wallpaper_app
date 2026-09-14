@@ -427,6 +427,26 @@ fun HomeScreen(vm: MainViewModel, onOpenHelp: (() -> Unit)? = null) {
                     color = textColor,
                     style = MaterialTheme.typography.titleSmall
                 )
+                // 预下载状态：随 lastChangeAt / 定时 tick 刷新
+                val prefetchLabel = remember(settings.lastChangeAt, settings.target, settings.isolateHomeLock, remainMin) {
+                    vm.prefetchStatusLabel()
+                }
+                val prefetchReady = remember(settings.lastChangeAt, settings.target, settings.isolateHomeLock, remainMin) {
+                    vm.isPrefetchReady()
+                }
+                Text(
+                    "壁纸预下载：$prefetchLabel",
+                    color = textColor,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                if (prefetchReady && settings.enabled) {
+                    OutlinedButton(
+                        onClick = { vm.zeroWaitTimer() },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("等待时间归零")
+                    }
+                }
                 Text(
                     com.kers.killove.jhsy.util.AccessMode.line(context, settings),
                     color = textColor

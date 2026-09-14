@@ -98,6 +98,34 @@ class NextWallpaperStore(private val context: Context) {
 
     fun hasReady(target: WallpaperTarget): Boolean = get(target)?.isReady() == true
 
+    /** 按当前目标判断预下载是否就绪（隔离时需桌面+锁屏都就绪） */
+    fun isReadyForSettings(target: WallpaperTarget, isolateHomeLock: Boolean): Boolean {
+        return if (isolateHomeLock && target == WallpaperTarget.Both) {
+            hasReady(WallpaperTarget.Home) && hasReady(WallpaperTarget.Lock)
+        } else {
+            hasReady(target)
+        }
+    }
+
+    /** 是否曾失败且当前无就绪槽 */
+    fun isFailedForSettings(target: WallpaperTarget, isolateHomeLock: Boolean): Boolean {
+        if (isReadyForSettings(target, isolateHomeLock)) return false
+        return if (isolateHomeLock && target == WallpaperTarget.Both) {
+            failCount(WallpaperTarget.Home) > 0 || failCount(WallpaperTarget.Lock) > 0
+        } else {
+            failCount(target) > 0
+        }
+    }
+
+    fun statusLabel(target: WallpaperTarget, isolateHomeLock: Boolean): String {
+        return when {
+            isReadyForSettings(target, isolateHomeLock) -> "成功"
+            isFailedForSettings(target, isolateHomeLock) -> "失败"
+            else -> "未完成"
+        }
+    }
+
+
     // —— 失败重试：最多再试 1 次，间隔 5 分钟 ——
 
     fun failCount(target: WallpaperTarget): Int =

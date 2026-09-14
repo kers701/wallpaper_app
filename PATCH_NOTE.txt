@@ -1,23 +1,12 @@
-修复：虚妄无记录 + 湮灭看板卡在 low-angle（不推送）
+增量：预下载状态 + 等待时间归零（不推送）
 
-根因（代码已核对）：
-自动换图大量走「预下载 applyReadySlot」。
-该路径只设壁纸、写历史，从不：
-  - 拉 tags
-  - 跑虚妄 filterForJump（写 illusion_last_round_meta）
-  - 跑湮灭 filterForJump（刷新 annihilation_last_round）
-  - 更新跃迁词池
-
-因此：
-  - 虚妄 meta 不存在 → 一直「尚无本轮记录」
-  - 湮灭 last_round 停在某次现场下载的旧结果（如 low-angle）→ 看板不刷新
-
-修复：
-抽出 applyJumpFilterChain，现场下载与预下载成功后都调用。
+首页 / 概览：
+- 显示「壁纸预下载：成功 / 失败 / 未完成」
+- 仅当预下载成功且自动更换开启时显示按钮「等待时间归零」
+- 归零：将 lastChangeAt 拨到已到期，服务约 30 秒内触发下次更换
 
 覆盖：
-app/src/main/java/com/kers/killove/jhsy/domain/WallpaperChanger.kt
-
-合入后建议删一次看板文件再换图验证：
-  illusion_last_round*.txt
-  annihilation_last_round*.txt
+app/src/main/java/com/kers/killove/jhsy/data/local/NextWallpaperStore.kt
+app/src/main/java/com/kers/killove/jhsy/ui/MainViewModel.kt
+app/src/main/java/com/kers/killove/jhsy/ui/screens/HomeScreen.kt
+app/src/main/java/com/kers/killove/jhsy/ui/screens/OverviewScreen.kt
