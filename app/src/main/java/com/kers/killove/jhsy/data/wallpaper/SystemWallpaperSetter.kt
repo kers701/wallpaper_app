@@ -127,7 +127,14 @@ class SystemWallpaperSetter(private val context: Context) {
         }
 
         try {
-            val (cw, ch) = wallpaperCanvasSize()
+            // Android 的 desiredMinimumWidth/Height 可能是屏幕的 2 倍，用它做
+            // 普通模式的变换目标会让原图被无谓放大后再由系统滚动/裁切。
+            // Windows 的普通模式针对当前显示区域；只有 Span 需要整张跨区画布。
+            val (cw, ch) = if (fitMode == WallpaperFitMode.Span) {
+                wallpaperCanvasSize()
+            } else {
+                screenSize()
+            }
             val fitted = applyFit(decoded, cw, ch, fitMode)
             if (fitted !== decoded) {
                 try {
@@ -339,7 +346,12 @@ class SystemWallpaperSetter(private val context: Context) {
                 canvas.drawBitmap(src, null, RectF(left.toFloat(), top.toFloat(), (left + w).toFloat(), (top + h).toFloat()), paint)
             }
             WallpaperFitMode.Fill -> {
-                val scale = max(canvasW.toFloat() / src.width, canvasH.toFloat() / src.height)
+                // 等比铺满同时覆盖两种情况：原图较小则放大，原图较大则缩小；
+                // 取覆盖目标所需的较大比例后居中裁切多余部分。
+                val scale = max(
+                    canvasW.toFloat() / src.width,
+                    canvasH.toFloat() / src.height
+                )
                 val w = src.width * scale
                 val h = src.height * scale
                 val left = (canvasW - w) / 2f
