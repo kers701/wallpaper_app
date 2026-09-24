@@ -229,7 +229,8 @@ fun OverviewScreen(vm: MainViewModel) {
                         val mode = com.kers.killove.jhsy.util.ProcessBridgePrefs.purityMode(context)
                         val green = settings.locationAvoidEnabled &&
                             settings.locationFallbackEnabled &&
-                            settings.locationInAvoidZone
+                            settings.locationInAvoidZone &&
+                            settings.avoidanceLocations().isNotEmpty()
                         val eff = com.kers.killove.jhsy.util.DestinyHelper.effectiveDisplayPurity(
                             settings, mode, green
                         )

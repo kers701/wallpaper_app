@@ -246,12 +246,44 @@ class SettingsRepository(private val context: Context) {
             locationExtremeFallbackEnabled = p[Keys.LOC_EXTREME] ?: false,
             locationSavedPurity = p[Keys.LOC_SAVED_PURITY] ?: "",
             locationSavedForceLocal = p[Keys.LOC_SAVED_FORCE] ?: false,
-            locationInAvoidZone = p[Keys.LOC_IN_ZONE] ?: false,
+            // 无避让点时不允许「在区内」为 true（读路径纠偏，防幽灵绿色模式）
+            locationInAvoidZone = run {
+                val rawIn = p[Keys.LOC_IN_ZONE] ?: false
+                if (!rawIn) false
+                else {
+                    val j = ProcessBridgePrefs.effectiveAvoidLocationsJson(
+                        context, p[Keys.AVOID_LOCS] ?: "[]"
+                    )
+                    val hasPts = runCatching {
+                        org.json.JSONArray(j).length() > 0
+                    }.getOrDefault(false)
+                    rawIn && hasPts && (p[Keys.LOC_AVOID] ?: false)
+                }
+            },
             dataSaverEnabled = p[Keys.DATA_SAVER] ?: false
         )
     }
 
     suspend fun save(settings: AppSettings) {
+        // 无避让点或关闭定位避让：强制清除「在区内」残留，避免绿色模式幽灵生效
+        var settings = settings
+        val locsEmpty = runCatching {
+            val j = ProcessBridgePrefs.effectiveAvoidLocationsJson(context, settings.avoidanceLocationsJson)
+            settings.copy(avoidanceLocationsJson = j).avoidanceLocations().isEmpty()
+        }.getOrDefault(settings.avoidanceLocations().isEmpty())
+        if ((!settings.locationAvoidEnabled || locsEmpty) && settings.locationInAvoidZone) {
+            val restored = if (settings.locationSavedPurity.isNotBlank()) {
+                com.kers.killove.jhsy.domain.Purity.fromCode(settings.locationSavedPurity)
+            } else settings.purity
+            settings = settings.copy(
+                locationInAvoidZone = false,
+                purity = restored,
+                forceLocalMode = settings.locationSavedForceLocal,
+                locationSavedPurity = "",
+                locationSavedForceLocal = false,
+                avoidanceLocationsJson = if (locsEmpty) "[]" else settings.avoidanceLocationsJson
+            )
+        }
         // 黑名单以本次传入列表为准（用户取消勾选必须能删掉），写 DataStore 后 sync 会整文件覆盖桥接文件
         context.dataStore.edit { p ->
             p[Keys.ENABLED] = settings.enabled

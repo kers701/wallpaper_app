@@ -288,7 +288,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             } else s
             val wasSuper = settings.value.superProxyEnabled && settings.value.proxyEnabled
             val nowSuper = final.superProxyEnabled && final.proxyEnabled
-            settingsRepo.save(final)
+            val normalized = clearGreenIfNoAvoidPoints(final)
+            settingsRepo.save(normalized)
             if (wasSuper && !nowSuper) {
                 withContext(Dispatchers.IO) {
                     SuperProxyController.stop(getApplication())
@@ -296,10 +297,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 ProxyHttp.setSuperRunning(false)
                 ProxyHttp.applySettings(getApplication(), final)
             }
-            RunLog.i(getApplication(), "settings saved enabled=${final.enabled} interval=${final.intervalMinutes} dataSaver=${final.dataSaverEnabled}")
-            applySchedule(final)
-            if (final.fitMode != oldFit) {
-                reapplyCurrentWallpapers(final)
+            RunLog.i(getApplication(), "settings saved enabled=${normalized.enabled} interval=${normalized.intervalMinutes} dataSaver=${normalized.dataSaverEnabled}")
+            applySchedule(normalized)
+            if (normalized.fitMode != oldFit) {
+                reapplyCurrentWallpapers(normalized)
             } else {
                 _status.value =
                     "设置已保存（关键词 ${final.keywords.size} 个，跃迁 ${final.jumpKeywords.size} 个，密钥 ${final.apiKeys.size} 个）"
@@ -1155,6 +1156,29 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+
+    /**
+     * 无避让点或关闭定位避让时，必须退出绿色模式残留状态
+     *（否则 locationInAvoidZone 一直 true，纯度仍显示被绿色接管）。
+     */
+    private fun clearGreenIfNoAvoidPoints(s: AppSettings): AppSettings {
+        val locs = s.avoidanceLocations()
+        if (s.locationAvoidEnabled && locs.isNotEmpty()) return s
+        if (!s.locationInAvoidZone && s.locationSavedPurity.isBlank()) return s
+        val restored = if (s.locationSavedPurity.isNotBlank()) {
+            com.kers.killove.jhsy.domain.Purity.fromCode(s.locationSavedPurity)
+        } else {
+            s.purity
+        }
+        return s.copy(
+            locationInAvoidZone = false,
+            purity = restored,
+            forceLocalMode = s.locationSavedForceLocal,
+            locationSavedPurity = "",
+            locationSavedForceLocal = false
+        )
+    }
+
     fun removeAvoidanceLocation(id: String) {
         viewModelScope.launch {
             val ctx = getApplication<Application>()
@@ -1164,8 +1188,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val json = LocationHelper.locationsToJson(cur)
             // 整表覆盖写标记文件（空列表写 []），:svc 只读文件
             ProcessBridgePrefs.writeAvoidLocationsJson(ctx, json)
-            settingsRepo.save(settings.value.copy(avoidanceLocationsJson = json))
-            _status.value = "已移除避让点（剩余 ${cur.size}）"
+            var next = settings.value.copy(avoidanceLocationsJson = json)
+            // 列表清空后立刻退出绿色模式，不等下次换壁纸
+            next = clearGreenIfNoAvoidPoints(next)
+            settingsRepo.save(next)
+            _status.value = if (cur.isEmpty()) {
+                "已清空避让点，绿色模式已解除"
+            } else {
+                "已移除避让点（剩余 ${cur.size}）"
+            }
         }
     }
 
