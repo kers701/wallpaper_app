@@ -9,9 +9,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.height
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.DateRangePicker
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -23,6 +26,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDateRangePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -88,6 +92,7 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
     var remainingUsesInput by remember { mutableStateOf("-1") }
     var priorityInput by remember { mutableStateOf("100") }
     var dateRangeOn by remember { mutableStateOf(false) }
+    var showDateRangePicker by remember { mutableStateOf(false) }
     var weekdaysOn by remember { mutableStateOf(true) }
     var timeOn by remember { mutableStateOf(true) }
     var startYear by remember { mutableIntStateOf(2026) }
@@ -153,6 +158,29 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
         if (!dateRangeOn) return false
         return editorEndYmd() < DestinyHelper.todayYmd()
     }
+
+    fun ymdToUtcMillis(y: Int, m: Int, d: Int): Long {
+        val c = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"))
+        c.clear()
+        c.set(java.util.Calendar.YEAR, y.coerceIn(1970, 9999))
+        c.set(java.util.Calendar.MONTH, (m.coerceIn(1, 12) - 1))
+        c.set(java.util.Calendar.DAY_OF_MONTH, d.coerceIn(1, 31))
+        return c.timeInMillis
+    }
+
+    fun utcMillisToYmd(ms: Long): Triple<Int, Int, Int> {
+        val c = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"))
+        c.timeInMillis = ms
+        return Triple(
+            c.get(java.util.Calendar.YEAR),
+            c.get(java.util.Calendar.MONTH) + 1,
+            c.get(java.util.Calendar.DAY_OF_MONTH)
+        )
+    }
+
+    fun formatYmdLabel(y: Int, m: Int, d: Int): String =
+        "%04d-%02d-%02d".format(y, m, d)
+
 
     fun buildRuleFromEditor(name: String): DestinyRule {
         val now = System.currentTimeMillis()
@@ -322,6 +350,77 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
     }
 
     
+
+    if (showDateRangePicker) {
+        val rangeState = rememberDateRangePickerState(
+            initialSelectedStartDateMillis = ymdToUtcMillis(startYear, startMonth, startDay),
+            initialSelectedEndDateMillis = ymdToUtcMillis(endYear, endMonth, endDay),
+            yearRange = IntRange(1970, 2100)
+        )
+        DatePickerDialog(
+            onDismissRequest = { showDateRangePicker = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val s = rangeState.selectedStartDateMillis
+                        val e = rangeState.selectedEndDateMillis
+                        if (s != null) {
+                            val (y, m, d) = utcMillisToYmd(s)
+                            startYear = y; startMonth = m; startDay = d
+                        }
+                        if (e != null) {
+                            val (y, m, d) = utcMillisToYmd(e)
+                            endYear = y; endMonth = m; endDay = d
+                        } else if (s != null) {
+                            val (y, m, d) = utcMillisToYmd(s)
+                            endYear = y; endMonth = m; endDay = d
+                        }
+                        val sy = startYear * 10000 + startMonth * 100 + startDay
+                        val ey = endYear * 10000 + endMonth * 100 + endDay
+                        if (ey < sy) {
+                            endYear = startYear; endMonth = startMonth; endDay = startDay
+                        }
+                        showDateRangePicker = false
+                    }
+                ) { Text("确定") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDateRangePicker = false }) { Text("取消") }
+            }
+        ) {
+            DateRangePicker(
+                state = rangeState,
+                title = {
+                    Text(
+                        "选择命运先机日期范围",
+                        modifier = Modifier.padding(start = 16.dp, top = 16.dp)
+                    )
+                },
+                headline = {
+                    val s = rangeState.selectedStartDateMillis
+                    val e = rangeState.selectedEndDateMillis
+                    val sLabel = s?.let {
+                        val (y, m, d) = utcMillisToYmd(it)
+                        formatYmdLabel(y, m, d)
+                    } ?: "开始"
+                    val eLabel = e?.let {
+                        val (y, m, d) = utcMillisToYmd(it)
+                        formatYmdLabel(y, m, d)
+                    } ?: "结束"
+                    Text(
+                        "$sLabel  ～  $eLabel",
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                },
+                showModeToggle = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(500.dp)
+            )
+        }
+    }
+
     if (pendingDeleteIndex != null) {
         AlertDialog(
             onDismissRequest = { pendingDeleteIndex = null },
@@ -480,56 +579,18 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
                         Switch(checked = dateRangeOn, onCheckedChange = { dateRangeOn = it })
                     }
                     if (dateRangeOn) {
-                        Text("开始日期", style = MaterialTheme.typography.bodySmall)
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            OutlinedTextField(
-                                value = startYear.toString(),
-                                onValueChange = { startYear = it.filter { c -> c.isDigit() }.take(4).toIntOrNull() ?: startYear },
-                                label = { Text("年") },
-                                modifier = Modifier.weight(1.2f),
-                                singleLine = true
-                            )
-                            OutlinedTextField(
-                                value = startMonth.toString(),
-                                onValueChange = { startMonth = it.filter { c -> c.isDigit() }.take(2).toIntOrNull()?.coerceIn(1, 12) ?: 1 },
-                                label = { Text("月") },
-                                modifier = Modifier.weight(1f),
-                                singleLine = true
-                            )
-                            OutlinedTextField(
-                                value = startDay.toString(),
-                                onValueChange = { startDay = it.filter { c -> c.isDigit() }.take(2).toIntOrNull()?.coerceIn(1, 31) ?: 1 },
-                                label = { Text("日") },
-                                modifier = Modifier.weight(1f),
-                                singleLine = true
-                            )
-                        }
-                        Text("结束日期", style = MaterialTheme.typography.bodySmall)
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            OutlinedTextField(
-                                value = endYear.toString(),
-                                onValueChange = { endYear = it.filter { c -> c.isDigit() }.take(4).toIntOrNull() ?: endYear },
-                                label = { Text("年") },
-                                modifier = Modifier.weight(1.2f),
-                                singleLine = true
-                            )
-                            OutlinedTextField(
-                                value = endMonth.toString(),
-                                onValueChange = { endMonth = it.filter { c -> c.isDigit() }.take(2).toIntOrNull()?.coerceIn(1, 12) ?: 1 },
-                                label = { Text("月") },
-                                modifier = Modifier.weight(1f),
-                                singleLine = true
-                            )
-                            OutlinedTextField(
-                                value = endDay.toString(),
-                                onValueChange = { endDay = it.filter { c -> c.isDigit() }.take(2).toIntOrNull()?.coerceIn(1, 31) ?: 1 },
-                                label = { Text("日") },
-                                modifier = Modifier.weight(1f),
-                                singleLine = true
-                            )
+                        Text(
+                            "日期范围：${formatYmdLabel(startYear, startMonth, startDay)} ～ ${formatYmdLabel(endYear, endMonth, endDay)}",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        OutlinedButton(
+                            onClick = { showDateRangePicker = true },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("打开日历选择开始/结束日期")
                         }
                         Text(
-                            "仅在该日期闭区间内，再按星期与时间生效；关闭开关则忽略年月日。",
+                            "在日历中点选开始日与结束日（闭区间）；仅在该范围内再按星期与时间生效。关闭开关则忽略年月日。",
                             style = MaterialTheme.typography.bodySmall
                         )
                     }

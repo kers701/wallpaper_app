@@ -1,12 +1,10 @@
-增量：预下载状态 + 等待时间归零（不推送）
+命运先机：年月日改为日历范围选择（不推送）
 
-首页 / 概览：
-- 显示「壁纸预下载：成功 / 失败 / 未完成」
-- 仅当预下载成功且自动更换开启时显示按钮「等待时间归零」
-- 归零：将 lastChangeAt 拨到已到期，服务约 30 秒内触发下次更换
+原 6 个年/月/日纯输入框改为：
+- 显示当前范围 YYYY-MM-DD ～ YYYY-MM-DD
+- 按钮「打开日历选择开始/结束日期」
+- 弹出 Material3 DateRangePicker 日历，点选开始与结束日
+- 确定后写回 startYmd/endYmd（逻辑与存储格式不变）
 
 覆盖：
-app/src/main/java/com/kers/killove/jhsy/data/local/NextWallpaperStore.kt
-app/src/main/java/com/kers/killove/jhsy/ui/MainViewModel.kt
-app/src/main/java/com/kers/killove/jhsy/ui/screens/HomeScreen.kt
-app/src/main/java/com/kers/killove/jhsy/ui/screens/OverviewScreen.kt
+app/src/main/java/com/kers/killove/jhsy/ui/screens/DestinyScheduleScreen.kt
