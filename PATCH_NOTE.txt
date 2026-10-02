@@ -1,10 +1,8 @@
-命运先机：年月日改为日历范围选择（不推送）
+增量：更换记录翻译 + 缓存/记录保留策略（不推送）
 
-原 6 个年/月/日纯输入框改为：
-- 显示当前范围 YYYY-MM-DD ～ YYYY-MM-DD
-- 按钮「打开日历选择开始/结束日期」
-- 弹出 Material3 DateRangePicker 日历，点选开始与结束日
-- 确定后写回 startYmd/endYmd（逻辑与存储格式不变）
+1. 更换记录关键词追加中文翻译（需设置中翻译提供方开启）
+2. 设置-基础「缓存与记录」：
+   关闭（随用随清）/ 六小时 / 一天 / 三天 / 七天
+   图片缓存与更换记录同步按此策略清理
 
-覆盖：
-app/src/main/java/com/kers/killove/jhsy/ui/screens/DestinyScheduleScreen.kt
+默认：七天

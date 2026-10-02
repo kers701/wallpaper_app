@@ -22,6 +22,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -48,9 +49,15 @@ fun HistoryScreen(vm: MainViewModel) {
     var confirmAction by remember { mutableStateOf<String?>(null) }
 
     val recent by vm.recent.collectAsState()
+    val settings by vm.settings.collectAsState()
     val fmt = rememberDateFormat()
     val textColor = LocalUiTextColor.current
     var previewPath by remember { mutableStateOf<String?>(null) }
+    var historyZh by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    LaunchedEffect(recent, settings.translateProvider, settings.translateApiKey) {
+        val words = recent.map { it.keyword }.filter { it.isNotBlank() }.distinct()
+        historyZh = if (words.isEmpty()) emptyMap() else vm.translateKeywords(words)
+    }
 
     Column(
         modifier = Modifier
@@ -102,8 +109,10 @@ fun HistoryScreen(vm: MainViewModel) {
                                 color = textColor
                             )
                             if (item.source == "wallhaven" || item.keyword.isNotBlank()) {
+                                val kw = item.keyword.ifBlank { "（未使用关键词）" }
+                                val zh = historyZh[item.keyword]
                                 Text(
-                                    "关键词: ${item.keyword.ifBlank { "（未使用关键词）" }}",
+                                    "关键词: " + if (zh.isNullOrBlank() || zh == item.keyword) kw else "$kw（$zh）",
                                     color = textColor
                                 )
                             }

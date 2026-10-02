@@ -44,7 +44,6 @@ class WallpaperChanger(
 
     companion object {
         private const val CACHE_LIMIT_BYTES = 10L * 1024 * 1024 * 1024 // 10GB
-        private const val HISTORY_KEEP = 77
     }
 
     /** FGS 周期调用：处理预下载 5 分钟重试 */
@@ -464,7 +463,7 @@ class WallpaperChanger(
                 triggerType = currentTrigger.code
             )
         )
-        dao.trimToKeep(HISTORY_KEEP)
+        applyRetentionPolicy(settings)
         OverviewCacheStore.update(context, target, file)
         if (touchScheduleClock) {
             settingsRepo.setLastChangeAt(System.currentTimeMillis())
@@ -548,7 +547,7 @@ class WallpaperChanger(
                 triggerType = currentTrigger.code
             )
         )
-        dao.trimToKeep(HISTORY_KEEP)
+        applyRetentionPolicy(settings)
 
         if (settings.categoryMode == CategoryMode.Rotate) {
             settingsRepo.setLastCategory(category)
@@ -564,7 +563,7 @@ class WallpaperChanger(
             advanceKeywordIndex(settings, steps = 1)
         }
 
-        if (item.source != "local") trimCache(dir, keep = 40)
+        if (item.source != "local") applyFileRetention(dir, settings.cacheRetention)
         OverviewCacheStore.update(context, target, finalFile)
         if (touchScheduleClock) {
             settingsRepo.setLastChangeAt(System.currentTimeMillis())
@@ -789,7 +788,7 @@ class WallpaperChanger(
                 triggerType = currentTrigger.code
             )
         )
-        dao.trimToKeep(HISTORY_KEEP)
+        applyRetentionPolicy(settings)
         if (advanceKeyword && settings.useKeywords && settings.activeKeywords().isNotEmpty()) {
             advanceKeywordIndex(settings, steps = 1)
         }
@@ -1054,6 +1053,35 @@ class WallpaperChanger(
     private fun isScreenOff(): Boolean {
         val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
         return !pm.isInteractive
+    }
+
+    /**
+     * 按设置的保留策略清理更换记录与图片缓存（同步规则）。
+     * 关闭：随用随清（记录只留最近 1～2 条，缓存文件只留最新少量）。
+     * 其它：删除早于 maxAge 的记录与文件。
+     */
+    private suspend fun applyRetentionPolicy(settings: AppSettings) {
+        val policy = settings.cacheRetention
+        val now = System.currentTimeMillis()
+        if (policy == CacheRetention.Off) {
+            // 随用随清：保留极少量供概览/当前展示
+            dao.trimToKeep(2)
+        } else {
+            val cutoff = now - policy.maxAgeMs
+            dao.deleteOlderThan(cutoff)
+        }
+        val dir = File(context.filesDir, "wallpapers")
+        if (dir.isDirectory) applyFileRetention(dir, policy)
+    }
+
+    private fun applyFileRetention(dir: File, policy: CacheRetention) {
+        val files = dir.listFiles()?.filter { it.isFile } ?: return
+        if (policy == CacheRetention.Off) {
+            files.sortedByDescending { it.lastModified() }.drop(2).forEach { it.delete() }
+            return
+        }
+        val cutoff = System.currentTimeMillis() - policy.maxAgeMs
+        files.filter { it.lastModified() < cutoff }.forEach { it.delete() }
     }
 
     private fun trimCache(dir: File, keep: Int) {

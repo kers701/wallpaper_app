@@ -203,7 +203,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    val recent = dao.recent(30)
+    val recent = dao.recent(120)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _status = MutableStateFlow("就绪")
@@ -226,6 +226,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _probing = MutableStateFlow(false)
     val probing: StateFlow<Boolean> = _probing.asStateFlow()
+
+    /** 供更换记录等 UI 按需翻译关键词（不改搜索词） */
+    suspend fun translateKeywords(words: List<String>): Map<String, String> {
+        val s = settings.value
+        if (s.translateProvider == com.kers.killove.jhsy.domain.TranslateProvider.Off) return emptyMap()
+        return translator.translateList(words.distinct().take(40), s)
+    }
 
     private val _jumpKeywordsZh = MutableStateFlow<Map<String, String>>(emptyMap())
     val jumpKeywordsZh: StateFlow<Map<String, String>> = _jumpKeywordsZh.asStateFlow()

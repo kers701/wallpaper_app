@@ -11,6 +11,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.kers.killove.jhsy.domain.AppSettings
+import com.kers.killove.jhsy.domain.CacheRetention
 import com.kers.killove.jhsy.domain.BgMode
 import com.kers.killove.jhsy.domain.CategoryMode
 import com.kers.killove.jhsy.domain.Purity
@@ -36,6 +37,7 @@ class SettingsRepository(private val context: Context) {
     private object Keys {
         val ENABLED = booleanPreferencesKey("enabled")
         val INTERVAL = intPreferencesKey("interval_minutes")
+        val CACHE_RETENTION = stringPreferencesKey("cache_retention")
         val PURITY = stringPreferencesKey("purity")
         val PURITY_FILTER = booleanPreferencesKey("purity_filter_enabled")
         val CATEGORY = stringPreferencesKey("category_mode")
@@ -140,6 +142,7 @@ class SettingsRepository(private val context: Context) {
         AppSettings(
             enabled = p[Keys.ENABLED] ?: false,
             intervalMinutes = p[Keys.INTERVAL] ?: 10,
+            cacheRetention = CacheRetention.fromCode(p[Keys.CACHE_RETENTION] ?: "7d"),
             purity = Purity.fromCode(p[Keys.PURITY] ?: "110"),
             purityFilterEnabled = p[Keys.PURITY_FILTER] ?: false,
             destinyEnabled = p[Keys.DESTINY_ENABLED] ?: false,
@@ -288,6 +291,7 @@ class SettingsRepository(private val context: Context) {
         context.dataStore.edit { p ->
             p[Keys.ENABLED] = settings.enabled
             p[Keys.INTERVAL] = settings.intervalMinutes.coerceIn(5, 180)
+            p[Keys.CACHE_RETENTION] = settings.cacheRetention.code
             p[Keys.PURITY] = settings.purity.code
             p[Keys.PURITY_FILTER] = settings.purityFilterEnabled
             p[Keys.DESTINY_ENABLED] = settings.destinyEnabled

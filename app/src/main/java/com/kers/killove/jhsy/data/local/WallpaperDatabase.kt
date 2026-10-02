@@ -64,6 +64,10 @@ interface WallpaperDao {
     @Query("DELETE FROM wallpaper_records WHERE setAt NOT IN (SELECT setAt FROM wallpaper_records ORDER BY setAt DESC LIMIT :keep)")
     suspend fun trimToKeep(keep: Int = 77)
 
+    /** 删除早于 cutoff 的更换记录（按 setAt 毫秒时间戳） */
+    @Query("DELETE FROM wallpaper_records WHERE setAt < :cutoff")
+    suspend fun deleteOlderThan(cutoff: Long)
+
     @Query("DELETE FROM wallpaper_records")
     suspend fun deleteAll()
 }

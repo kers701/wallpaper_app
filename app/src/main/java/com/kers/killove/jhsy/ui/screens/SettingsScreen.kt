@@ -51,6 +51,7 @@ import com.kers.killove.jhsy.domain.ResolutionMode
 import com.kers.killove.jhsy.domain.UiTextColor
 import com.kers.killove.jhsy.domain.TranslateProvider
 import com.kers.killove.jhsy.domain.WallpaperFitMode
+import com.kers.killove.jhsy.domain.CacheRetention
 import com.kers.killove.jhsy.domain.OrientationFilter
 import com.kers.killove.jhsy.domain.WallpaperTarget
 import com.kers.killove.jhsy.domain.CardStyle
@@ -101,6 +102,9 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
 
     var interval by remember(settings.intervalMinutes) {
         mutableFloatStateOf(settings.intervalMinutes.toFloat())
+    }
+    var cacheRetention by remember(settings.cacheRetention) {
+        mutableStateOf(settings.cacheRetention)
     }
     var purity by remember(settings.purity) { mutableStateOf(settings.purity) }
     var purityFilterOn by remember(settings.purityFilterEnabled) { mutableStateOf(settings.purityFilterEnabled) }
@@ -412,6 +416,11 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
         }
         EnumDropdown("类别", CategoryMode.entries, category) { category = it }
         EnumDropdown("设置目标", WallpaperTarget.entries, target) { target = it }
+        EnumDropdown("缓存与记录", CacheRetention.entries, cacheRetention) { cacheRetention = it }
+        Text(
+            "图片缓存与更换记录同步按此时长保留。关闭=随用随清；六小时/一天/三天/七天=删除更早的记录与图片文件。",
+            style = MaterialTheme.typography.bodySmall
+        )
         EnumDropdown("分辨率", ResolutionMode.entries, resMode) { resMode = it }
 
         if (resMode == ResolutionMode.Custom) {
@@ -1337,7 +1346,8 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
                 val fbUrl = if (keysVisible) fallbackApi.trim() else settings.fallbackApiUrl
                 vm.saveSettings(
                     settings.copy(
-                        intervalMinutes = interval.toInt(),
+                        intervalMinutes = interval.toInt().coerceIn(5, 180),
+                        cacheRetention = cacheRetention,
                         purity = if (purityFilterOn) {
                             Purity.fromFlags(puritySfw, puritySketchy, purityNsfw) ?: purity
                         } else purity,
@@ -1537,6 +1547,7 @@ private fun <T> EnumDropdown(
             is BgMode -> it.label
             is UiTextColor -> it.label
             is OrientationFilter -> it.label
+            is CacheRetention -> it.label
             is WallpaperFitMode -> it.label
             is TranslateProvider -> it.label
             is CardStyle -> it.label

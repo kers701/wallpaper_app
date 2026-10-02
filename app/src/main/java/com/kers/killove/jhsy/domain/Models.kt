@@ -304,9 +304,27 @@ data class DestinyRule(
         if (!dateRangeEnabled) "" else "${ymdLabel(startYmd)}～${ymdLabel(endYmd)}"
 }
 
+
+/** 图片缓存与更换记录保留策略（同步生效） */
+enum class CacheRetention(val code: String, val label: String, val maxAgeMs: Long) {
+    /** 随用随清：几乎不保留历史与缓存文件 */
+    Off("off", "关闭（随用随清）", 0L),
+    Hours6("6h", "六小时", 6L * 60 * 60 * 1000),
+    Day1("1d", "一天", 24L * 60 * 60 * 1000),
+    Day3("3d", "三天", 3L * 24 * 60 * 60 * 1000),
+    Day7("7d", "七天", 7L * 24 * 60 * 60 * 1000);
+
+    companion object {
+        fun fromCode(code: String): CacheRetention =
+            entries.find { it.code.equals(code, ignoreCase = true) } ?: Day7
+    }
+}
+
 data class AppSettings(
     val enabled: Boolean = false,
     val intervalMinutes: Int = 10,
+    /** 图片缓存与更换记录保留时长（同步） */
+    val cacheRetention: CacheRetention = CacheRetention.Day7,
     val purity: Purity = Purity.R13,
     /** 是否启用纯度筛选；关闭则每次更换在全部合法组合中完全随机 */
     val purityFilterEnabled: Boolean = false,

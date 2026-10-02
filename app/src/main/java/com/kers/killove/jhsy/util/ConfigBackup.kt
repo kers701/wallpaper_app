@@ -49,6 +49,7 @@ object ConfigBackup {
         // —— 调度与壁纸 ——
         o.put("enabled", settings.enabled)
         o.put("intervalMinutes", settings.intervalMinutes)
+        o.put("cacheRetention", settings.cacheRetention.code)
         o.put("purity", settings.purity.name)
         o.put("purityFilterEnabled", settings.purityFilterEnabled)
         o.put("categoryMode", settings.categoryMode.name)
