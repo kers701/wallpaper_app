@@ -67,6 +67,7 @@ class SettingsRepository(private val context: Context) {
         val API_KEYS = stringPreferencesKey("api_keys")
         val API_KEY_INDEX = intPreferencesKey("api_key_index")
         val KEYWORDS = stringPreferencesKey("keywords")
+        val KEYWORDS_ZH = stringPreferencesKey("keywords_chinese")
         val KEYWORDS_URL = stringPreferencesKey("keywords_remote_url")
         val USE_KEYWORDS = booleanPreferencesKey("use_keywords")
         val JUMP_MODE = booleanPreferencesKey("jump_mode")
@@ -218,6 +219,7 @@ class SettingsRepository(private val context: Context) {
             apiKeys = splitLines(keysRaw),
             apiKeyIndex = p[Keys.API_KEY_INDEX] ?: 0,
             keywords = splitLines(p[Keys.KEYWORDS] ?: ""),
+            keywordsChinese = splitLines(p[Keys.KEYWORDS_ZH] ?: ""),
             keywordsRemoteUrl = p[Keys.KEYWORDS_URL] ?: "",
             useKeywords = p[Keys.USE_KEYWORDS] ?: true,
             jumpModeEnabled = p[Keys.JUMP_MODE] ?: false,
@@ -384,6 +386,7 @@ class SettingsRepository(private val context: Context) {
             p[Keys.API_KEYS] = settings.apiKeys.joinToString("\n")
             p[Keys.API_KEY_INDEX] = settings.apiKeyIndex
             p[Keys.KEYWORDS] = settings.keywords.joinToString("\n")
+            p[Keys.KEYWORDS_ZH] = settings.keywordsChinese.joinToString("\n")
             p[Keys.KEYWORDS_URL] = settings.keywordsRemoteUrl
             p[Keys.USE_KEYWORDS] = settings.useKeywords
             p[Keys.JUMP_MODE] = settings.jumpModeEnabled

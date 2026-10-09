@@ -166,6 +166,9 @@ fun SettingsScreen(
     var apiKeysText by remember(settings.apiKeys, keysVisible) {
         mutableStateOf(if (keysVisible) settings.apiKeys.joinToString("\n") else "")
     }
+    var keywordsZhText by remember(settings.keywordsChinese, keysVisible) {
+        mutableStateOf(if (keysVisible) settings.keywordsChinese.joinToString("\n") else "••••")
+    }
     var keywordsText by remember(settings.keywords, keysVisible) {
         mutableStateOf(if (keysVisible) settings.keywords.joinToString("\n") else "")
     }
@@ -578,7 +581,7 @@ fun SettingsScreen(
         }
         if (settings.jumpKeywords.isEmpty()) {
             Text(
-                "跃迁列表：空（尚未从 Wallhaven 成功写入）",
+                "跃迁列表：空（将使用本地关键词；Wallhaven 成功后重新写入跃迁列表）",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -599,15 +602,40 @@ fun SettingsScreen(
                 maxLines = 10
             )
         }
+        if (jumpMode) {
+            OutlinedButton(
+                onClick = { vm.clearJumpKeywords() },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = settings.jumpKeywords.isNotEmpty()
+            ) { Text("清空跃迁列表（从本地关键词重新跃迁）") }
+        }
         if (keysVisible) {
             OutlinedTextField(
                 value = keywordsText,
                 onValueChange = { keywordsText = it },
-                label = { Text("本地关键词（每行一个）") },
+                label = { Text("本地关键词（每行一个，英文）") },
                 modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp),
                 minLines = 4,
                 maxLines = 12
             )
+            OutlinedTextField(
+                value = keywordsZhText,
+                onValueChange = { keywordsZhText = it },
+                label = { Text("中文关键词列表（每行一个）") },
+                supportingText = { Text("点击下方同步：翻译为英文并追加到本地关键词") },
+                modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp),
+                minLines = 3,
+                maxLines = 10
+            )
+            OutlinedButton(
+                onClick = {
+                    val zh = SettingsRepository.splitLines(keywordsZhText)
+                    val en = SettingsRepository.splitLines(keywordsText)
+                    vm.saveSettings(settings.copy(keywordsChinese = zh, keywords = en))
+                    vm.syncChineseKeywordsToLocal()
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("同步中文关键词 → 英文追加到本地列表") }
             OutlinedTextField(
                 value = keywordsUrl,
                 onValueChange = { keywordsUrl = it },
@@ -1286,6 +1314,7 @@ fun SettingsScreen(
             onClick = {
                 val keys = if (keysVisible) SettingsRepository.splitLines(apiKeysText) else settings.apiKeys
                 val kws = if (keysVisible) SettingsRepository.splitLines(keywordsText) else settings.keywords
+                val kwsZh = if (keysVisible) SettingsRepository.splitLines(keywordsZhText) else settings.keywordsChinese
                 val kwUrl = if (keysVisible) keywordsUrl.trim() else settings.keywordsRemoteUrl
                 val fbUrl = if (keysVisible) fallbackApi.trim() else settings.fallbackApiUrl
                 vm.saveSettings(
@@ -1330,6 +1359,7 @@ fun SettingsScreen(
                         minHeight = minH.toIntOrNull() ?: settings.minHeight,
                         apiKeys = keys,
                         keywords = kws,
+                        keywordsChinese = kwsZh,
                         keywordsRemoteUrl = kwUrl,
                         useKeywords = useKeywords,
                         jumpModeEnabled = jumpMode,

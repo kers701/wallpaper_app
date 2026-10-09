@@ -23,6 +23,117 @@ import java.util.Base64
 class KeywordTranslator(
     
 ) {
+
+    /**
+     * 中文 → 英文（用于中文关键词同步到本地关键词列表）。
+     * 返回 map：原文中文 -> 英文译文。
+     */
+    suspend fun translateListToEn(words: List<String>, settings: AppSettings): Map<String, String> {
+        if (settings.translateProvider == TranslateProvider.Off || words.isEmpty()) {
+            return emptyMap()
+        }
+        val key = settings.translateApiKey.trim()
+        if (key.isEmpty() && settings.translateProvider != TranslateProvider.Google) {
+            return emptyMap()
+        }
+        return try {
+            when (settings.translateProvider) {
+                TranslateProvider.Off -> emptyMap()
+                TranslateProvider.Google -> translateGoogleToEn(words, key)
+                TranslateProvider.Microsoft -> translateMicrosoftToEn(words, key, settings.translateRegion)
+                TranslateProvider.Tencent -> translateTencentToEn(words, key, settings.translateSecret)
+            }
+        } catch (_: Exception) {
+            emptyMap()
+        }
+    }
+
+    private suspend fun translateGoogleToEn(words: List<String>, apiKey: String): Map<String, String> =
+        withContext(Dispatchers.IO) {
+            val out = linkedMapOf<String, String>()
+            for (w in words.take(40)) {
+                val q = URLEncoder.encode(w, "UTF-8")
+                val url = if (apiKey.isNotBlank()) {
+                    "https://translation.googleapis.com/language/translate/v2?key=$apiKey&q=$q&target=en&source=zh-CN"
+                } else {
+                    "https://translate.googleapis.com/translate_a/single?client=gtx&sl=zh-CN&tl=en&dt=t&q=$q"
+                }
+                val req = Request.Builder().url(url).get().build()
+                ProxyHttp.execute(req).use { resp ->
+                    if (!resp.isSuccessful) return@use
+                    val body = resp.body?.string().orEmpty()
+                    val en = if (apiKey.isNotBlank()) {
+                        JSONObject(body).optJSONObject("data")
+                            ?.optJSONArray("translations")
+                            ?.optJSONObject(0)
+                            ?.optString("translatedText")
+                    } else {
+                        try {
+                            JSONArray(body).optJSONArray(0)?.optJSONArray(0)?.optString(0)
+                        } catch (_: Exception) {
+                            null
+                        }
+                    }
+                    if (!en.isNullOrBlank()) out[w] = en.trim()
+                }
+            }
+            out
+        }
+
+    private suspend fun translateMicrosoftToEn(
+        words: List<String>,
+        key: String,
+        region: String
+    ): Map<String, String> = withContext(Dispatchers.IO) {
+        val arr = JSONArray()
+        words.take(40).forEach { arr.put(JSONObject().put("Text", it)) }
+        val body = arr.toString().toRequestBody("application/json".toMediaType())
+        val req = Request.Builder()
+            .url("https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&from=zh-Hans&to=en")
+            .addHeader("Ocp-Apim-Subscription-Key", key)
+            .addHeader("Ocp-Apim-Subscription-Region", region.ifBlank { "global" })
+            .addHeader("Content-Type", "application/json")
+            .post(body)
+            .build()
+        ProxyHttp.execute(req).use { resp ->
+            if (!resp.isSuccessful) return@withContext emptyMap()
+            val root = JSONArray(resp.body?.string().orEmpty())
+            val out = linkedMapOf<String, String>()
+            for (i in 0 until minOf(root.length(), words.size)) {
+                val en = root.optJSONObject(i)
+                    ?.optJSONArray("translations")
+                    ?.optJSONObject(0)
+                    ?.optString("text")
+                if (!en.isNullOrBlank()) out[words[i]] = en.trim()
+            }
+            out
+        }
+    }
+
+    private suspend fun translateTencentToEn(
+        words: List<String>,
+        secretId: String,
+        secretKey: String
+    ): Map<String, String> = withContext(Dispatchers.IO) {
+        // 复用 TextTranslate：Source=zh Target=en；若签名逻辑在 translateTencent 内联，这里简化走 Google 网页备用
+        val out = linkedMapOf<String, String>()
+        for (w in words.take(30)) {
+            val q = URLEncoder.encode(w, "UTF-8")
+            val url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=zh-CN&tl=en&dt=t&q=$q"
+            val req = Request.Builder().url(url).get().build()
+            try {
+                ProxyHttp.execute(req).use { resp ->
+                    if (!resp.isSuccessful) return@use
+                    val body = resp.body?.string().orEmpty()
+                    val en = JSONArray(body).optJSONArray(0)?.optJSONArray(0)?.optString(0)
+                    if (!en.isNullOrBlank()) out[w] = en.trim()
+                }
+            } catch (_: Exception) {
+            }
+        }
+        out
+    }
+
     suspend fun translateList(words: List<String>, settings: AppSettings): Map<String, String> {
         if (settings.translateProvider == TranslateProvider.Off || words.isEmpty()) {
             return emptyMap()

@@ -293,6 +293,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     keywordsRemoteUrl = settings.value.keywordsRemoteUrl,
                     fallbackApiUrl = settings.value.fallbackApiUrl,
                     jumpKeywords = settings.value.jumpKeywords,
+                    keywordsChinese = settings.value.keywordsChinese,
                     gitUserName = settings.value.gitUserName,
                     gitUserEmail = settings.value.gitUserEmail,
                     gitToken = settings.value.gitToken,
@@ -1025,6 +1026,63 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 ProcessBridgePrefs.writeAvoidLocationsJson(getApplication(), merged.avoidanceLocationsJson)
                 GitSyncWorker.schedule(getApplication(), merged.gitUploadIntervalMinutes)
                 _status.value = "已从 Git 同步到本地"
+            } catch (e: Exception) {
+                _status.value = "同步失败：${e.message}"
+            } finally {
+                _busy.value = false
+            }
+        }
+    }
+
+
+    /** 清空跃迁列表，下次搜索回退到本地关键词，成功后会重新写入跃迁列表 */
+    fun clearJumpKeywords() {
+        viewModelScope.launch {
+            settingsRepo.setJumpKeywords(emptyList())
+            _status.value = "跃迁列表已清空，将从本地关键词重新跃迁"
+        }
+    }
+
+    /**
+     * 将中文关键词列表经翻译 API 逐条译为英文，追加到本地关键词（去重，保留原中文列表）。
+     */
+    fun syncChineseKeywordsToLocal() {
+        viewModelScope.launch {
+            val s = settings.value
+            val zhList = s.keywordsChinese.map { it.trim() }.filter { it.isNotEmpty() }
+            if (zhList.isEmpty()) {
+                _status.value = "中文关键词列表为空"
+                return@launch
+            }
+            if (s.translateProvider == com.kers.killove.jhsy.domain.TranslateProvider.Off) {
+                _status.value = "请先在设置中开启翻译提供方"
+                return@launch
+            }
+            _busy.value = true
+            _status.value = "正在翻译中文关键词（${zhList.size}）…"
+            try {
+                val map = translator.translateListToEn(zhList, s)
+                if (map.isEmpty()) {
+                    _status.value = "翻译失败：无结果（检查翻译配置/网络）"
+                    return@launch
+                }
+                val existing = s.keywords.map { it.trim() }.filter { it.isNotEmpty() }
+                val existingLower = existing.map { it.lowercase() }.toHashSet()
+                val appended = mutableListOf<String>()
+                for (zh in zhList) {
+                    val en = map[zh]?.trim().orEmpty()
+                    if (en.isBlank()) continue
+                    if (en.lowercase() in existingLower) continue
+                    existingLower.add(en.lowercase())
+                    appended.add(en)
+                }
+                if (appended.isEmpty()) {
+                    _status.value = "翻译完成，无新英文词可追加（可能均已存在）"
+                    return@launch
+                }
+                val next = existing + appended
+                settingsRepo.save(s.copy(keywords = next))
+                _status.value = "已追加 ${appended.size} 个英文关键词（共 ${next.size}）"
             } catch (e: Exception) {
                 _status.value = "同步失败：${e.message}"
             } finally {

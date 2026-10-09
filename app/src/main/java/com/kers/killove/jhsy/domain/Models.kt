@@ -379,6 +379,8 @@ data class AppSettings(
     val apiKeyIndex: Int = 0,
 
     val keywords: List<String> = emptyList(),
+    /** 中文关键词草稿：同步时经翻译 API 译成英文并追加到 keywords */
+    val keywordsChinese: List<String> = emptyList(),
     val keywordsRemoteUrl: String = "",
     val useKeywords: Boolean = true,
 
