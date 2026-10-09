@@ -115,7 +115,7 @@ object ProcessBridgePrefs {
         try {
             val body = packages
                 .map { it.trim() }
-                .filter { it.isNotEmpty() }
+                .filter { it.isNotEmpty() && isValidPackageName(it) }
                 .distinct()
                 .joinToString("\n")
             atomicWrite(blacklistFile(context), body)
@@ -132,16 +132,48 @@ object ProcessBridgePrefs {
     fun avoidFileExists(context: Context): Boolean =
         try { avoidFile(context).exists() } catch (_: Exception) { false }
 
-    /** 仅从标记文件读取黑名单（文件不存在 = 空）。 */
+    /**
+     * 合法 Android 包名：至少含一段点分隔，字母开头，仅字母数字下划线。
+     * 过滤误写入的 SQLite 二进制/乱码行。
+     */
+    fun isValidPackageName(pkg: String): Boolean {
+        val s = pkg.trim()
+        if (s.length !in 3..255) return false
+        if (s.any { ch -> ch.code < 0x20 || ch.code == 0x7F }) return false
+        if (s.startsWith("SQLite", ignoreCase = true)) return false
+        if (s.contains("CREATE TABLE", ignoreCase = true)) return false
+        if (s.contains("sqlite_", ignoreCase = true)) return false
+        return PACKAGE_NAME_REGEX.matches(s)
+    }
+
+    private val PACKAGE_NAME_REGEX =
+        Regex("^[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z][a-zA-Z0-9_]*)+$")
+
+    /** 仅从标记文件读取黑名单（文件不存在 = 空）。自动丢弃非法/乱码行并回写修复。 */
     fun readBlacklist(context: Context): List<String> {
         return try {
             val f = blacklistFile(context)
-            if (!f.exists()) emptyList()
-            else f.readText(Charsets.UTF_8)
+            if (!f.exists()) return emptyList()
+            val raw = f.readBytes()
+            // SQLite 库头 "SQLite format 3" —— 整文件损坏，直接清空
+            if (raw.size >= 15) {
+                val head = String(raw, 0, minOf(15, raw.size), Charsets.US_ASCII)
+                if (head.startsWith("SQLite format")) {
+                    writeBlacklist(context, emptyList())
+                    return emptyList()
+                }
+            }
+            val text = String(raw, Charsets.UTF_8)
+            val parsed = text
                 .split('\n', ',', ';')
                 .map { it.trim() }
                 .filter { it.isNotEmpty() }
                 .distinct()
+            val valid = parsed.filter { isValidPackageName(it) }
+            if (valid.size != parsed.size) {
+                writeBlacklist(context, valid)
+            }
+            valid
         } catch (_: Exception) {
             emptyList()
         }

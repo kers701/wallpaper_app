@@ -954,7 +954,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setBlacklist(packages: List<String>) {
         viewModelScope.launch {
-            val list = packages.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+            val list = packages
+                .map { it.trim() }
+                .filter { it.isNotEmpty() && ProcessBridgePrefs.isValidPackageName(it) }
+                .distinct()
             // 标记文件为唯一真相源：整表覆盖写，:svc 只读文件
             ProcessBridgePrefs.writeBlacklist(getApplication(), list)
             val next = settings.value.copy(blacklistPackages = list)

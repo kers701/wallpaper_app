@@ -1,8 +1,14 @@
-增量：更换记录翻译 + 缓存/记录保留策略（不推送）
+修复：应用黑名单列表显示 SQLite 乱码（不推送）
 
-1. 更换记录关键词追加中文翻译（需设置中翻译提供方开启）
-2. 设置-基础「缓存与记录」：
-   关闭（随用随清）/ 六小时 / 一天 / 三天 / 七天
-   图片缓存与更换记录同步按此策略清理
+原因：
+filesDir/jhsy_blacklist.txt 被写成 SQLite 二进制内容后，
+按行拆分当成包名显示（SQLite format 3、CREATE TABLE 等）。
 
-默认：七天
+修复：
+1. 读取时检测 SQLite 文件头 → 清空损坏文件
+2. 仅保留合法 Android 包名（com.xxx.yyy）
+3. 脏数据自动过滤并回写干净列表
+4. 写入/设置保存同样校验
+
+覆盖：
+ProcessBridgePrefs.kt / MainViewModel.kt / SettingsRepository.kt

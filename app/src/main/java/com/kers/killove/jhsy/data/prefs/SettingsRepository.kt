@@ -225,6 +225,7 @@ class SettingsRepository(private val context: Context) {
                 ProcessBridgePrefs.readBlacklist(context)
             } else {
                 splitLines(p[Keys.BLACKLIST] ?: "")
+                    .filter { ProcessBridgePrefs.isValidPackageName(it) }
             },
             overviewMinimalMode = p[Keys.OVERVIEW_MINIMAL] ?: false,
             changeCount = p[Keys.CHANGE_COUNT] ?: 0L,
