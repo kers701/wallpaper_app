@@ -500,7 +500,9 @@ data class AppSettings(
     val gitUserName: String = "",
     val gitUserEmail: String = "",
     val gitToken: String = "",
-    /** owner/repo 或 https://github.com/owner/repo */
+    /** 是否使用自定义仓库；关闭则使用 {用户名}/wallpaper_back */
+    val gitRepoCustom: Boolean = false,
+    /** owner/repo 或 https://github.com/owner/repo（仅 gitRepoCustom 时生效） */
     val gitRepo: String = "",
     val gitBranch: String = "main",
     /** 自动上传间隔（分钟）；0=仅手动 */

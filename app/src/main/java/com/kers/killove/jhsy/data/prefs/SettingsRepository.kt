@@ -137,6 +137,7 @@ class SettingsRepository(private val context: Context) {
         val GIT_EMAIL = stringPreferencesKey("git_user_email")
         val GIT_TOKEN = stringPreferencesKey("git_token")
         val GIT_REPO = stringPreferencesKey("git_repo")
+        val GIT_REPO_CUSTOM = booleanPreferencesKey("git_repo_custom")
         val GIT_BRANCH = stringPreferencesKey("git_branch")
         val GIT_INTERVAL = intPreferencesKey("git_upload_interval")
         val GIT_LAST_UP = longPreferencesKey("git_last_upload")
@@ -168,6 +169,7 @@ class SettingsRepository(private val context: Context) {
             gitUserName = p[Keys.GIT_USER] ?: "",
             gitUserEmail = p[Keys.GIT_EMAIL] ?: "",
             gitToken = p[Keys.GIT_TOKEN] ?: "",
+            gitRepoCustom = p[Keys.GIT_REPO_CUSTOM] ?: false,
             gitRepo = p[Keys.GIT_REPO] ?: "",
             gitBranch = p[Keys.GIT_BRANCH] ?: "main",
             gitUploadIntervalMinutes = (p[Keys.GIT_INTERVAL] ?: 0).coerceIn(0, 24 * 60),
@@ -337,6 +339,7 @@ class SettingsRepository(private val context: Context) {
             p[Keys.GIT_USER] = settings.gitUserName
             p[Keys.GIT_EMAIL] = settings.gitUserEmail
             p[Keys.GIT_TOKEN] = settings.gitToken
+            p[Keys.GIT_REPO_CUSTOM] = settings.gitRepoCustom
             p[Keys.GIT_REPO] = settings.gitRepo
             p[Keys.GIT_BRANCH] = settings.gitBranch
             p[Keys.GIT_INTERVAL] = settings.gitUploadIntervalMinutes.coerceIn(0, 24 * 60)

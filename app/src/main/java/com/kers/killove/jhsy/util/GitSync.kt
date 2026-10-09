@@ -38,10 +38,22 @@ object GitSync {
         return null
     }
 
+    const val DEFAULT_REPO_NAME = "wallpaper_back"
+
+    /** 生效仓库：自定义开启用 gitRepo，否则 {用户名}/wallpaper_back */
+    fun effectiveRepo(settings: AppSettings): String {
+        if (settings.gitRepoCustom) {
+            return settings.gitRepo.trim()
+        }
+        val user = settings.gitUserName.trim()
+        if (user.isBlank()) return ""
+        return "$user/$DEFAULT_REPO_NAME"
+    }
+
     fun canSync(settings: AppSettings): Boolean {
         if (settings.gitUserName.isBlank() || settings.gitUserEmail.isBlank()) return false
         if (settings.gitToken.isBlank()) return false
-        return parseRepo(settings.gitRepo) != null
+        return parseRepo(effectiveRepo(settings)) != null
     }
 
     suspend fun upload(context: Context, settings: AppSettings): Result<String> =
@@ -50,7 +62,7 @@ object GitSync {
                 if (!canSync(settings)) {
                     return@withContext Result.failure(IllegalStateException("请先配置 Git 用户名、邮箱、令牌与仓库"))
                 }
-                val ref = parseRepo(settings.gitRepo)!!
+                val ref = parseRepo(effectiveRepo(settings))!!
                 val json = ConfigBackup.toJsonSelective(settings)
                 val contentB64 = Base64.encodeToString(
                     json.toByteArray(Charsets.UTF_8),
@@ -96,7 +108,7 @@ object GitSync {
                 if (!canSync(settings)) {
                     return@withContext Result.failure(IllegalStateException("请先配置 Git 用户名、邮箱、令牌与仓库"))
                 }
-                val ref = parseRepo(settings.gitRepo)!!
+                val ref = parseRepo(effectiveRepo(settings))!!
                 val branch = settings.gitBranch.ifBlank { "main" }
                 val req = Request.Builder()
                     .url("$API/repos/${ref.owner}/${ref.repo}/contents/$REMOTE_PATH?ref=$branch")

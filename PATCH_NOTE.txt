@@ -1,9 +1,5 @@
-5.0.0 构建失败修复（不推送）
+云同步：PIN 隐藏配置 + 默认仓库 wallpaper_back（不推送）
 
-原因：
-SettingsScreen 参数写成 onOpenCloudSync: () -> Unit = {} = {}
-Kotlin 语法错误，compile 失败。
-
-修复：
-1. 正确的 SettingsScreen 签名
-2. 重写 CloudSyncScreen（ScopeRow 提到文件级私有 Composable）
+1. PIN 锁定时：用户名/邮箱/令牌/仓库不可见、不可改（与密钥一致）
+2. 「自定义仓库」开关：关闭则使用 {Git用户名}/wallpaper_back
+3. 显示当前生效仓库路径

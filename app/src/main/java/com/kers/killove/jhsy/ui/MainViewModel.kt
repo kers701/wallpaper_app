@@ -292,7 +292,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     keywords = settings.value.keywords,
                     keywordsRemoteUrl = settings.value.keywordsRemoteUrl,
                     fallbackApiUrl = settings.value.fallbackApiUrl,
-                    jumpKeywords = settings.value.jumpKeywords
+                    jumpKeywords = settings.value.jumpKeywords,
+                    gitUserName = settings.value.gitUserName,
+                    gitUserEmail = settings.value.gitUserEmail,
+                    gitToken = settings.value.gitToken,
+                    gitRepo = settings.value.gitRepo,
+                    gitRepoCustom = settings.value.gitRepoCustom
                 )
             } else s
             val wasSuper = settings.value.superProxyEnabled && settings.value.proxyEnabled
