@@ -18,6 +18,7 @@ import com.kers.killove.jhsy.data.wallpaper.SystemWallpaperSetter
 import com.kers.killove.jhsy.util.ForegroundAppHelper
 import com.kers.killove.jhsy.util.ProcessBridgePrefs
 import com.kers.killove.jhsy.util.DataSaverBudget
+import com.kers.killove.jhsy.util.PastLifeAi
 import com.kers.killove.jhsy.util.PastLifeStore
 import com.kers.killove.jhsy.util.RunLog
 import com.kers.killove.jhsy.util.LocationHelper
@@ -223,12 +224,14 @@ class WallpaperChanger(
         }
         if (single is ChangeResult.Success) {
             // 非隔离：本周期换完一次即更新前世今生
-            val kwFromDetail = (single as ChangeResult.Success).detail
-                .substringAfter("词:", "")
-                .substringAfter("词：", "")
+            val fromDetail = single.detail
+                .substringAfter("词:", missingDelimiterValue = "")
+                .ifBlank {
+                    single.detail.substringAfter("词：", missingDelimiterValue = "")
+                }
                 .trim()
-                .ifBlank { singleKw }
-            finalizePastLifeCycle(settings, kwFromDetail)
+            val kwFromDetail = fromDetail.ifBlank { singleKw.orEmpty() }
+            finalizePastLifeCycle(settings, kwFromDetail.takeIf { it.isNotBlank() })
         }
         return single
     }
