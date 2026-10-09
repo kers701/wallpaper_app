@@ -132,7 +132,6 @@ fun OverviewScreen(vm: MainViewModel) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        PastLifeSection(vm)
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(12.dp).clip(CircleShape).background(statusColor))
@@ -383,6 +382,9 @@ fun OverviewScreen(vm: MainViewModel) {
                 }
             }
         }
+
+        PastLifeSection(vm)
+
 
 
 OverviewCard(cardAlpha) {

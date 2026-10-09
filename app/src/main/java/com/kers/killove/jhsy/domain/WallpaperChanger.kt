@@ -206,10 +206,13 @@ class WallpaperChanger(
                         setOf(homeId, (lock as? ChangeResult.Success)?.item?.id ?: "")
                     )
                 }
+                // 隔离：桌面+锁屏都完成后才更新前世今生（一次周期一次）
+                finalizePastLifeCycle(settings, kwHome ?: kwLock)
             }
             return combined
         }
 
+        val singleKw = pickKeyword(settings, offset = 0)
         val single = changeForTarget(
             settings, settings.target, emptySet(), forceKeyword = null,
             skipPrefetchUse = liveDownloadOnly,
@@ -217,6 +220,15 @@ class WallpaperChanger(
         )
         if (!liveDownloadOnly && single is ChangeResult.Success) {
             schedulePrefetch(listOf(settings.target), setOf(single.item.id))
+        }
+        if (single is ChangeResult.Success) {
+            // 非隔离：本周期换完一次即更新前世今生
+            val kwFromDetail = (single as ChangeResult.Success).detail
+                .substringAfter("词:", "")
+                .substringAfter("词：", "")
+                .trim()
+                .ifBlank { singleKw }
+            finalizePastLifeCycle(settings, kwFromDetail)
         }
         return single
     }
@@ -576,15 +588,6 @@ class WallpaperChanger(
             RunLog.i(context, "wallpaper set id=${item.id} target=$target size=$fileSize today=${DataSaverBudget.todayBytes(context)}")
         }
 
-        if (settings.pastLifeEnabled && kwRecord.isNotBlank()) {
-            // advance 可能已执行：下次词 = 当前列表中 used 的下一档
-            val list = settings.activeKeywords()
-            val nextKw = if (list.isEmpty()) null else {
-                val idx = list.indexOfFirst { it.equals(kwRecord, ignoreCase = true) }
-                if (idx >= 0) list[(idx + 1).mod(list.size)] else pickKeyword(settings, offset = 1)
-            }
-            PastLifeStore.onWallpaperKeyword(context, kwRecord, nextKw)
-        }
         return ChangeResult.Success(
             item.copy(fileSize = fileSize),
             finalFile.absolutePath,
@@ -901,6 +904,33 @@ class WallpaperChanger(
             .filter { it.lowercase() !in exclude }
             .distinct()
             .toList()
+    }
+
+
+    /** 完整更换周期结束后更新前世今生关键词，并异步生成叙述（每周期一次） */
+    private fun finalizePastLifeCycle(settings: AppSettings, usedKeyword: String?) {
+        if (!settings.pastLifeEnabled) return
+        val kw = usedKeyword?.trim().orEmpty()
+        if (kw.isEmpty()) return
+        val list = settings.activeKeywords()
+        val nextKw = if (list.isEmpty()) null else {
+            val idx = list.indexOfFirst { it.equals(kw, ignoreCase = true) }
+            if (idx >= 0) list[(idx + 1).mod(list.size)] else pickKeyword(settings, offset = 0)
+        }
+        val cycleAt = System.currentTimeMillis()
+        PastLifeStore.onCycleComplete(context, kw, nextKw, cycleAt)
+        // 服务进程内生成一次，避免仅依赖 UI 打开
+        prefetchScope.launch {
+            runCatching {
+                val s = settingsRepo.settingsFlow.first()
+                if (!PastLifeAi.canUse(s)) return@runCatching
+                var st = PastLifeStore.read(context)
+                if (!st.needsNarrative) return@runCatching
+                val words = listOf(st.prevKw, st.currKw, st.nextKw).filter { it.isNotBlank() }
+                val zh = emptyMap<String, String>() // 叙述可用英文词；翻译由 UI 补
+                PastLifeAi.refresh(context, s, st, zh, force = false)
+            }
+        }
     }
 
     private fun pickKeyword(settings: AppSettings, offset: Int): String? {

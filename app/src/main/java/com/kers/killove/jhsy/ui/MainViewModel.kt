@@ -1082,15 +1082,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun refreshPastLife(forceAi: Boolean = true) {
+    fun refreshPastLife(forceAi: Boolean = false) {
         viewModelScope.launch {
             val s = settings.value
-            val st = withContext(Dispatchers.IO) { PastLifeStore.read(getApplication()) }
+            var st = withContext(Dispatchers.IO) { PastLifeStore.read(getApplication()) }
             _pastLife.value = st
             if (!PastLifeAi.canUse(s)) return@launch
-            if (!forceAi && st.present.isNotBlank()) return@launch
             if (st.currKw.isBlank()) return@launch
-            // 补翻译标签
+            // 本周期已有叙述且不强制：只刷新 UI，不调 AI
+            if (!forceAi && !st.needsNarrative && st.present.isNotBlank()) return@launch
+            if (!forceAi && !st.needsNarrative) return@launch
             val words = listOf(st.prevKw, st.currKw, st.nextKw).filter { it.isNotBlank() }
             val zh = if (words.isNotEmpty()) {
                 try { translator.translateList(words, s) } catch (_: Exception) { emptyMap() }
@@ -1101,7 +1102,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 nextZh = zh[st.nextKw].orEmpty().ifBlank { st.nextZh }
             )
             _pastLife.value = withZh
-            val updated = PastLifeAi.refresh(getApplication(), s, withZh, zh)
+            val updated = withContext(Dispatchers.IO) {
+                PastLifeAi.refresh(getApplication(), s, withZh, zh, force = forceAi)
+            }
             _pastLife.value = updated
         }
     }
