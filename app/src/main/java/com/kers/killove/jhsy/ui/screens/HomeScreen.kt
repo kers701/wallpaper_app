@@ -649,6 +649,8 @@ fun HomeScreen(vm: MainViewModel, onOpenHelp: (() -> Unit)? = null) {
                 }
             }
         }
+        PastLifeSection(vm)
+
 
 
         GlassCard {
@@ -689,7 +691,6 @@ fun HomeScreen(vm: MainViewModel, onOpenHelp: (() -> Unit)? = null) {
                     Spacer(Modifier.height(8.dp))
                 }
                 Text(status, color = textColor)
-            PastLifeSection(vm)
             }
         }
 

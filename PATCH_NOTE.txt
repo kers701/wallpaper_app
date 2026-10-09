@@ -1,1 +1,5 @@
-fix: import PastLifeAi; String? ifBlank -> takeIf
+前世今生：叙述带翻译 + 首页独立板块（不推送）
+
+1. 生成前先英→中翻译，AI 文中必须写「英文（中文）」如 a（翻译）
+2. 服务进程与 UI 路径均写入 prevZh/currZh/nextZh
+3. 首页前世今生移出「状态」卡片，放在虚妄关键词下方独立板块

@@ -18,6 +18,7 @@ import com.kers.killove.jhsy.data.wallpaper.SystemWallpaperSetter
 import com.kers.killove.jhsy.util.ForegroundAppHelper
 import com.kers.killove.jhsy.util.ProcessBridgePrefs
 import com.kers.killove.jhsy.util.DataSaverBudget
+import com.kers.killove.jhsy.data.translate.KeywordTranslator
 import com.kers.killove.jhsy.util.PastLifeAi
 import com.kers.killove.jhsy.util.PastLifeStore
 import com.kers.killove.jhsy.util.RunLog
@@ -930,7 +931,18 @@ class WallpaperChanger(
                 var st = PastLifeStore.read(context)
                 if (!st.needsNarrative) return@runCatching
                 val words = listOf(st.prevKw, st.currKw, st.nextKw).filter { it.isNotBlank() }
-                val zh = emptyMap<String, String>() // 叙述可用英文词；翻译由 UI 补
+                // 先英→中，再让 AI 按「英文（中文）」写作
+                val zh = try {
+                    KeywordTranslator().translateList(words, s)
+                } catch (_: Exception) {
+                    emptyMap()
+                }
+                st = st.copy(
+                    prevZh = zh[st.prevKw].orEmpty(),
+                    currZh = zh[st.currKw].orEmpty(),
+                    nextZh = zh[st.nextKw].orEmpty()
+                )
+                PastLifeStore.write(context, st)
                 PastLifeAi.refresh(context, s, st, zh, force = false)
             }
         }
