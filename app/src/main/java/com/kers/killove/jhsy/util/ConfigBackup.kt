@@ -294,6 +294,102 @@ object ConfigBackup {
         )
     }
 
+
+    /**
+     * 按 Git 云同步范围开关导出 JSON。
+     * 未勾选的板块不写入远程，避免覆盖远端未授权字段时仍可通过 fromJson 缺省保留本地。
+     */
+    fun toJsonSelective(settings: AppSettings): String {
+        val full = JSONObject(toJson(settings))
+        // 始终带元信息
+        val out = JSONObject()
+        out.put("version", full.opt("version"))
+        out.put("app", full.opt("app"))
+        out.put("note", "Git 云同步选择性备份；不含 PIN")
+        out.put("syncedAt", System.currentTimeMillis())
+        out.put("scopes", JSONObject()
+            .put("basic", settings.gitSyncBasic)
+            .put("apiKeys", settings.gitSyncApiKeys)
+            .put("keywords", settings.gitSyncKeywords)
+            .put("jump", settings.gitSyncJump)
+            .put("destiny", settings.gitSyncDestiny)
+            .put("blacklist", settings.gitSyncBlacklist)
+            .put("location", settings.gitSyncLocation)
+            .put("proxy", settings.gitSyncProxy)
+            .put("translate", settings.gitSyncTranslate)
+            .put("ui", settings.gitSyncUi)
+        )
+
+        fun copyKeys(keys: List<String>) {
+            for (k in keys) {
+                if (full.has(k)) out.put(k, full.get(k))
+            }
+        }
+
+        if (settings.gitSyncBasic) {
+            copyKeys(
+                listOf(
+                    "enabled", "intervalMinutes", "cacheRetention", "purity", "purityFilterEnabled",
+                    "categoryMode", "target", "resolutionMode", "minWidth", "minHeight",
+                    "useForegroundService", "skipWhenScreenOff", "orientationFilter",
+                    "aspectRatioFilterEnabled", "aspectRatioMin", "aspectRatioMax",
+                    "fitMode", "isolateHomeLock", "powerSaveEnabled", "powerSaveBatteryThreshold",
+                    "networkFallbackEnabled", "fallbackApiUrl", "localFallbackEnabled",
+                    "forceLocalMode", "localFallbackDir", "localFallbackUseCache",
+                    "localFallbackCacheSkipNewest", "dataSaverEnabled", "bgMode", "bgApiUrl", "bgLocalPath"
+                )
+            )
+        }
+        if (settings.gitSyncApiKeys) {
+            copyKeys(listOf("apiKeys", "apiKeyIndex"))
+        }
+        if (settings.gitSyncKeywords) {
+            copyKeys(listOf("keywords", "keywordsRemoteUrl", "useKeywords", "keywordIndex"))
+        }
+        if (settings.gitSyncJump) {
+            copyKeys(
+                listOf(
+                    "jumpModeEnabled", "jumpKeywords", "jumpKeywordIndex",
+                    "annihilationModeEnabled", "annihilationEpoch", "illusionModeEnabled"
+                )
+            )
+        }
+        if (settings.gitSyncDestiny) {
+            copyKeys(listOf("destinyEnabled", "destinyRulesJson"))
+        }
+        if (settings.gitSyncBlacklist) {
+            copyKeys(listOf("blacklistPackages"))
+        }
+        if (settings.gitSyncLocation) {
+            copyKeys(
+                listOf(
+                    "locationAvoidEnabled", "locationAvoidRadiusMeters", "amapApiKey",
+                    "avoidanceLocationsJson", "locationFallbackEnabled",
+                    "locationExtremeFallbackEnabled"
+                )
+            )
+        }
+        if (settings.gitSyncProxy) {
+            copyKeys(
+                listOf(
+                    "accelModeEnabled", "accelPrivacyAccepted", "accelNodesRemoteUrl",
+                    "proxyEnabled", "proxyType", "proxyHost", "proxyPort", "proxyUser",
+                    "proxyPassword", "proxySubUrl", "proxyNodesJson", "proxySelectedNodeId",
+                    "proxySelectMode", "proxyAutoTestIntervalMinutes",
+                    "superProxyEnabled", "superProxySubUrl", "superProxyArgs", "superProxyLocalPort"
+                    // 本机路径不上传
+                )
+            )
+        }
+        if (settings.gitSyncTranslate) {
+            copyKeys(listOf("translateProvider", "translateApiKey", "translateSecret", "translateRegion"))
+        }
+        if (settings.gitSyncUi) {
+            copyKeys(listOf("uiScrimAlpha", "uiCardAlpha", "uiTextColor", "cardStyle", "overviewMinimalMode"))
+        }
+        return out.toString(2)
+    }
+
     fun writeToFile(context: Context, settings: AppSettings): File {
         val file = defaultFile(context)
         file.parentFile?.mkdirs()

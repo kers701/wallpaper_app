@@ -29,6 +29,8 @@ import com.kers.killove.jhsy.service.ManualChangeService
 import com.kers.killove.jhsy.service.WallpaperForegroundService
 import com.kers.killove.jhsy.util.SuperServiceController
 import com.kers.killove.jhsy.util.ConfigBackup
+import com.kers.killove.jhsy.util.GitSync
+import com.kers.killove.jhsy.worker.GitSyncWorker
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -306,6 +308,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             RunLog.i(getApplication(), "settings saved enabled=${normalized.enabled} interval=${normalized.intervalMinutes} dataSaver=${normalized.dataSaverEnabled}")
             applySchedule(normalized)
+            GitSyncWorker.schedule(getApplication(), normalized.gitUploadIntervalMinutes)
             if (normalized.fitMode != oldFit) {
                 reapplyCurrentWallpapers(normalized)
             } else {
@@ -949,6 +952,79 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val next = settings.value.copy(overviewMinimalMode = enabled)
             settingsRepo.save(next)
             _status.value = if (enabled) "已开启极简模式" else "已关闭极简模式"
+        }
+    }
+
+
+    fun gitSyncUpload() {
+        viewModelScope.launch {
+            _busy.value = true
+            try {
+                val s = settings.value
+                val r = withContext(Dispatchers.IO) { GitSync.upload(getApplication(), s) }
+                if (r.isSuccess) {
+                    settingsRepo.save(s.copy(gitLastUploadAt = System.currentTimeMillis()))
+                    _status.value = r.getOrNull() ?: "上传成功"
+                } else {
+                    _status.value = "上传失败：${r.exceptionOrNull()?.message}"
+                }
+            } finally {
+                _busy.value = false
+            }
+        }
+    }
+
+    fun gitSyncDownload() {
+        viewModelScope.launch {
+            _busy.value = true
+            try {
+                val s = settings.value
+                val r = withContext(Dispatchers.IO) { GitSync.download(s) }
+                if (r.isFailure) {
+                    _status.value = "拉取失败：${r.exceptionOrNull()?.message}"
+                    return@launch
+                }
+                val json = r.getOrNull().orEmpty()
+                val restored = ConfigBackup.fromJson(json, s)
+                // 保留本机 Git 凭证与 PIN、运行时状态
+                val merged = restored.copy(
+                    pinHash = s.pinHash,
+                    pinEnabled = s.pinEnabled,
+                    gitSyncEnabled = s.gitSyncEnabled,
+                    gitUserName = s.gitUserName,
+                    gitUserEmail = s.gitUserEmail,
+                    gitToken = s.gitToken,
+                    gitRepo = s.gitRepo,
+                    gitBranch = s.gitBranch,
+                    gitUploadIntervalMinutes = s.gitUploadIntervalMinutes,
+                    gitSyncBasic = s.gitSyncBasic,
+                    gitSyncApiKeys = s.gitSyncApiKeys,
+                    gitSyncKeywords = s.gitSyncKeywords,
+                    gitSyncJump = s.gitSyncJump,
+                    gitSyncDestiny = s.gitSyncDestiny,
+                    gitSyncBlacklist = s.gitSyncBlacklist,
+                    gitSyncLocation = s.gitSyncLocation,
+                    gitSyncProxy = s.gitSyncProxy,
+                    gitSyncTranslate = s.gitSyncTranslate,
+                    gitSyncUi = s.gitSyncUi,
+                    gitLastDownloadAt = System.currentTimeMillis(),
+                    gitLastUploadAt = s.gitLastUploadAt,
+                    locationInAvoidZone = s.locationInAvoidZone,
+                    locationSavedPurity = s.locationSavedPurity,
+                    locationSavedForceLocal = s.locationSavedForceLocal,
+                    lastChangeAt = s.lastChangeAt
+                )
+                settingsRepo.save(merged)
+                ProcessBridgePrefs.sync(getApplication(), merged)
+                ProcessBridgePrefs.writeBlacklist(getApplication(), merged.blacklistPackages)
+                ProcessBridgePrefs.writeAvoidLocationsJson(getApplication(), merged.avoidanceLocationsJson)
+                GitSyncWorker.schedule(getApplication(), merged.gitUploadIntervalMinutes)
+                _status.value = "已从 Git 同步到本地"
+            } catch (e: Exception) {
+                _status.value = "同步失败：${e.message}"
+            } finally {
+                _busy.value = false
+            }
         }
     }
 

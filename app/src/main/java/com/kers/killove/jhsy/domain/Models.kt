@@ -494,6 +494,31 @@ data class AppSettings(
     /** 省流量：按当日缓存增量抬高间隔，≥20GB 今日停换 */
     val dataSaverEnabled: Boolean = false,
 
+
+    // —— Git 云同步（5.0+）——
+    val gitSyncEnabled: Boolean = false,
+    val gitUserName: String = "",
+    val gitUserEmail: String = "",
+    val gitToken: String = "",
+    /** owner/repo 或 https://github.com/owner/repo */
+    val gitRepo: String = "",
+    val gitBranch: String = "main",
+    /** 自动上传间隔（分钟）；0=仅手动 */
+    val gitUploadIntervalMinutes: Int = 0,
+    val gitLastUploadAt: Long = 0L,
+    val gitLastDownloadAt: Long = 0L,
+    /** 同步范围开关 */
+    val gitSyncBasic: Boolean = true,
+    val gitSyncApiKeys: Boolean = false,
+    val gitSyncKeywords: Boolean = true,
+    val gitSyncJump: Boolean = true,
+    val gitSyncDestiny: Boolean = true,
+    val gitSyncBlacklist: Boolean = true,
+    val gitSyncLocation: Boolean = true,
+    val gitSyncProxy: Boolean = false,
+    val gitSyncTranslate: Boolean = false,
+    val gitSyncUi: Boolean = true,
+
     /** 命运先机总开关 */
     val destinyEnabled: Boolean = false,
     /** 命运先机规则 JSON 数组 */

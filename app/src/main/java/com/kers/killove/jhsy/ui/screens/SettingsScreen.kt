@@ -67,7 +67,8 @@ import com.kers.killove.jhsy.ui.MainViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLocationAvoid: () -> Unit = {}, onOpenProxyNodes: () -> Unit = {}, onOpenDestiny: () -> Unit = {}) {
+fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLocationAvoid: () -> Unit = {}, onOpenProxyNodes: () -> Unit = {}, onOpenDestiny: () -> Unit,
+    onOpenCloudSync: () -> Unit = {} = {}) {
     var cacheConfirm by remember { mutableStateOf<String?>(null) }
     val createDocLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
@@ -1241,87 +1242,24 @@ fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLo
         }
 
         CollapsibleSection(
-            title = "配置备份 / 恢复",
+            title = "云同步",
             expanded = openSection == "backup",
             onToggle = { toggleSection("backup") }
         ) {
-        if (keysVisible) {
             Text(
-                "备份除 PIN 外全部配置（含代理节点、超级代理订阅/端口、云备份、避让点等）。恢复始终保留本机 PIN。",
+                "通过 GitHub 仓库同步配置（可选同步密钥等敏感项）。不再使用本地文件/剪贴板恢复。",
                 style = MaterialTheme.typography.bodySmall
             )
-            Text(
-                "超级代理内核/配置路径为本机私有路径，换机后请重新选择文件导入。",
-                style = MaterialTheme.typography.bodySmall
-            )
-            Text(
-                "默认文件：${vm.backupFilePath()}",
-                style = MaterialTheme.typography.bodySmall
-            )
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(
-                    onClick = { vm.backupConfig() },
-                    modifier = Modifier.weight(1f)
-                ) { Text("备份到应用目录") }
-                OutlinedButton(
-                    onClick = { vm.restoreConfigFromFile() }, // 默认路径见状态栏
-                    modifier = Modifier.weight(1f)
-                ) { Text("从默认文件恢复") }
+            val syncHint = buildString {
+                append(if (settings.gitSyncEnabled) "已启用" else "未启用")
+                if (settings.gitRepo.isNotBlank()) append(" · ${settings.gitRepo}")
+                if (settings.gitLastUploadAt > 0L) append(" · 有上传记录")
             }
-
+            Text(syncHint, style = MaterialTheme.typography.bodySmall)
             OutlinedButton(
-                onClick = { createDocLauncher.launch("jhsy_config_backup.json") },
+                onClick = onOpenCloudSync,
                 modifier = Modifier.fillMaxWidth()
-            ) { Text("备份到公共目录…") }
-            OutlinedButton(
-                onClick = { openDocLauncher.launch(arrayOf("application/json", "text/*", "*/*")) },
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("从公共目录选择文件恢复…") }
-
-            OutlinedButton(
-                onClick = { showRestoreField = !showRestoreField },
-                modifier = Modifier.fillMaxWidth()
-            ) { Text(if (showRestoreField) "收起 JSON 粘贴" else "从剪贴板 JSON 恢复") }
-            if (showRestoreField) {
-                OutlinedTextField(
-                    value = restoreJson,
-                    onValueChange = { restoreJson = it },
-                    label = { Text("粘贴备份 JSON") },
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp),
-                    minLines = 4,
-                    maxLines = 12
-                )
-                Button(
-                    onClick = { vm.restoreConfigFromJson(restoreJson) },
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text("确认恢复") }
-            }
-
-            OutlinedButton(
-                onClick = { showRemoteConfig = !showRemoteConfig },
-                modifier = Modifier.fillMaxWidth()
-            ) { Text(if (showRemoteConfig) "收起远程配置" else "从远程 URL 导入配置") }
-            if (showRemoteConfig) {
-                OutlinedTextField(
-                    value = remoteConfigUrl,
-                    onValueChange = { remoteConfigUrl = it },
-                    label = { Text("远程配置 JSON 地址 (http/https)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-                Button(
-                    onClick = { vm.importRemoteConfig(remoteConfigUrl) },
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text("拉取并恢复") }
-                Text(
-                    "远程文件须为备份导出的 JSON 对象；不会覆盖本机 PIN。",
-                    style = MaterialTheme.typography.bodySmall
-                )
-            }
-        } else {
-            LockedField("配置备份 / 恢复（请先解锁 PIN）")
-        }
-
+            ) { Text("打开云同步配置") }
         }
 
 
