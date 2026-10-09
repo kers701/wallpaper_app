@@ -150,6 +150,16 @@ fun SettingsScreen(
     }
     var powerTh by remember(settings.powerSaveBatteryThreshold) { mutableIntStateOf(settings.powerSaveBatteryThreshold) }
     var transProv by remember(settings.translateProvider) { mutableStateOf(settings.translateProvider) }
+    var transAiMode by remember(settings.translateAiMode) { mutableStateOf(settings.translateAiMode) }
+    var transAiKey by remember(settings.translateAiApiKey, keysVisible) {
+        mutableStateOf(if (keysVisible) settings.translateAiApiKey else "")
+    }
+    var transAiBase by remember(settings.translateAiBaseUrl) {
+        mutableStateOf(settings.translateAiBaseUrl.ifBlank { "https://api.openai.com/v1" })
+    }
+    var transAiModel by remember(settings.translateAiModel) {
+        mutableStateOf(settings.translateAiModel.ifBlank { "gpt-4o-mini" })
+    }
     var transKey by remember(settings.translateApiKey, keysVisible) {
         mutableStateOf(if (keysVisible) settings.translateApiKey else "")
     }
@@ -1157,37 +1167,71 @@ fun SettingsScreen(
             expanded = openSection == "trans",
             onToggle = { toggleSection("trans") }
         ) {
-        EnumDropdown("翻译引擎", TranslateProvider.entries, transProv) { transProv = it }
-        if (keysVisible) {
-            OutlinedTextField(
-                value = transKey,
-                onValueChange = { transKey = it },
-                label = { Text("API Key / SecretId") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-            if (transProv == TranslateProvider.Tencent) {
+        RowSwitch("AI 模式（智能模型翻译）", transAiMode) { transAiMode = it }
+        Text(
+            if (transAiMode) "已开启 AI：走智能模型；关闭后使用下方翻译引擎 API"
+            else "已关闭 AI：使用下方翻译引擎 API",
+            style = MaterialTheme.typography.bodySmall
+        )
+        if (transAiMode) {
+            if (keysVisible) {
                 OutlinedTextField(
-                    value = transSecret,
-                    onValueChange = { transSecret = it },
-                    label = { Text("腾讯 SecretKey") },
+                    value = transAiKey,
+                    onValueChange = { transAiKey = it },
+                    label = { Text("AI API Key") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
-            }
-            if (transProv == TranslateProvider.Microsoft) {
                 OutlinedTextField(
-                    value = transRegion,
-                    onValueChange = { transRegion = it },
-                    label = { Text("微软 Region（如 global / eastasia）") },
+                    value = transAiBase,
+                    onValueChange = { transAiBase = it },
+                    label = { Text("AI Base URL（OpenAI 兼容，如 https://api.openai.com/v1）") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
+                OutlinedTextField(
+                    value = transAiModel,
+                    onValueChange = { transAiModel = it },
+                    label = { Text("模型名（如 gpt-4o-mini）") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+            } else {
+                LockedField("AI API Key / 模型配置")
             }
         } else {
-            LockedField("翻译 API 密钥")
+            EnumDropdown("翻译引擎", TranslateProvider.entries, transProv) { transProv = it }
+            if (keysVisible) {
+                OutlinedTextField(
+                    value = transKey,
+                    onValueChange = { transKey = it },
+                    label = { Text("API Key / SecretId") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                if (transProv == TranslateProvider.Tencent) {
+                    OutlinedTextField(
+                        value = transSecret,
+                        onValueChange = { transSecret = it },
+                        label = { Text("腾讯 SecretKey") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
+                if (transProv == TranslateProvider.Microsoft) {
+                    OutlinedTextField(
+                        value = transRegion,
+                        onValueChange = { transRegion = it },
+                        label = { Text("微软 Region（如 global / eastasia）") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
+            } else {
+                LockedField("翻译 API 密钥")
+            }
         }
-        Text("翻译结果只显示在首页跃迁列表与状态，不改变实际搜索词", style = MaterialTheme.typography.bodySmall)
+        Text("翻译结果只显示在首页跃迁列表与状态；中文关键词同步会改写本地关键词", style = MaterialTheme.typography.bodySmall)
 
         }
 
@@ -1349,6 +1393,10 @@ fun SettingsScreen(
                         superServiceEnabled = superSvc,
                         translateProvider = transProv,
                         translateApiKey = if (keysVisible) transKey.trim() else settings.translateApiKey,
+                        translateAiMode = transAiMode,
+                        translateAiApiKey = if (keysVisible) transAiKey.trim() else settings.translateAiApiKey,
+                        translateAiBaseUrl = transAiBase.trim().ifBlank { "https://api.openai.com/v1" },
+                        translateAiModel = transAiModel.trim().ifBlank { "gpt-4o-mini" },
                         translateSecret = if (keysVisible) transSecret.trim() else settings.translateSecret,
                         translateRegion = transRegion.trim().ifBlank { "global" },
                         uiScrimAlpha = scrim,

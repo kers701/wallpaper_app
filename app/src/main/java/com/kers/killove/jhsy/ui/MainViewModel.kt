@@ -294,6 +294,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     fallbackApiUrl = settings.value.fallbackApiUrl,
                     jumpKeywords = settings.value.jumpKeywords,
                     keywordsChinese = settings.value.keywordsChinese,
+                    translateAiApiKey = settings.value.translateAiApiKey,
                     gitUserName = settings.value.gitUserName,
                     gitUserEmail = settings.value.gitUserEmail,
                     gitToken = settings.value.gitToken,
@@ -1054,8 +1055,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 _status.value = "中文关键词列表为空"
                 return@launch
             }
-            if (s.translateProvider == com.kers.killove.jhsy.domain.TranslateProvider.Off) {
-                _status.value = "请先在设置中开启翻译提供方"
+            if (!s.translateAiMode && s.translateProvider == com.kers.killove.jhsy.domain.TranslateProvider.Off) {
+                _status.value = "请开启 AI 模式或翻译提供方"
+                return@launch
+            }
+            if (s.translateAiMode && s.translateAiApiKey.isBlank()) {
+                _status.value = "请配置 AI API Key"
                 return@launch
             }
             _busy.value = true

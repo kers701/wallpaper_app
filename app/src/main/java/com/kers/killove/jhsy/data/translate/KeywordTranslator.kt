@@ -24,12 +24,92 @@ class KeywordTranslator(
     
 ) {
 
+
+    private suspend fun translateViaAi(
+        words: List<String>,
+        settings: AppSettings,
+        toEnglish: Boolean
+    ): Map<String, String> = withContext(Dispatchers.IO) {
+        val key = settings.translateAiApiKey.trim()
+        if (key.isBlank() || words.isEmpty()) return@withContext emptyMap()
+        val base = settings.translateAiBaseUrl.trim().trimEnd('/')
+            .ifBlank { "https://api.openai.com/v1" }
+        val model = settings.translateAiModel.trim().ifBlank { "gpt-4o-mini" }
+        val direction = if (toEnglish) {
+            "Translate each Chinese phrase to concise English search keywords suitable for image search. Keep proper nouns if appropriate."
+        } else {
+            "Translate each English tag/keyword to concise Simplified Chinese. One short phrase per line."
+        }
+        val batch = words.take(40)
+        val numbered = batch.mapIndexed { i, w -> "${i + 1}. $w" }.joinToString("\n")
+        val userMsg = "$direction\nReply with the same number of lines, format exactly: N. translation\n\n$numbered"
+        val body = JSONObject()
+            .put("model", model)
+            .put(
+                "messages",
+                JSONArray()
+                    .put(JSONObject().put("role", "system").put("content", "You are a precise bilingual translator for image-search keywords. Output only numbered translations, no extra commentary."))
+                    .put(JSONObject().put("role", "user").put("content", userMsg))
+            )
+            .put("temperature", 0.2)
+        val req = Request.Builder()
+            .url("$base/chat/completions")
+            .addHeader("Authorization", "Bearer $key")
+            .addHeader("Content-Type", "application/json")
+            .post(body.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+        ProxyHttp.execute(req).use { resp ->
+            if (!resp.isSuccessful) return@withContext emptyMap()
+            val root = JSONObject(resp.body?.string().orEmpty())
+            val content = root.optJSONArray("choices")
+                ?.optJSONObject(0)
+                ?.optJSONObject("message")
+                ?.optString("content")
+                .orEmpty()
+            parseNumberedTranslations(batch, content)
+        }
+    }
+
+    private fun parseNumberedTranslations(words: List<String>, content: String): Map<String, String> {
+        val out = linkedMapOf<String, String>()
+        val lines = content.lines().map { it.trim() }.filter { it.isNotEmpty() }
+        val byIndex = mutableMapOf<Int, String>()
+        val re = Regex("""^\s*(\d+)\s*[.、:：)\]]\s*(.+)$""")
+        for (line in lines) {
+            val m = re.find(line)
+            if (m != null) {
+                val idx = m.groupValues[1].toIntOrNull() ?: continue
+                byIndex[idx] = m.groupValues[2].trim()
+            }
+        }
+        for (i in words.indices) {
+            val t = byIndex[i + 1]
+            if (!t.isNullOrBlank()) out[words[i]] = t
+        }
+        // fallback: sequential non-empty lines if numbering failed
+        if (out.isEmpty() && lines.size >= words.size) {
+            for (i in words.indices) {
+                val t = lines[i].replace(Regex("""^\d+[.\s、:：)\]]+"""), "").trim()
+                if (t.isNotEmpty()) out[words[i]] = t
+            }
+        }
+        return out
+    }
+
     /**
      * 中文 → 英文（用于中文关键词同步到本地关键词列表）。
      * 返回 map：原文中文 -> 英文译文。
      */
     suspend fun translateListToEn(words: List<String>, settings: AppSettings): Map<String, String> {
-        if (settings.translateProvider == TranslateProvider.Off || words.isEmpty()) {
+        if (words.isEmpty()) return emptyMap()
+        if (settings.translateAiMode) {
+            return try {
+                translateViaAi(words, settings, toEnglish = true)
+            } catch (_: Exception) {
+                emptyMap()
+            }
+        }
+        if (settings.translateProvider == TranslateProvider.Off) {
             return emptyMap()
         }
         val key = settings.translateApiKey.trim()
@@ -135,7 +215,15 @@ class KeywordTranslator(
     }
 
     suspend fun translateList(words: List<String>, settings: AppSettings): Map<String, String> {
-        if (settings.translateProvider == TranslateProvider.Off || words.isEmpty()) {
+        if (words.isEmpty()) return emptyMap()
+        if (settings.translateAiMode) {
+            return try {
+                translateViaAi(words, settings, toEnglish = false)
+            } catch (_: Exception) {
+                emptyMap()
+            }
+        }
+        if (settings.translateProvider == TranslateProvider.Off) {
             return emptyMap()
         }
         val key = settings.translateApiKey.trim()

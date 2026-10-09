@@ -366,6 +366,12 @@ data class AppSettings(
     val translateApiKey: String = "",
     val translateSecret: String = "",
     val translateRegion: String = "global",
+    /** AI 翻译模式：开启后走智能模型，关闭走翻译 API */
+    val translateAiMode: Boolean = false,
+    val translateAiApiKey: String = "",
+    /** OpenAI 兼容接口，如 https://api.openai.com/v1 或中转 */
+    val translateAiBaseUrl: String = "https://api.openai.com/v1",
+    val translateAiModel: String = "gpt-4o-mini",
 
     /** UI 遮罩透明度 0.15～0.85 */
     val uiScrimAlpha: Float = 0.52f,
