@@ -67,8 +67,14 @@ import com.kers.killove.jhsy.ui.MainViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(vm: MainViewModel, onOpenBlacklist: () -> Unit = {}, onOpenLocationAvoid: () -> Unit = {}, onOpenProxyNodes: () -> Unit = {}, onOpenDestiny: () -> Unit,
-    onOpenCloudSync: () -> Unit = {} = {}) {
+fun SettingsScreen(
+    vm: MainViewModel,
+    onOpenBlacklist: () -> Unit = {},
+    onOpenLocationAvoid: () -> Unit = {},
+    onOpenProxyNodes: () -> Unit = {},
+    onOpenDestiny: () -> Unit = {},
+    onOpenCloudSync: () -> Unit = {}
+) {
     var cacheConfirm by remember { mutableStateOf<String?>(null) }
     val createDocLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")

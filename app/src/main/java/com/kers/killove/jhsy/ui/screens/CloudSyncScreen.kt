@@ -26,9 +26,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import com.kers.killove.jhsy.domain.AppSettings
 import com.kers.killove.jhsy.ui.LocalUiTextColor
 import com.kers.killove.jhsy.ui.MainViewModel
 import com.kers.killove.jhsy.util.GitSync
@@ -66,42 +68,25 @@ fun CloudSyncScreen(vm: MainViewModel, onBack: () -> Unit) {
     var syncUi by remember(settings.gitSyncUi) { mutableStateOf(settings.gitSyncUi) }
     var enabled by remember(settings.gitSyncEnabled) { mutableStateOf(settings.gitSyncEnabled) }
 
-    fun persist(extra: (com.kers.killove.jhsy.domain.AppSettings) -> com.kers.killove.jhsy.domain.AppSettings = { it }) {
-        val base = settings.copy(
-            gitSyncEnabled = enabled,
-            gitUserName = user.trim(),
-            gitUserEmail = email.trim(),
-            gitToken = token.trim(),
-            gitRepo = repo.trim(),
-            gitBranch = branch.trim().ifBlank { "main" },
-            gitUploadIntervalMinutes = interval.coerceIn(0, 24 * 60),
-            gitSyncBasic = syncBasic,
-            gitSyncApiKeys = syncKeys,
-            gitSyncKeywords = syncKw,
-            gitSyncJump = syncJump,
-            gitSyncDestiny = syncDest,
-            gitSyncBlacklist = syncBlack,
-            gitSyncLocation = syncLoc,
-            gitSyncProxy = syncProxy,
-            gitSyncTranslate = syncTrans,
-            gitSyncUi = syncUi
-        )
-        vm.saveSettings(extra(base))
-    }
-
-    @Composable
-    fun ScopeRow(title: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-        Row(
-            Modifier.fillMaxWidth().padding(vertical = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(title, color = textColor, modifier = Modifier.weight(1f))
-            Switch(checked = checked, onCheckedChange = {
-                onChange(it)
-            })
-        }
-    }
+    fun currentSettings(): AppSettings = settings.copy(
+        gitSyncEnabled = enabled,
+        gitUserName = user.trim(),
+        gitUserEmail = email.trim(),
+        gitToken = token.trim(),
+        gitRepo = repo.trim(),
+        gitBranch = branch.trim().ifBlank { "main" },
+        gitUploadIntervalMinutes = interval.coerceIn(0, 24 * 60),
+        gitSyncBasic = syncBasic,
+        gitSyncApiKeys = syncKeys,
+        gitSyncKeywords = syncKw,
+        gitSyncJump = syncJump,
+        gitSyncDestiny = syncDest,
+        gitSyncBlacklist = syncBlack,
+        gitSyncLocation = syncLoc,
+        gitSyncProxy = syncProxy,
+        gitSyncTranslate = syncTrans,
+        gitSyncUi = syncUi
+    )
 
     Column(
         Modifier
@@ -126,14 +111,7 @@ fun CloudSyncScreen(vm: MainViewModel, onBack: () -> Unit) {
             color = textColor.copy(alpha = 0.8f)
         )
 
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("启用云同步", color = textColor)
-            Switch(checked = enabled, onCheckedChange = { enabled = it })
-        }
+        CloudSyncScopeRow("启用云同步", enabled, textColor) { enabled = it }
 
         OutlinedTextField(
             value = user, onValueChange = { user = it },
@@ -173,21 +151,19 @@ fun CloudSyncScreen(vm: MainViewModel, onBack: () -> Unit) {
         )
 
         Text("备份内容选择", style = MaterialTheme.typography.titleMedium, color = textColor)
-        ScopeRow("基础设置（调度/纯度/分辨率等）", syncBasic) { syncBasic = it }
-        ScopeRow("密钥备份（API Key 等）", syncKeys) { syncKeys = it }
-        ScopeRow("关键词", syncKw) { syncKw = it }
-        ScopeRow("跃迁 / 湮灭 / 虚妄", syncJump) { syncJump = it }
-        ScopeRow("命运先机", syncDest) { syncDest = it }
-        ScopeRow("应用黑名单", syncBlack) { syncBlack = it }
-        ScopeRow("定位避让", syncLoc) { syncLoc = it }
-        ScopeRow("代理 / 加速 / 超级代理（不含本机路径）", syncProxy) { syncProxy = it }
-        ScopeRow("翻译密钥", syncTrans) { syncTrans = it }
-        ScopeRow("界面美化", syncUi) { syncUi = it }
+        CloudSyncScopeRow("基础设置（调度/纯度/分辨率等）", syncBasic, textColor) { syncBasic = it }
+        CloudSyncScopeRow("密钥备份（API Key 等）", syncKeys, textColor) { syncKeys = it }
+        CloudSyncScopeRow("关键词", syncKw, textColor) { syncKw = it }
+        CloudSyncScopeRow("跃迁 / 湮灭 / 虚妄", syncJump, textColor) { syncJump = it }
+        CloudSyncScopeRow("命运先机", syncDest, textColor) { syncDest = it }
+        CloudSyncScopeRow("应用黑名单", syncBlack, textColor) { syncBlack = it }
+        CloudSyncScopeRow("定位避让", syncLoc, textColor) { syncLoc = it }
+        CloudSyncScopeRow("代理 / 加速 / 超级代理（不含本机路径）", syncProxy, textColor) { syncProxy = it }
+        CloudSyncScopeRow("翻译密钥", syncTrans, textColor) { syncTrans = it }
+        CloudSyncScopeRow("界面美化", syncUi, textColor) { syncUi = it }
 
         Button(
-            onClick = {
-                persist()
-            },
+            onClick = { vm.saveSettings(currentSettings()) },
             modifier = Modifier.fillMaxWidth(),
             enabled = !busy
         ) { Text("保存云同步配置") }
@@ -195,7 +171,7 @@ fun CloudSyncScreen(vm: MainViewModel, onBack: () -> Unit) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 onClick = {
-                    persist()
+                    vm.saveSettings(currentSettings())
                     vm.gitSyncUpload()
                 },
                 modifier = Modifier.weight(1f),
@@ -203,7 +179,7 @@ fun CloudSyncScreen(vm: MainViewModel, onBack: () -> Unit) {
             ) { Text("立即上传") }
             OutlinedButton(
                 onClick = {
-                    persist()
+                    vm.saveSettings(currentSettings())
                     vm.gitSyncDownload()
                 },
                 modifier = Modifier.weight(1f),
@@ -223,5 +199,22 @@ fun CloudSyncScreen(vm: MainViewModel, onBack: () -> Unit) {
         )
         Text(status, style = MaterialTheme.typography.bodySmall, color = textColor.copy(alpha = 0.85f))
         Spacer(Modifier.height(88.dp))
+    }
+}
+
+@Composable
+private fun CloudSyncScopeRow(
+    title: String,
+    checked: Boolean,
+    textColor: Color,
+    onChange: (Boolean) -> Unit
+) {
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(title, color = textColor, modifier = Modifier.weight(1f))
+        Switch(checked = checked, onCheckedChange = onChange)
     }
 }
