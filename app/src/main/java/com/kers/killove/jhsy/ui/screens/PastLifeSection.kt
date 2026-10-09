@@ -22,6 +22,9 @@ import com.kers.killove.jhsy.ui.LocalUiTextColor
 import com.kers.killove.jhsy.ui.MainViewModel
 import com.kers.killove.jhsy.util.PastLifeAi
 
+/**
+ * 前世今生：独立 GlassCard 板块，折叠样式与 CollapsibleSection 一致。
+ */
 @Composable
 fun PastLifeSection(vm: MainViewModel) {
     val settings by vm.settings.collectAsState()
@@ -36,62 +39,66 @@ fun PastLifeSection(vm: MainViewModel) {
         vm.refreshPastLife(forceAi = true)
     }
 
-    Column(
-        Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .clickable { expanded = !expanded },
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+    GlassCard {
+        Column(
+            Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text(
-                "前世今生" + if (expanded) " ▾" else " ▸",
-                style = MaterialTheme.typography.titleMedium,
-                color = textColor
-            )
-            if (!aiOk) {
-                Text("需配置 AI", style = MaterialTheme.typography.bodySmall, color = textColor.copy(alpha = 0.6f))
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded },
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "前世今生",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = textColor,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    if (expanded) "收起 ▲" else "展开 ▼",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = textColor.copy(alpha = 0.65f)
+                )
             }
-        }
-        if (!expanded) return@Column
 
-        if (!aiOk) {
-            Text(
-                "请开启 AI 模式并配置 API Key 后生效",
-                style = MaterialTheme.typography.bodySmall,
-                color = textColor.copy(alpha = 0.65f)
+            if (!expanded) return@Column
+
+            if (!aiOk) {
+                Text(
+                    "请开启 AI 模式并配置 API Key 后生效",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = textColor.copy(alpha = 0.65f)
+                )
+                return@Column
+            }
+
+            PastLifeBlock(
+                title = "前尘",
+                kw = state.prevKw,
+                zh = state.prevZh,
+                body = state.past.ifBlank { "—" },
+                textColor = textColor
             )
-            return@Column
+            PastLifeBlock(
+                title = "今生",
+                kw = state.currKw,
+                zh = state.currZh,
+                body = state.present.ifBlank {
+                    if (state.currKw.isBlank()) "等待下次更换" else "生成中…"
+                },
+                textColor = textColor
+            )
+            PastLifeBlock(
+                title = "来世",
+                kw = state.nextKw,
+                zh = state.nextZh,
+                body = state.future.ifBlank { "—" },
+                textColor = textColor
+            )
         }
-
-        fun kwLine(title: String, kw: String, zh: String, body: String) {
-            // can't define nested composable easily - inline below
-        }
-
-        PastLifeBlock(
-            title = "前尘",
-            kw = state.prevKw,
-            zh = state.prevZh,
-            body = state.past.ifBlank { "—" },
-            textColor = textColor
-        )
-        PastLifeBlock(
-            title = "今生",
-            kw = state.currKw,
-            zh = state.currZh,
-            body = state.present.ifBlank { if (state.currKw.isBlank()) "等待下次更换" else "生成中…" },
-            textColor = textColor
-        )
-        PastLifeBlock(
-            title = "来世",
-            kw = state.nextKw,
-            zh = state.nextZh,
-            body = state.future.ifBlank { "—" },
-            textColor = textColor
-        )
     }
 }
 

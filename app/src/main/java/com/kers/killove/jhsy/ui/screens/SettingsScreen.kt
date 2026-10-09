@@ -1163,30 +1163,29 @@ fun SettingsScreen(
 
         }
 
-        // 前世今生开关放在翻译区上方基础能力
+        // 前世今生：独立 CollapsibleSection 板块（与其它设置板块同 GlassCard 样式）
         CollapsibleSection(
             title = "前世今生",
             expanded = openSection == "pastlife",
             onToggle = { toggleSection("pastlife") }
         ) {
             val aiOk = settings.translateAiMode && settings.translateAiApiKey.isNotBlank()
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text("前世今生", color = LocalUiTextColor.current)
-                    Text(
-                        if (aiOk) "更换壁纸后用 AI 描述本次词与前后词关系"
-                        else "需开启 AI 模式并配置 API Key 后可用",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-                Switch(
-                    checked = pastLife && aiOk,
-                    onCheckedChange = { if (aiOk) pastLife = it },
-                    enabled = aiOk
+            Text(
+                if (aiOk) "开启后，每次换壁纸成功将用 AI 描述本次关键词与前后词关系（首页/概览以独立板块展示）"
+                else "需先在「关键词翻译」中开启 AI 模式并配置 API Key",
+                style = MaterialTheme.typography.bodySmall
+            )
+            RowSwitch(
+                title = "启用前世今生",
+                checked = pastLife && aiOk,
+                enabled = aiOk,
+                onChecked = { v -> if (aiOk) pastLife = v }
+            )
+            if (!aiOk) {
+                Text(
+                    "当前不可用（AI 未就绪）",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
                 )
             }
         }
@@ -1225,6 +1224,22 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
+                OutlinedButton(
+                    onClick = {
+                        // 先写入当前编辑中的 AI 配置再检测
+                        vm.saveSettings(
+                            settings.copy(
+                                translateAiMode = true,
+                                translateAiApiKey = transAiKey.trim(),
+                                translateAiBaseUrl = transAiBase.trim().ifBlank { "https://api.openai.com/v1" },
+                                translateAiModel = transAiModel.trim().ifBlank { "gpt-4o-mini" }
+                            )
+                        )
+                        vm.testAiModelAvailability()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = transAiKey.isNotBlank()
+                ) { Text("检查 AI 模型可用性") }
             } else {
                 LockedField("AI API Key / 模型配置")
             }

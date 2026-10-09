@@ -30,6 +30,7 @@ import com.kers.killove.jhsy.service.WallpaperForegroundService
 import com.kers.killove.jhsy.util.SuperServiceController
 import com.kers.killove.jhsy.util.ConfigBackup
 import com.kers.killove.jhsy.util.GitSync
+import com.kers.killove.jhsy.util.AiOneShot
 import com.kers.killove.jhsy.util.PastLifeAi
 import com.kers.killove.jhsy.util.PastLifeStore
 import com.kers.killove.jhsy.worker.GitSyncWorker
@@ -1042,6 +1043,44 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
 
     /** 清空跃迁列表，下次搜索回退到本地关键词，成功后会重新写入跃迁列表 */
+
+
+    /** 检测 AI 模型是否可用：独立单次对话，发送简短 ping */
+    fun testAiModelAvailability() {
+        viewModelScope.launch {
+            val s = settings.value
+            if (!s.translateAiMode) {
+                _status.value = "请先开启 AI 模式"
+                return@launch
+            }
+            if (s.translateAiApiKey.isBlank()) {
+                _status.value = "请填写 AI API Key"
+                return@launch
+            }
+            _busy.value = true
+            _status.value = "正在检测 AI 模型…"
+            try {
+                val reply = withContext(Dispatchers.IO) {
+                    AiOneShot.chat(
+                        settings = s,
+                        userContent = "Reply with exactly one word: OK",
+                        systemContent = "You are a connectivity probe. Reply only: OK",
+                        temperature = 0.0
+                    )
+                }
+                if (reply.isNullOrBlank()) {
+                    _status.value = "AI 不可用：无响应（检查 Key / Base URL / 网络）"
+                } else {
+                    val model = s.translateAiModel.ifBlank { "gpt-4o-mini" }
+                    _status.value = "AI 可用 · 模型 $model · 回复：${reply.take(80)}"
+                }
+            } catch (e: Exception) {
+                _status.value = "AI 检测失败：${e.message}"
+            } finally {
+                _busy.value = false
+            }
+        }
+    }
 
     fun refreshPastLife(forceAi: Boolean = true) {
         viewModelScope.launch {

@@ -1,6 +1,5 @@
-AI 每次独立新对话（不推送）
+前世今生独立板块 + AI 可用性检测（不推送）
 
-- 新增 AiOneShot：每次 chat 只带本轮 messages，不保存历史
-- 关键词 AI 翻译：每 8 词一批，每批独立 HTTP 请求，互不带上下文
-- 若已合入「前世今生」：覆盖 PastLifeAi.kt 同样走 AiOneShot
-  （若未合入前世今生，请删除包内 PastLifeAi.kt 再编译）
+1. 首页/概览「前世今生」改为 GlassCard 独立板块，折叠样式与其它板块一致（收起▲/展开▼）
+2. 设置「前世今生」为独立 CollapsibleSection，RowSwitch 开关，AI 未就绪时置灰
+3. 关键词翻译 → AI 配置：按钮「检查 AI 模型可用性」（单次对话 ping）
