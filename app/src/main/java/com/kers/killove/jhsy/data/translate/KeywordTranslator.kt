@@ -1,6 +1,7 @@
 package com.kers.killove.jhsy.data.translate
 
 import com.kers.killove.jhsy.domain.AppSettings
+import com.kers.killove.jhsy.util.AiOneShot
 import com.kers.killove.jhsy.domain.TranslateProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -25,49 +26,41 @@ class KeywordTranslator(
 ) {
 
 
+    /**
+     * AI 翻译：每个小批次一次**全新对话**（不追加历史），降低上下文与 tokens。
+     */
     private suspend fun translateViaAi(
         words: List<String>,
         settings: AppSettings,
         toEnglish: Boolean
     ): Map<String, String> = withContext(Dispatchers.IO) {
-        val key = settings.translateAiApiKey.trim()
-        if (key.isBlank() || words.isEmpty()) return@withContext emptyMap()
-        val base = settings.translateAiBaseUrl.trim().trimEnd('/')
-            .ifBlank { "https://api.openai.com/v1" }
-        val model = settings.translateAiModel.trim().ifBlank { "gpt-4o-mini" }
+        if (settings.translateAiApiKey.isBlank() || words.isEmpty()) return@withContext emptyMap()
         val direction = if (toEnglish) {
-            "Translate each Chinese phrase to concise English search keywords suitable for image search. Keep proper nouns if appropriate."
+            "Translate each Chinese phrase to concise English search keywords for image search."
         } else {
-            "Translate each English tag/keyword to concise Simplified Chinese. One short phrase per line."
+            "Translate each English tag to concise Simplified Chinese. One short phrase per line."
         }
-        val batch = words.take(40)
-        val numbered = batch.mapIndexed { i, w -> "${i + 1}. $w" }.joinToString("\n")
-        val userMsg = "$direction\nReply with the same number of lines, format exactly: N. translation\n\n$numbered"
-        val body = JSONObject()
-            .put("model", model)
-            .put(
-                "messages",
-                JSONArray()
-                    .put(JSONObject().put("role", "system").put("content", "You are a precise bilingual translator for image-search keywords. Output only numbered translations, no extra commentary."))
-                    .put(JSONObject().put("role", "user").put("content", userMsg))
-            )
-            .put("temperature", 0.2)
-        val req = Request.Builder()
-            .url("$base/chat/completions")
-            .addHeader("Authorization", "Bearer $key")
-            .addHeader("Content-Type", "application/json")
-            .post(body.toString().toRequestBody("application/json".toMediaType()))
-            .build()
-        ProxyHttp.execute(req).use { resp ->
-            if (!resp.isSuccessful) return@withContext emptyMap()
-            val root = JSONObject(resp.body?.string().orEmpty())
-            val content = root.optJSONArray("choices")
-                ?.optJSONObject(0)
-                ?.optJSONObject("message")
-                ?.optString("content")
-                .orEmpty()
-            parseNumberedTranslations(batch, content)
+        val out = linkedMapOf<String, String>()
+        // 每批独立请求，互不带上一批内容
+        val chunkSize = 8
+        val list = words.take(40)
+        var offset = 0
+        while (offset < list.size) {
+            val batch = list.subList(offset, minOf(offset + chunkSize, list.size))
+            offset += chunkSize
+            val numbered = batch.mapIndexed { i, w -> "${i + 1}. $w" }.joinToString("\n")
+            val userMsg =
+                "$direction\nReply with the same number of lines, format: N. translation\n\n$numbered"
+            // 全新对话：仅本批 user，不传历史
+            val content = AiOneShot.chat(
+                settings = settings,
+                userContent = userMsg,
+                systemContent = "Precise bilingual keyword translator. Output only numbered lines. No history.",
+                temperature = 0.2
+            ) ?: continue
+            out.putAll(parseNumberedTranslations(batch, content))
         }
+        out
     }
 
     private fun parseNumberedTranslations(words: List<String>, content: String): Map<String, String> {

@@ -64,6 +64,7 @@ class SettingsRepository(private val context: Context) {
         val TRANS_AI_KEY = stringPreferencesKey("translate_ai_api_key")
         val TRANS_AI_BASE = stringPreferencesKey("translate_ai_base_url")
         val TRANS_AI_MODEL = stringPreferencesKey("translate_ai_model")
+        val PAST_LIFE = booleanPreferencesKey("past_life_enabled")
         val UI_SCRIM = floatPreferencesKey("ui_scrim_alpha")
         val UI_CARD = floatPreferencesKey("ui_card_alpha")
         val UI_TEXT = stringPreferencesKey("ui_text_color")
@@ -220,6 +221,7 @@ class SettingsRepository(private val context: Context) {
             translateAiApiKey = p[Keys.TRANS_AI_KEY] ?: "",
             translateAiBaseUrl = p[Keys.TRANS_AI_BASE] ?: "https://api.openai.com/v1",
             translateAiModel = p[Keys.TRANS_AI_MODEL] ?: "gpt-4o-mini",
+            pastLifeEnabled = p[Keys.PAST_LIFE] ?: false,
             uiScrimAlpha = (p[Keys.UI_SCRIM] ?: 0.52f).coerceIn(0.15f, 0.85f),
             uiCardAlpha = (p[Keys.UI_CARD] ?: 0.28f).coerceIn(0f, 0.7f),
             uiTextColor = UiTextColor.fromCode(p[Keys.UI_TEXT] ?: "white"),
@@ -391,6 +393,7 @@ class SettingsRepository(private val context: Context) {
             p[Keys.TRANS_AI_KEY] = settings.translateAiApiKey
             p[Keys.TRANS_AI_BASE] = settings.translateAiBaseUrl
             p[Keys.TRANS_AI_MODEL] = settings.translateAiModel
+            p[Keys.PAST_LIFE] = settings.pastLifeEnabled
             p[Keys.UI_SCRIM] = settings.uiScrimAlpha.coerceIn(0.15f, 0.85f)
             p[Keys.UI_CARD] = settings.uiCardAlpha.coerceIn(0f, 0.7f)
             p[Keys.UI_TEXT] = settings.uiTextColor.code

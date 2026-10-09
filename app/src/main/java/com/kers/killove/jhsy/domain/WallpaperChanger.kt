@@ -18,6 +18,7 @@ import com.kers.killove.jhsy.data.wallpaper.SystemWallpaperSetter
 import com.kers.killove.jhsy.util.ForegroundAppHelper
 import com.kers.killove.jhsy.util.ProcessBridgePrefs
 import com.kers.killove.jhsy.util.DataSaverBudget
+import com.kers.killove.jhsy.util.PastLifeStore
 import com.kers.killove.jhsy.util.RunLog
 import com.kers.killove.jhsy.util.LocationHelper
 import com.kers.killove.jhsy.util.DestinyHelper
@@ -573,6 +574,16 @@ class WallpaperChanger(
         if (fileSize > 0L) {
             DataSaverBudget.addBytes(context, fileSize)
             RunLog.i(context, "wallpaper set id=${item.id} target=$target size=$fileSize today=${DataSaverBudget.todayBytes(context)}")
+        }
+
+        if (settings.pastLifeEnabled && kwRecord.isNotBlank()) {
+            // advance 可能已执行：下次词 = 当前列表中 used 的下一档
+            val list = settings.activeKeywords()
+            val nextKw = if (list.isEmpty()) null else {
+                val idx = list.indexOfFirst { it.equals(kwRecord, ignoreCase = true) }
+                if (idx >= 0) list[(idx + 1).mod(list.size)] else pickKeyword(settings, offset = 1)
+            }
+            PastLifeStore.onWallpaperKeyword(context, kwRecord, nextKw)
         }
         return ChangeResult.Success(
             item.copy(fileSize = fileSize),

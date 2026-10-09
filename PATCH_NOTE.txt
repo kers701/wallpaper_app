@@ -1,7 +1,6 @@
-翻译 AI 模式（不推送）
+AI 每次独立新对话（不推送）
 
-- 设置 → 关键词翻译：开关「AI 模式」
-- 开启：使用 AI API Key + Base URL（OpenAI 兼容）+ 模型名
-- 关闭：沿用谷歌/微软/腾讯翻译 API
-- 展示翻译（英→中）与中文关键词同步（中→英）均受此开关控制
-- AI Key 受 PIN 锁定保护
+- 新增 AiOneShot：每次 chat 只带本轮 messages，不保存历史
+- 关键词 AI 翻译：每 8 词一批，每批独立 HTTP 请求，互不带上下文
+- 若已合入「前世今生」：覆盖 PastLifeAi.kt 同样走 AiOneShot
+  （若未合入前世今生，请删除包内 PastLifeAi.kt 再编译）

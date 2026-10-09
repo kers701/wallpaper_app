@@ -30,6 +30,8 @@ import com.kers.killove.jhsy.service.WallpaperForegroundService
 import com.kers.killove.jhsy.util.SuperServiceController
 import com.kers.killove.jhsy.util.ConfigBackup
 import com.kers.killove.jhsy.util.GitSync
+import com.kers.killove.jhsy.util.PastLifeAi
+import com.kers.killove.jhsy.util.PastLifeStore
 import com.kers.killove.jhsy.worker.GitSyncWorker
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -235,6 +237,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (s.translateProvider == com.kers.killove.jhsy.domain.TranslateProvider.Off) return emptyMap()
         return translator.translateList(words.distinct().take(40), s)
     }
+
+    private val _pastLife = MutableStateFlow(PastLifeStore.State())
+    val pastLifeState: StateFlow<PastLifeStore.State> = _pastLife.asStateFlow()
 
     private val _jumpKeywordsZh = MutableStateFlow<Map<String, String>>(emptyMap())
     val jumpKeywordsZh: StateFlow<Map<String, String>> = _jumpKeywordsZh.asStateFlow()
@@ -1037,6 +1042,31 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
 
     /** 清空跃迁列表，下次搜索回退到本地关键词，成功后会重新写入跃迁列表 */
+
+    fun refreshPastLife(forceAi: Boolean = true) {
+        viewModelScope.launch {
+            val s = settings.value
+            val st = withContext(Dispatchers.IO) { PastLifeStore.read(getApplication()) }
+            _pastLife.value = st
+            if (!PastLifeAi.canUse(s)) return@launch
+            if (!forceAi && st.present.isNotBlank()) return@launch
+            if (st.currKw.isBlank()) return@launch
+            // 补翻译标签
+            val words = listOf(st.prevKw, st.currKw, st.nextKw).filter { it.isNotBlank() }
+            val zh = if (words.isNotEmpty()) {
+                try { translator.translateList(words, s) } catch (_: Exception) { emptyMap() }
+            } else emptyMap()
+            val withZh = st.copy(
+                prevZh = zh[st.prevKw].orEmpty().ifBlank { st.prevZh },
+                currZh = zh[st.currKw].orEmpty().ifBlank { st.currZh },
+                nextZh = zh[st.nextKw].orEmpty().ifBlank { st.nextZh }
+            )
+            _pastLife.value = withZh
+            val updated = PastLifeAi.refresh(getApplication(), s, withZh, zh)
+            _pastLife.value = updated
+        }
+    }
+
     fun clearJumpKeywords() {
         viewModelScope.launch {
             settingsRepo.setJumpKeywords(emptyList())

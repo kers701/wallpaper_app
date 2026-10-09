@@ -150,6 +150,7 @@ fun SettingsScreen(
     }
     var powerTh by remember(settings.powerSaveBatteryThreshold) { mutableIntStateOf(settings.powerSaveBatteryThreshold) }
     var transProv by remember(settings.translateProvider) { mutableStateOf(settings.translateProvider) }
+    var pastLife by remember(settings.pastLifeEnabled) { mutableStateOf(settings.pastLifeEnabled) }
     var transAiMode by remember(settings.translateAiMode) { mutableStateOf(settings.translateAiMode) }
     var transAiKey by remember(settings.translateAiApiKey, keysVisible) {
         mutableStateOf(if (keysVisible) settings.translateAiApiKey else "")
@@ -1162,6 +1163,34 @@ fun SettingsScreen(
 
         }
 
+        // 前世今生开关放在翻译区上方基础能力
+        CollapsibleSection(
+            title = "前世今生",
+            expanded = openSection == "pastlife",
+            onToggle = { toggleSection("pastlife") }
+        ) {
+            val aiOk = settings.translateAiMode && settings.translateAiApiKey.isNotBlank()
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("前世今生", color = LocalUiTextColor.current)
+                    Text(
+                        if (aiOk) "更换壁纸后用 AI 描述本次词与前后词关系"
+                        else "需开启 AI 模式并配置 API Key 后可用",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                Switch(
+                    checked = pastLife && aiOk,
+                    onCheckedChange = { if (aiOk) pastLife = it },
+                    enabled = aiOk
+                )
+            }
+        }
+
         CollapsibleSection(
             title = "关键词翻译（仅展示/日志）",
             expanded = openSection == "trans",
@@ -1394,6 +1423,7 @@ fun SettingsScreen(
                         translateProvider = transProv,
                         translateApiKey = if (keysVisible) transKey.trim() else settings.translateApiKey,
                         translateAiMode = transAiMode,
+                        pastLifeEnabled = pastLife,
                         translateAiApiKey = if (keysVisible) transAiKey.trim() else settings.translateAiApiKey,
                         translateAiBaseUrl = transAiBase.trim().ifBlank { "https://api.openai.com/v1" },
                         translateAiModel = transAiModel.trim().ifBlank { "gpt-4o-mini" },
