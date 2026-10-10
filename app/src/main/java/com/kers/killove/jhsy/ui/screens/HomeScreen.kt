@@ -34,6 +34,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -821,7 +824,8 @@ fun ThemeSlider(
     valueRange: ClosedFloatingPointRange<Float>,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    steps: Int = 0
+    steps: Int = 0,
+    onValueChangeFinished: (() -> Unit)? = null
 ) {
     val textColor = LocalUiTextColor.current
     Slider(
@@ -831,6 +835,7 @@ fun ThemeSlider(
         modifier = modifier,
         enabled = enabled,
         steps = steps,
+        onValueChangeFinished = onValueChangeFinished,
         colors = SliderDefaults.colors(
             thumbColor = textColor,
             activeTrackColor = textColor.copy(alpha = 0.75f),

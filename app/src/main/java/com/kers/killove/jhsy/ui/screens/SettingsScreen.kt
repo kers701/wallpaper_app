@@ -7,9 +7,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.clickable
@@ -279,7 +279,7 @@ fun SettingsScreen(
         }
     }
 
-    val nestedScroll = remember {
+    val nestedScrollConn = remember {
         object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
             var pulled = 0f
             override fun onPreScroll(
@@ -304,7 +304,7 @@ fun SettingsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .nestedScroll(nestedScroll)
+            .nestedScroll(nestedScrollConn)
             .verticalScroll(settingsScroll)
             .padding(20.dp)
             .padding(bottom = 96.dp),
@@ -1482,17 +1482,18 @@ fun SettingsScreen(
         }
 
 
-        // 原底部「保存设置」已改为悬浮圆形按钮
+        // 保存改为悬浮按钮
     }
 
-    // 悬浮保存：始终最上层
+    // 悬浮圆形「保存」
     Box(
-        Modifier
+        modifier = Modifier
             .align(Alignment.BottomCenter)
             .padding(bottom = 22.dp)
             .size(68.dp)
             .clickable {
-val keys = if (keysVisible) SettingsRepository.splitLines(apiKeysText) else settings.apiKeys
+
+                val keys = if (keysVisible) SettingsRepository.splitLines(apiKeysText) else settings.apiKeys
                 val kws = if (keysVisible) SettingsRepository.splitLines(keywordsText) else settings.keywords
                 val kwsZh = if (keysVisible) SettingsRepository.splitLines(keywordsZhText) else settings.keywordsChinese
                 val kwUrl = if (keysVisible) keywordsUrl.trim() else settings.keywordsRemoteUrl
@@ -1586,6 +1587,7 @@ val keys = if (keysVisible) SettingsRepository.splitLines(apiKeysText) else sett
                             ?: settings.superProxyLocalPort
                     )
                 )
+            
             },
         contentAlignment = Alignment.Center
     ) {
@@ -1609,7 +1611,7 @@ val keys = if (keysVisible) SettingsRepository.splitLines(apiKeysText) else sett
     }
 
     if (showPinDialog) {
-        androidx.compose.material3.AlertDialog(
+        AlertDialog(
             onDismissRequest = { showPinDialog = false; pinTempInput = "" },
             title = { Text("临时解锁") },
             text = {
@@ -1630,9 +1632,7 @@ val keys = if (keysVisible) SettingsRepository.splitLines(apiKeysText) else sett
                 }
             },
             confirmButton = {
-                ThemeButton(onClick = {
-                    vm.unlock(pinTempInput)
-                }) { Text("解锁") }
+                ThemeButton(onClick = { vm.unlock(pinTempInput) }) { Text("解锁") }
             },
             dismissButton = {
                 ThemeOutlinedButton(onClick = { showPinDialog = false; pinTempInput = "" }) { Text("取消") }
@@ -1641,12 +1641,12 @@ val keys = if (keysVisible) SettingsRepository.splitLines(apiKeysText) else sett
     }
 
     if (showSettingsSearch) {
-        androidx.compose.material3.AlertDialog(
+        AlertDialog(
             onDismissRequest = { showSettingsSearch = false },
             title = { Text("搜索配置") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("下拉到顶可打开此搜索。输入板块或词条关键词。")
+                    Text("下拉到顶可打开搜索。输入板块关键词。")
                     OutlinedTextField(
                         value = settingsSearch,
                         onValueChange = { settingsSearch = it },
@@ -1673,18 +1673,15 @@ val keys = if (keysVisible) SettingsRepository.splitLines(apiKeysText) else sett
                         "云同步" to "backup",
                         "缓存与日志" to "cache"
                     )
-                    catalog.filter { q.isBlank() || it.first.contains(q, ignoreCase = true) }
-                        .forEach { (name, key) ->
-                            Text(
-                                "· $name",
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        openSection = key
-                                        showSettingsSearch = false
-                                    }
-                            )
-                        }
+                    catalog.filter { q.isBlank() || it.first.contains(q, ignoreCase = true) }.forEach { (name, key) ->
+                        Text(
+                            "· $name",
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                openSection = key
+                                showSettingsSearch = false
+                            }
+                        )
+                    }
                 }
             },
             confirmButton = {
@@ -1692,9 +1689,7 @@ val keys = if (keysVisible) SettingsRepository.splitLines(apiKeysText) else sett
             }
         )
     }
-
-    // close outer Box
-    }
+    } // end outer Box
 
     if (showAccelDialog) {
         AccelPrivacyDialog(
@@ -1777,21 +1772,28 @@ private fun PurityChip(
 }
 
 @Composable
-private fun LockedField(label: String) {
-    OutlinedTextField(
-        value = "••••••••\n（已锁定，不可见）",
-        onValueChange = {},
-        enabled = false,
-        label = { Text(label) },
-        modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp),
-        minLines = 2,
-        maxLines = 4
-    )
-    Text(
-        "已启用 PIN 且处于锁定状态，请先解锁后查看或修改",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.error
-    )
+private fun LockedField(label: String, onRequestUnlock: () -> Unit = {}) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clickable { onRequestUnlock() },
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        OutlinedTextField(
+            value = "••••••••\n（已锁定，点击输入 PIN 临时解锁）",
+            onValueChange = {},
+            enabled = false,
+            label = { Text(label) },
+            modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp),
+            minLines = 2,
+            maxLines = 4
+        )
+        Text(
+            "点击输入 PIN 临时解锁；离开配置页后自动重新锁定",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

@@ -360,7 +360,7 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
         DatePickerDialog(
             onDismissRequest = { showDateRangePicker = false },
             confirmButton = {
-                TextThemeButton(
+                TextButton(
                     onClick = {
                         val s = rangeState.selectedStartDateMillis
                         val e = rangeState.selectedEndDateMillis

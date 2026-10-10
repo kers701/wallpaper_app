@@ -1,9 +1,6 @@
-UI 全面主题美化 + 悬浮保存 + 启动更新检测 + 下拉搜索 + PIN 临时解锁（不推送）
+构建修复 5.2.0（不推送）
 
-1. ThemeSwitch / ThemeSlider：跟随文字色；RowSwitch 与各页 Switch/Slider 统一
-2. 首页立即更换、使用说明检测更新/下载、记录页导出/清空/查看壁纸、次级页按钮
-3. 概览：极简模式、自动更换开关主题化
-4. 配置页「保存设置」改为底部悬浮圆形「保存」按钮
-5. 启动自动检测 GitHub 更新，有新版本弹窗
-6. 配置页下拉到顶打开搜索，可跳转各板块
-7. 点击锁定敏感项弹 PIN 临时解锁；离开配置页自动重新锁定
+1. SettingsScreen：从 5.1.7 干净重建悬浮保存/下拉搜索/PIN 弹窗结构，修复 Box/align/损坏的 save 块
+2. LockedField 增加 onRequestUnlock
+3. HomeScreen：补 SwitchDefaults/SliderDefaults 导入；ThemeSlider 支持 onValueChangeFinished
+4. DestinyScheduleScreen：TextThemeButton → TextButton（误替换修复）
