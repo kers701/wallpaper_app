@@ -1,4 +1,11 @@
-取消配置页「已保存」弹窗（不推送）
+跃迁关键词时间轴与前世今生对齐（不推送）
 
-- 移除 showSavedDialog 状态与 AlertDialog
-- 点击保存仍会写入配置，不再弹「已保存」
+问题：
+- 仅用 jumpKeywords 列表 + jumpKeywordIndex 推算「上次/本次/下次」
+- 跃迁列表被图片标签重写后，索引推算与真实用词、更换记录、前世今生脱节
+
+修复：
+- JumpKeywordsTimeline 优先读取 PastLifeStore 的 prev/curr/next
+  （上次=前尘、本次=今生、下次=来世）
+- 隔离模式优先用 home/lock 分轨
+- 尚无前世今生记录时仍回退到列表索引推算

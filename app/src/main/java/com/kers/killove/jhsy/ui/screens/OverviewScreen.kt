@@ -47,6 +47,7 @@ import com.kers.killove.jhsy.data.local.WallpaperEntity
 import com.kers.killove.jhsy.ui.LocalCardAlpha
 import com.kers.killove.jhsy.ui.LocalUiTextColor
 import com.kers.killove.jhsy.ui.MainViewModel
+import com.kers.killove.jhsy.util.PastLifeStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -286,12 +287,16 @@ fun OverviewScreen(vm: MainViewModel) {
                     val list = settings.jumpKeywords
                     val idx = settings.jumpKeywordIndex
                     val isolate = settings.isolateHomeLock && settings.target == com.kers.killove.jhsy.domain.WallpaperTarget.Both
+                    val pastLifeState = remember(settings.lastChangeAt, settings.jumpKeywordIndex, settings.pastLifeEnabled) {
+                        PastLifeStore.read(context)
+                    }
                     JumpKeywordsTimeline(
                         list = list,
                         index = idx,
                         isolate = isolate,
                         zhMap = jumpZh,
-                        textColor = textColor
+                        textColor = textColor,
+                        pastLife = pastLifeState
                     )
                     if (jumpExpanded) {
                         Spacer(Modifier.height(6.dp))
