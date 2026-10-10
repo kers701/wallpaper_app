@@ -1,5 +1,4 @@
-修复 MainViewModel setStatus 语法错误（不推送）
+修复 SharedFlow / collect 未解析（不推送）
 
-- setStatus(if (...) {, popup = ...) 多行表达式被错误截断
-- 已改为先算 statusMsg 再 setStatus(statusMsg, popup = true)
-- 涉及：refreshOverview / 设置已保存 / 移除避让点
+- MainViewModel 补 import kotlinx.coroutines.flow.SharedFlow
+- WallpapercAppRoot statusAlert.collect 参数显式 String

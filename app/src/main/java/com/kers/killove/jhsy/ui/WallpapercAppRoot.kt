@@ -98,7 +98,7 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
 
     // 仅用户点击/改配置触发的 statusAlert 才弹窗
     LaunchedEffect(Unit) {
-        vm.statusAlert.collect { msg ->
+        vm.statusAlert.collect { msg: String ->
             if (msg.isNotBlank()) statusPopup = msg
         }
     }
