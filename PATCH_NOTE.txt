@@ -1,7 +1,5 @@
-构建修复：SettingsScreen 结构简化（不推送）
+配置页：悬浮保存 + 搜索定位（不推送）
 
-- 去掉外层 Box + align（导致 Composable 上下文错误）
-- 圆形「保存」放在配置列表底部（可滚到）
-- 顶部「搜索配置板块」按钮 + PIN 临时解锁弹窗
-- 离开配置页自动锁定
-- Home ThemeSlider 支持 onValueChangeFinished；SwitchDefaults 导入
+1. 「保存」圆形按钮固定在屏幕底部中央，始终最上层（Box + zIndex），不随列表滚走
+2. 搜索点选板块后：展开该板块并滚动定位到对应位置
+3. 顶部仍保留「搜索配置板块」入口

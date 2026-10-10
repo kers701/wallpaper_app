@@ -7,6 +7,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import kotlinx.coroutines.launch
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.size
@@ -85,6 +91,9 @@ fun SettingsScreen(
     var pinTempInput by remember { mutableStateOf("") }
     var settingsSearch by remember { mutableStateOf("") }
     var showSettingsSearch by remember { mutableStateOf(false) }
+    val settingsScroll = rememberScrollState()
+    val sectionOffsets = remember { mutableStateMapOf<String, Int>() }
+    val settingsScope = rememberCoroutineScope()
     val createDocLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
     ) { uri ->
@@ -156,6 +165,15 @@ fun SettingsScreen(
     var openSection by remember { mutableStateOf("") }
     fun toggleSection(id: String) {
         openSection = if (openSection == id) "" else id
+    }
+    fun jumpToSection(key: String) {
+        openSection = key
+        showSettingsSearch = false
+        settingsScope.launch {
+            kotlinx.coroutines.delay(80)
+            val y = sectionOffsets[key] ?: 0
+            settingsScroll.animateScrollTo(y.coerceAtLeast(0))
+        }
     }
     var powerTh by remember(settings.powerSaveBatteryThreshold) { mutableIntStateOf(settings.powerSaveBatteryThreshold) }
     var transProv by remember(settings.translateProvider) { mutableStateOf(settings.translateProvider) }
@@ -277,12 +295,13 @@ fun SettingsScreen(
         }
     }
 
+    Box(Modifier = Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(settingsScroll)
             .padding(20.dp)
-            .padding(bottom = 24.dp),
+            .padding(bottom = 100.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         ThemeOutlinedButton(
@@ -292,6 +311,11 @@ fun SettingsScreen(
 
 
         // —— 常用：调度与来源 ——
+        Box(
+            Modifier.onGloballyPositioned { coords ->
+                sectionOffsets["basic"] = coords.positionInParent().y.toInt()
+            }
+        ) {
         CollapsibleSection(
             title = "基础",
             expanded = openSection == "basic",
@@ -553,7 +577,13 @@ fun SettingsScreen(
         }
 
         }
+        }
 
+        Box(
+            Modifier.onGloballyPositioned { coords ->
+                sectionOffsets["keys"] = coords.positionInParent().y.toInt()
+            }
+        ) {
         CollapsibleSection(
             title = "API 密钥（可多个，每行一个）",
             expanded = openSection == "keys",
@@ -573,7 +603,13 @@ fun SettingsScreen(
             LockedField("Wallhaven API Keys", onRequestUnlock = { showPinDialog = true })
         }
         }
+        }
 
+        Box(
+            Modifier.onGloballyPositioned { coords ->
+                sectionOffsets["kw"] = coords.positionInParent().y.toInt()
+            }
+        ) {
         CollapsibleSection(
             title = "关键词",
             expanded = openSection == "kw",
@@ -694,7 +730,13 @@ fun SettingsScreen(
         } // end if (useKeywords)
 
         }
+        }
 
+        Box(
+            Modifier.onGloballyPositioned { coords ->
+                sectionOffsets["fb"] = coords.positionInParent().y.toInt()
+            }
+        ) {
         CollapsibleSection(
             title = "兜底策略",
             expanded = openSection == "fb",
@@ -745,9 +787,15 @@ fun SettingsScreen(
         }
 
         }
+        }
 
 
         // —— 网络与保活 ——
+        Box(
+            Modifier.onGloballyPositioned { coords ->
+                sectionOffsets["proxy"] = coords.positionInParent().y.toInt()
+            }
+        ) {
         CollapsibleSection(
             title = "网络代理",
             expanded = openSection == "proxy",
@@ -984,7 +1032,13 @@ fun SettingsScreen(
             LockedField("网络代理（请先解锁 PIN）", onRequestUnlock = { showPinDialog = true })
         }
         }
+        }
 
+        Box(
+            Modifier.onGloballyPositioned { coords ->
+                sectionOffsets["super"] = coords.positionInParent().y.toInt()
+            }
+        ) {
         CollapsibleSection(
             title = "超级服务（独立进程保活）",
             expanded = openSection == "super",
@@ -1084,9 +1138,15 @@ fun SettingsScreen(
         }
 
         }
+        }
 
 
         // —— 场景限制 ——
+        Box(
+            Modifier.onGloballyPositioned { coords ->
+                sectionOffsets["bl"] = coords.positionInParent().y.toInt()
+            }
+        ) {
         CollapsibleSection(
             title = "应用黑名单",
             expanded = openSection == "bl",
@@ -1101,7 +1161,13 @@ fun SettingsScreen(
             modifier = Modifier.fillMaxWidth()
         ) { Text("管理黑名单（名单在次级页）…") }
         }
+        }
 
+        Box(
+            Modifier.onGloballyPositioned { coords ->
+                sectionOffsets["destiny"] = coords.positionInParent().y.toInt()
+            }
+        ) {
         CollapsibleSection(
             title = "命运先机",
             expanded = openSection == "destiny",
@@ -1119,7 +1185,13 @@ fun SettingsScreen(
                 }
             }
         }
+        }
 
+        Box(
+            Modifier.onGloballyPositioned { coords ->
+                sectionOffsets["loc"] = coords.positionInParent().y.toInt()
+            }
+        ) {
         CollapsibleSection(
             title = "定位避让",
             expanded = openSection == "loc",
@@ -1144,9 +1216,15 @@ fun SettingsScreen(
         }
 
         }
+        }
 
 
         // —— 外观与展示 ——
+        Box(
+            Modifier.onGloballyPositioned { coords ->
+                sectionOffsets["ui"] = coords.positionInParent().y.toInt()
+            }
+        ) {
         CollapsibleSection(
             title = "界面外观",
             expanded = openSection == "ui",
@@ -1161,7 +1239,13 @@ fun SettingsScreen(
         Text("液态玻璃 / 高斯模糊 / 雾化 / 无 — 所有页面板块同步", style = MaterialTheme.typography.bodySmall)
 
         }
+        }
 
+        Box(
+            Modifier.onGloballyPositioned { coords ->
+                sectionOffsets["bg"] = coords.positionInParent().y.toInt()
+            }
+        ) {
         CollapsibleSection(
             title = "软件背景",
             expanded = openSection == "bg",
@@ -1190,8 +1274,14 @@ fun SettingsScreen(
         )
 
         }
+        }
 
         // 前世今生：独立板块；需跃迁 + AI
+        Box(
+            Modifier.onGloballyPositioned { coords ->
+                sectionOffsets["pastlife"] = coords.positionInParent().y.toInt()
+            }
+        ) {
         CollapsibleSection(
             title = "前世今生",
             expanded = openSection == "pastlife",
@@ -1252,7 +1342,13 @@ fun SettingsScreen(
                 Text("请配置 AI 模式与 API Key", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
         }
+        }
 
+        Box(
+            Modifier.onGloballyPositioned { coords ->
+                sectionOffsets["trans"] = coords.positionInParent().y.toInt()
+            }
+        ) {
         CollapsibleSection(
             title = "关键词翻译（仅展示/日志）",
             expanded = openSection == "trans",
@@ -1341,9 +1437,15 @@ fun SettingsScreen(
         Text("翻译结果只显示在首页跃迁列表与状态；中文关键词同步会改写本地关键词", style = MaterialTheme.typography.bodySmall)
 
         }
+        }
 
 
         // —— 安全与备份 ——
+        Box(
+            Modifier.onGloballyPositioned { coords ->
+                sectionOffsets["pin"] = coords.positionInParent().y.toInt()
+            }
+        ) {
         CollapsibleSection(
             title = "PIN 锁定",
             expanded = openSection == "pin",
@@ -1425,7 +1527,13 @@ fun SettingsScreen(
         }
 
         }
+        }
 
+        Box(
+            Modifier.onGloballyPositioned { coords ->
+                sectionOffsets["backup"] = coords.positionInParent().y.toInt()
+            }
+        ) {
         CollapsibleSection(
             title = "云同步",
             expanded = openSection == "backup",
@@ -1446,9 +1554,15 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth()
             ) { Text("打开云同步配置") }
         }
+        }
 
 
         // —— 维护 ——
+        Box(
+            Modifier.onGloballyPositioned { coords ->
+                sectionOffsets["cache"] = coords.positionInParent().y.toInt()
+            }
+        ) {
         CollapsibleSection(
             title = "缓存与日志",
             expanded = openSection == "cache",
@@ -1460,19 +1574,21 @@ fun SettingsScreen(
         }
 
         }
+        }
 
 
-        // 底部圆形保存（固定在列表末尾，始终可滚到）
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 12.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(72.dp)
-                    .clickable {
+
+    }  // end Column
+
+    // 悬浮保存：始终最上层
+    Box(
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .padding(bottom = 20.dp)
+            .size(72.dp)
+            .zIndex(100f)
+            .clickable {
+
 
                 val keys = if (keysVisible) SettingsRepository.splitLines(apiKeysText) else settings.apiKeys
                 val kws = if (keysVisible) SettingsRepository.splitLines(keywordsText) else settings.keywords
@@ -1569,29 +1685,30 @@ fun SettingsScreen(
                     )
                 )
             
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                androidx.compose.material3.Surface(
-                    shape = CircleShape,
-                    color = LocalUiTextColor.current.copy(alpha = 0.28f),
-                    border = androidx.compose.foundation.BorderStroke(
-                        1.5.dp,
-                        LocalUiTextColor.current.copy(alpha = 0.55f)
-                    ),
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(
-                            "保存",
-                            color = LocalUiTextColor.current,
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                    }
-                }
+                    
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        androidx.compose.material3.Surface(
+            shape = CircleShape,
+            color = LocalUiTextColor.current.copy(alpha = 0.32f),
+            shadowElevation = 8.dp,
+            border = androidx.compose.foundation.BorderStroke(
+                1.5.dp,
+                LocalUiTextColor.current.copy(alpha = 0.6f)
+            ),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(
+                    "保存",
+                    color = LocalUiTextColor.current,
+                    style = MaterialTheme.typography.titleMedium
+                )
             }
         }
     }
+    }  // end outer Box
 
     LaunchedEffect(unlocked) {
         if (unlocked && showPinDialog) {
@@ -1666,8 +1783,7 @@ fun SettingsScreen(
                         Text(
                             "· $name",
                             modifier = Modifier.fillMaxWidth().clickable {
-                                openSection = key
-                                showSettingsSearch = false
+                                jumpToSection(key)
                             }
                         )
                     }
