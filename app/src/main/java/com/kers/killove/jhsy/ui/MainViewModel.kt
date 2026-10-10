@@ -1094,9 +1094,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             var st = withContext(Dispatchers.IO) { PastLifeStore.read(getApplication()) }
             _pastLife.value = st
             if (!PastLifeAi.canUse(s)) return@launch
-            if (st.currKw.isBlank()) return@launch
+            val hasKw = if (st.splitMode) {
+                st.home.currKw.isNotBlank() || st.lock.currKw.isNotBlank()
+            } else {
+                st.unified.currKw.isNotBlank()
+            }
+            if (!hasKw) return@launch
             // 本周期已有叙述且不强制：只刷新 UI，不调 AI
-            if (!forceAi && !st.needsNarrative && st.present.isNotBlank()) return@launch
+            val hasPresent = if (st.splitMode) {
+                st.home.present.isNotBlank() || st.lock.present.isNotBlank()
+            } else {
+                st.unified.present.isNotBlank()
+            }
+            if (!forceAi && !st.needsNarrative && hasPresent) return@launch
             if (!forceAi && !st.needsNarrative) return@launch
             val words = buildList {
                 fun addT(t: PastLifeStore.Track) {
@@ -1110,14 +1120,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val zh = if (words.isNotEmpty()) {
                 try { translator.translateList(words, s) } catch (_: Exception) { emptyMap() }
             } else emptyMap()
-            val withZh = st.copy(
-                prevZh = zh[st.prevKw].orEmpty().ifBlank { st.prevZh },
-                currZh = zh[st.currKw].orEmpty().ifBlank { st.currZh },
-                nextZh = zh[st.nextKw].orEmpty().ifBlank { st.nextZh }
-            )
-            _pastLife.value = withZh
+            // State 已改为 Track 结构，翻译写入由 PastLifeAi.refresh 完成
             val updated = withContext(Dispatchers.IO) {
-                PastLifeAi.refresh(getApplication(), s, withZh, zh, force = forceAi)
+                PastLifeAi.refresh(getApplication(), s, st, zh, force = forceAi)
             }
             _pastLife.value = updated
         }

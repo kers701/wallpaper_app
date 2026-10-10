@@ -1220,7 +1220,6 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.bodySmall
                 )
             } else {
-                pastLifeSplit = false
                 Text(
                     "桌面锁屏分栏：请先开启「桌面锁屏隔离」",
                     style = MaterialTheme.typography.bodySmall

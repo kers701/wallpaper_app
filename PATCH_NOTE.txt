@@ -1,6 +1,1 @@
-前世今生：桌面锁屏分栏六段（不推送）
-
-1. 新开关「桌面锁屏分栏」：仅桌面锁屏隔离开启时显示/可开
-2. 开启后左右两栏：左桌面、右锁屏，各前尘/今生/来世（共六段）
-3. 桌面来世=下一轮桌面词(base+2)，锁屏来世=下一轮锁屏词(base+3)
-4. 隔离换图不再各自 advance，整轮 +2；附带修复来世落成锁屏已用词
+Fix: State.copy(prevZh) invalid after Track refactor; split-mode hasKw check
