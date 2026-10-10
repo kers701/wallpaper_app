@@ -313,7 +313,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val pastOn = final.pastLifeEnabled && final.jumpModeEnabled
             val gated = final.copy(
                 pastLifeEnabled = pastOn,
-                pastLifeDeepExplore = pastOn && final.pastLifeDeepExplore
+                pastLifeDeepExplore = pastOn && final.pastLifeDeepExplore,
+                pastLifeIsolateSplit = pastOn && final.isolateHomeLock && final.pastLifeIsolateSplit
             )
             val normalized = clearGreenIfNoAvoidPoints(gated)
             settingsRepo.save(normalized)
@@ -1097,8 +1098,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // 本周期已有叙述且不强制：只刷新 UI，不调 AI
             if (!forceAi && !st.needsNarrative && st.present.isNotBlank()) return@launch
             if (!forceAi && !st.needsNarrative) return@launch
-            val words = (listOf(st.prevKw, st.currKw, st.nextKw) + st.prevAux + st.currAux)
-                .map { it.trim() }.filter { it.isNotBlank() }.distinct()
+            val words = buildList {
+                fun addT(t: PastLifeStore.Track) {
+                    add(t.prevKw); add(t.currKw); add(t.nextKw)
+                    addAll(t.prevAux); addAll(t.currAux)
+                }
+                if (st.splitMode) {
+                    addT(st.home); addT(st.lock)
+                } else addT(st.unified)
+            }.map { it.trim() }.filter { it.isNotBlank() }.distinct()
             val zh = if (words.isNotEmpty()) {
                 try { translator.translateList(words, s) } catch (_: Exception) { emptyMap() }
             } else emptyMap()

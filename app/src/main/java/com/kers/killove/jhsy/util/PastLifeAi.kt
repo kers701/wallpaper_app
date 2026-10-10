@@ -4,8 +4,7 @@ import android.content.Context
 import com.kers.killove.jhsy.domain.AppSettings
 
 /**
- * 前世今生 AI：needsNarrative 时生成；单次新对话。
- * 普通：每段 100～200 字；深入探索：主词+辅助词，每段 200～300 字。
+ * 前世今生 AI：可生成 unified 或 home/lock 分轨。
  */
 object PastLifeAi {
     fun canUse(settings: AppSettings): Boolean =
@@ -22,9 +21,47 @@ object PastLifeAi {
         force: Boolean = false
     ): PastLifeStore.State {
         if (!canUse(settings)) return state
-        if (state.currKw.isBlank()) return state
-        if (!force && !state.needsNarrative && state.present.isNotBlank()) return state
+        if (!force && !state.needsNarrative && !needsGen(state)) return state
         if (!force && !state.needsNarrative) return state
+
+        return if (state.splitMode) {
+            val home = generateTrack(settings, state.home, zhMap, state.deepExplore, "桌面")
+            val lock = generateTrack(settings, state.lock, zhMap, state.deepExplore, "锁屏")
+            state.copy(
+                home = home,
+                lock = lock,
+                unified = home,
+                needsNarrative = false,
+                updatedAt = System.currentTimeMillis()
+            ).also { PastLifeStore.write(context, it) }
+        } else {
+            val u = generateTrack(settings, state.unified, zhMap, state.deepExplore, null)
+            state.copy(
+                unified = u,
+                needsNarrative = false,
+                updatedAt = System.currentTimeMillis()
+            ).also { PastLifeStore.write(context, it) }
+        }
+    }
+
+    private fun needsGen(state: PastLifeStore.State): Boolean {
+        return if (state.splitMode) {
+            (state.home.currKw.isNotBlank() && state.home.present.isBlank()) ||
+                (state.lock.currKw.isNotBlank() && state.lock.present.isBlank())
+        } else {
+            state.unified.currKw.isNotBlank() && state.unified.present.isBlank()
+        }
+    }
+
+    private suspend fun generateTrack(
+        settings: AppSettings,
+        track: PastLifeStore.Track,
+        zhMap: Map<String, String>,
+        deepExplore: Boolean,
+        sideLabel: String?
+    ): PastLifeStore.Track {
+        if (track.currKw.isBlank()) return track
+        if (track.present.isNotBlank() && track.past.isNotBlank()) return track
 
         fun label(kw: String, zhHint: String): String {
             if (kw.isBlank()) return "（无）"
@@ -40,53 +77,46 @@ object PastLifeAi {
             }
         }
 
-        val a = label(state.currKw, state.currZh)
-        val b = label(state.prevKw, state.prevZh)
-        val c = label(state.nextKw, state.nextZh)
-        val deep = state.deepExplore || settings.pastLifeDeepExplore
+        val a = label(track.currKw, track.currZh)
+        val b = label(track.prevKw, track.prevZh)
+        val c = label(track.nextKw, track.nextZh)
+        val deep = deepExplore || settings.pastLifeDeepExplore
         val lenHint = if (deep) "每段字数 200～300 字（汉字计）" else "每段字数 100～200 字（汉字计）"
+        val side = sideLabel?.let { "【$it】" }.orEmpty()
 
         val deepBlock = if (deep) {
-            "深入探索已开启：叙述以主词为主，辅助词仅作场景/构图补充，不要喧宾夺主。\n" +
-                "今生主词：$a\n今生辅助词（本图标签）：${auxLine(state.currAux)}\n" +
-                "前尘主词：$b\n前尘辅助词（上图标签）：${auxLine(state.prevAux)}\n" +
-                "来世主词：$c（尚无图片，无辅助词）\n"
+            "深入探索已开启：以主词为主，辅助词仅作补充。\n" +
+                "今生主词：$a\n今生辅助词：${auxLine(track.currAux)}\n" +
+                "前尘主词：$b\n前尘辅助词：${auxLine(track.prevAux)}\n" +
+                "来世主词：$c\n"
         } else {
-            "本次关键词（今生）：$a\n上一关键词（前尘）：$b\n下一关键词（来世）：$c\n"
+            "今生：$a\n前尘：$b\n来世：$c\n"
         }
 
         val userMsg =
-            "请根据下列带翻译的关键词写作。\n" +
+            "${side}请根据下列带翻译的关键词写作。\n" +
                 deepBlock +
                 "要求：\n" +
-                "1. 文中主词必须写成「英文（中文）」形式，例如 $a。\n" +
-                "2. 前尘、今生、来世各写一段，$lenHint。\n" +
-                "3. 严格按三行输出：\n" +
-                "前尘：...（$a 与 $b 的关系" + (if (deep) "，可参考双方辅助词" else "") + "）\n" +
-                "今生：...（描述 $a 是什么" + (if (deep) "，可参考本图辅助词" else "") + "）\n" +
-                "来世：...（$a 与 $c 的关系）"
+                "1. 主词写成「英文（中文）」形式。\n" +
+                "2. 前尘、今生、来世各一段，$lenHint。\n" +
+                "3. 严格三行：\n前尘：...\n今生：...\n来世：..."
 
         val content = AiOneShot.chat(
             settings = settings,
             userContent = userMsg,
-            systemContent = "你是关键词关系叙述者。只输出前尘/今生/来世三行；遵守字数；主词用「英文（中文）」；深入探索时以主词为主、辅助词为辅。不要引用历史对话。",
+            systemContent = "你是关键词关系叙述者。只输出前尘/今生/来世三行。不要引用历史对话。",
             temperature = 0.4
-        ) ?: return state
+        ) ?: return track
 
         val (past, present, future) = parseThree(content)
-        val done = state.copy(
-            prevZh = zhMap[state.prevKw].orEmpty().ifBlank { state.prevZh },
-            currZh = zhMap[state.currKw].orEmpty().ifBlank { state.currZh },
-            nextZh = zhMap[state.nextKw].orEmpty().ifBlank { state.nextZh },
+        return track.copy(
+            prevZh = zhMap[track.prevKw].orEmpty().ifBlank { track.prevZh },
+            currZh = zhMap[track.currKw].orEmpty().ifBlank { track.currZh },
+            nextZh = zhMap[track.nextKw].orEmpty().ifBlank { track.nextZh },
             past = past,
             present = present,
-            future = future,
-            updatedAt = System.currentTimeMillis(),
-            needsNarrative = false,
-            deepExplore = deep
+            future = future
         )
-        PastLifeStore.write(context, done)
-        return done
     }
 
     private fun parseThree(content: String): Triple<String, String, String> {

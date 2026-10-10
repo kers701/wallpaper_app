@@ -3,6 +3,7 @@ package com.kers.killove.jhsy.ui.screens
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -21,11 +22,8 @@ import androidx.compose.ui.unit.dp
 import com.kers.killove.jhsy.ui.LocalUiTextColor
 import com.kers.killove.jhsy.ui.MainViewModel
 import com.kers.killove.jhsy.util.PastLifeAi
+import com.kers.killove.jhsy.util.PastLifeStore
 
-/**
- * 前世今生：GlassCard 独立板块；点击展开逻辑与跃迁/虚妄一致（无箭头）。
- * 仅在本周期 needsNarrative 时请求 AI，打开 App 不重复生成。
- */
 @Composable
 fun PastLifeSection(vm: MainViewModel) {
     val settings by vm.settings.collectAsState()
@@ -35,8 +33,8 @@ fun PastLifeSection(vm: MainViewModel) {
 
     if (!settings.pastLifeEnabled) return
     val aiOk = PastLifeAi.canUse(settings)
+    val split = state.splitMode && settings.pastLifeIsolateSplit && settings.isolateHomeLock
 
-    // 只读缓存；若本周期需要叙述则生成一次（不因重组反复 force）
     LaunchedEffect(settings.lastChangeAt, settings.pastLifeEnabled, state.needsNarrative, state.cycleAt) {
         vm.refreshPastLife(forceAi = false)
     }
@@ -53,9 +51,11 @@ fun PastLifeSection(vm: MainViewModel) {
             Text(
                 when {
                     !aiOk -> "前世今生：开启 · 需配置 AI"
+                    split -> "前世今生：分栏 · 左桌面 / 右锁屏" +
+                        if (expanded) " · 点击收起" else " · 点击展开"
                     state.currKw.isBlank() -> "前世今生：开启 · 等待下次更换" +
                         if (expanded) " · 点击收起" else " · 点击展开"
-                    state.needsNarrative || (state.present.isBlank() && state.currKw.isNotBlank()) ->
+                    state.needsNarrative || state.present.isBlank() ->
                         "前世今生：开启 · 生成本期叙述中…" +
                             if (expanded) " · 点击收起" else " · 点击展开"
                     else -> "前世今生：开启 · 本期已更新" +
@@ -66,7 +66,6 @@ fun PastLifeSection(vm: MainViewModel) {
             )
 
             if (!expanded) return@Column
-
             if (!aiOk) {
                 Text(
                     "请开启 AI 模式并配置 API Key 后生效",
@@ -77,31 +76,40 @@ fun PastLifeSection(vm: MainViewModel) {
             }
 
             Spacer(Modifier.height(4.dp))
-            PastLifeBlock(
-                title = "前尘",
-                kw = state.prevKw,
-                zh = state.prevZh,
-                body = state.past.ifBlank { "—" },
-                textColor = textColor
-            )
-            PastLifeBlock(
-                title = "今生",
-                kw = state.currKw,
-                zh = state.currZh,
-                body = state.present.ifBlank {
-                    if (state.currKw.isBlank()) "等待下次更换" else "生成中…"
-                },
-                textColor = textColor
-            )
-            PastLifeBlock(
-                title = "来世",
-                kw = state.nextKw,
-                zh = state.nextZh,
-                body = state.future.ifBlank { "—" },
-                textColor = textColor
-            )
+            if (split) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("桌面", style = MaterialTheme.typography.titleSmall, color = textColor)
+                        TrackBlocks(state.home, textColor)
+                    }
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("锁屏", style = MaterialTheme.typography.titleSmall, color = textColor)
+                        TrackBlocks(state.lock, textColor)
+                    }
+                }
+            } else {
+                TrackBlocks(state.unified, textColor)
+            }
         }
     }
+}
+
+@Composable
+private fun TrackBlocks(track: PastLifeStore.Track, textColor: androidx.compose.ui.graphics.Color) {
+    PastLifeBlock("前尘", track.prevKw, track.prevZh, track.past.ifBlank { "—" }, textColor)
+    PastLifeBlock(
+        "今生",
+        track.currKw,
+        track.currZh,
+        track.present.ifBlank {
+            if (track.currKw.isBlank()) "等待下次更换" else "生成中…"
+        },
+        textColor
+    )
+    PastLifeBlock("来世", track.nextKw, track.nextZh, track.future.ifBlank { "—" }, textColor)
 }
 
 @Composable

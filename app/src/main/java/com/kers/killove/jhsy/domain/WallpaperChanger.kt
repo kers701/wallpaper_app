@@ -40,10 +40,12 @@ class WallpaperChanger(
     private val onProgress: (Float, String) -> Unit = { _, _ -> },
     private val localStore: LocalFallbackStore = LocalFallbackStore(context)
 ) {
+    @Volatile private var lastPastLifeTags: List<String> = emptyList()
+    @Volatile private var lastPastLifeTagsHome: List<String> = emptyList()
+    @Volatile private var lastPastLifeTagsLock: List<String> = emptyList()
+
     private val pageCache by lazy { PageCacheStore.from(context) }
     private val nextStore by lazy { NextWallpaperStore(context) }
-    /** 本周期最后一张成功 Wallhaven 图的标签，供前世今生深入探索 */
-    @Volatile private var lastPastLifeTags: List<String> = emptyList()
 
     private val prefetchScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var currentTrigger: TriggerType = TriggerType.Auto
@@ -191,16 +193,17 @@ class WallpaperChanger(
             val home = changeForTarget(
                 settings, WallpaperTarget.Home, emptySet(), forceKeyword = kwHome,
                 skipPrefetchUse = liveDownloadOnly, countChange = false,
-                touchScheduleClock = !liveDownloadOnly
+                touchScheduleClock = !liveDownloadOnly,
+                advanceKeyword = false
             )
             if (home is ChangeResult.Failure) return home
             val homeId = (home as ChangeResult.Success).item.id
             val lock = changeForTarget(
                 settings, WallpaperTarget.Lock, setOf(homeId), forceKeyword = kwLock,
                 skipPrefetchUse = liveDownloadOnly, countChange = false,
-                touchScheduleClock = !liveDownloadOnly
+                touchScheduleClock = !liveDownloadOnly,
+                advanceKeyword = false
             )
-            // 隔离用了两个词，索引 +2；次数只 +1（桌面+锁屏算一次）
             advanceKeywordIndex(settings, steps = 2)
             val combined = combineIsolate(home, lock)
             if (combined is ChangeResult.Success) {
@@ -211,8 +214,7 @@ class WallpaperChanger(
                         setOf(homeId, (lock as? ChangeResult.Success)?.item?.id ?: "")
                     )
                 }
-                // 隔离：桌面+锁屏都完成后才更新前世今生（一次周期一次）
-                finalizePastLifeCycle(settings, kwHome ?: kwLock)
+                finalizePastLifeCycleIsolate(settings, kwHome, kwLock)
             }
             return combined
         }
@@ -235,7 +237,7 @@ class WallpaperChanger(
                 }
                 .trim()
             val kwFromDetail = fromDetail.ifBlank { singleKw.orEmpty() }
-            finalizePastLifeCycle(settings, kwFromDetail.takeIf { it.isNotBlank() })
+            finalizePastLifeCycleUnified(settings, kwFromDetail.takeIf { it.isNotBlank() }, stepsAdvanced = 1)
         }
         return single
     }
@@ -576,7 +578,17 @@ class WallpaperChanger(
         // 跃迁/虚妄/湮灭：现场下载与预下载共用
         if (fromWallhaven && item.source == "wallhaven") {
             applyJumpFilterChain(settings, item.id, item.tags, usedKeyword)
-            if (item.tags.isNotEmpty()) lastPastLifeTags = item.tags
+            if (item.tags.isNotEmpty()) {
+                lastPastLifeTags = item.tags
+                when (target) {
+                    WallpaperTarget.Home -> lastPastLifeTagsHome = item.tags
+                    WallpaperTarget.Lock -> lastPastLifeTagsLock = item.tags
+                    else -> {
+                        lastPastLifeTagsHome = item.tags
+                        lastPastLifeTagsLock = item.tags
+                    }
+                }
+            }
         }
 
         // 非隔离路径才在这里 +1；隔离在外层 +2
@@ -919,47 +931,108 @@ class WallpaperChanger(
      * 完整更换周期结束后更新前世今生。
      * 来世词 = 索引已推进、跃迁列表可能已更新后的「下一次 pickKeyword(0)」，与真实下次跃迁用词一致。
      */
-    private suspend fun finalizePastLifeCycle(settings: AppSettings, usedKeyword: String?) {
-        if (!settings.pastLifeEnabled || !settings.jumpModeEnabled) return
+    private suspend fun finalizePastLifeCycleUnified(
+        cycleSettings: AppSettings,
+        usedKeyword: String?,
+        stepsAdvanced: Int
+    ) {
+        if (!cycleSettings.pastLifeEnabled || !cycleSettings.jumpModeEnabled) return
         val kw = usedKeyword?.trim().orEmpty()
         if (kw.isEmpty()) return
         val cycleAt = System.currentTimeMillis()
         val tags = lastPastLifeTags
         lastPastLifeTags = emptyList()
-
-        // 读最新配置：本轮已 advance，且跃迁过滤可能已重写 jumpKeywords
-        val fresh = try {
-            settingsRepo.settingsFlow.first()
-        } catch (_: Exception) {
-            settings
-        }
-        // 与下次自动更换同一套选词：activeKeywords[activeKeywordIndex]
-        val nextKw = pickKeyword(fresh, offset = 0)
-
+        val startList = cycleSettings.activeKeywords()
+        val startBase = cycleSettings.activeKeywordIndex()
+        val nextFromSteps = if (startList.isNotEmpty()) {
+            startList[(startBase + stepsAdvanced).mod(startList.size)]
+        } else null
+        val fresh = try { settingsRepo.settingsFlow.first() } catch (_: Exception) { cycleSettings }
+        val listChanged = cycleSettings.jumpModeEnabled &&
+            fresh.jumpKeywords != cycleSettings.jumpKeywords &&
+            fresh.jumpKeywords.isNotEmpty()
+        val nextKw = if (listChanged) pickKeyword(fresh, 0) else nextFromSteps ?: pickKeyword(fresh, 0)
         PastLifeStore.onCycleComplete(
-            context, kw, nextKw, cycleAt,
-            currImageTags = tags,
-            deepExplore = fresh.pastLifeDeepExplore || settings.pastLifeDeepExplore
+            context, kw, nextKw, cycleAt, tags,
+            deepExplore = fresh.pastLifeDeepExplore || cycleSettings.pastLifeDeepExplore
         )
+        runPastLifeAi()
+    }
+
+    private suspend fun finalizePastLifeCycleIsolate(
+        cycleSettings: AppSettings,
+        kwHome: String?,
+        kwLock: String?
+    ) {
+        if (!cycleSettings.pastLifeEnabled || !cycleSettings.jumpModeEnabled) return
+        val homeKw = kwHome?.trim().orEmpty()
+        val lockKw = kwLock?.trim().orEmpty()
+        if (homeKw.isEmpty() && lockKw.isEmpty()) return
+        val cycleAt = System.currentTimeMillis()
+        val homeTags = lastPastLifeTagsHome.ifEmpty { lastPastLifeTags }
+        val lockTags = lastPastLifeTagsLock.ifEmpty { lastPastLifeTags }
+        lastPastLifeTags = emptyList()
+        lastPastLifeTagsHome = emptyList()
+        lastPastLifeTagsLock = emptyList()
+        val startList = cycleSettings.activeKeywords()
+        val startBase = cycleSettings.activeKeywordIndex()
+        fun at(offset: Int): String? =
+            if (startList.isEmpty()) null else startList[(startBase + offset).mod(startList.size)]
+        val fresh = try { settingsRepo.settingsFlow.first() } catch (_: Exception) { cycleSettings }
+        val listChanged = cycleSettings.jumpModeEnabled &&
+            fresh.jumpKeywords != cycleSettings.jumpKeywords &&
+            fresh.jumpKeywords.isNotEmpty()
+        val homeNext = if (listChanged) pickKeyword(fresh, 0) else at(2)
+        val lockNext = if (listChanged) pickKeyword(fresh, 1) else at(3)
+        val deep = fresh.pastLifeDeepExplore || cycleSettings.pastLifeDeepExplore
+        val split = cycleSettings.pastLifeIsolateSplit && cycleSettings.isolateHomeLock
+        if (split) {
+            PastLifeStore.onCycleCompleteSplit(
+                context = context,
+                homeUsed = homeKw.ifBlank { lockKw },
+                homeNext = homeNext,
+                homeTags = homeTags,
+                lockUsed = lockKw.ifBlank { homeKw },
+                lockNext = lockNext,
+                lockTags = lockTags,
+                cycleAt = cycleAt,
+                deepExplore = deep
+            )
+        } else {
+            PastLifeStore.onCycleComplete(
+                context,
+                lockKw.ifBlank { homeKw },
+                homeNext,
+                cycleAt,
+                lockTags.ifEmpty { homeTags },
+                deepExplore = deep
+            )
+        }
+        runPastLifeAi()
+    }
+
+    private suspend fun runPastLifeAi() {
         runCatching {
-            val s = try { settingsRepo.settingsFlow.first() } catch (_: Exception) { fresh }
+            val s = settingsRepo.settingsFlow.first()
             if (!PastLifeAi.canUse(s)) return@runCatching
             var st = PastLifeStore.read(context)
             if (!st.needsNarrative) return@runCatching
-            val words = (
-                listOf(st.prevKw, st.currKw, st.nextKw) + st.prevAux + st.currAux
-            ).map { it.trim() }.filter { it.isNotBlank() }.distinct()
+            val words = buildList {
+                fun addTrack(t: PastLifeStore.Track) {
+                    add(t.prevKw); add(t.currKw); add(t.nextKw)
+                    addAll(t.prevAux); addAll(t.currAux)
+                }
+                if (st.splitMode) {
+                    addTrack(st.home); addTrack(st.lock)
+                } else {
+                    addTrack(st.unified)
+                }
+            }.map { it.trim() }.filter { it.isNotBlank() }.distinct()
             val zh = try {
                 KeywordTranslator().translateList(words, s)
             } catch (_: Exception) {
                 emptyMap()
             }
-            st = st.copy(
-                prevZh = zh[st.prevKw].orEmpty(),
-                currZh = zh[st.currKw].orEmpty(),
-                nextZh = zh[st.nextKw].orEmpty()
-            )
-            PastLifeStore.write(context, st)
             PastLifeAi.refresh(context, s, st, zh, force = false)
         }
     }

@@ -152,6 +152,7 @@ fun SettingsScreen(
     var transProv by remember(settings.translateProvider) { mutableStateOf(settings.translateProvider) }
     var pastLife by remember(settings.pastLifeEnabled) { mutableStateOf(settings.pastLifeEnabled) }
     var pastLifeDeep by remember(settings.pastLifeDeepExplore) { mutableStateOf(settings.pastLifeDeepExplore) }
+    var pastLifeSplit by remember(settings.pastLifeIsolateSplit) { mutableStateOf(settings.pastLifeIsolateSplit) }
     var transAiMode by remember(settings.translateAiMode) { mutableStateOf(settings.translateAiMode) }
     var transAiKey by remember(settings.translateAiApiKey, keysVisible) {
         mutableStateOf(if (keysVisible) settings.translateAiApiKey else "")
@@ -1038,7 +1039,10 @@ fun SettingsScreen(
         }
         EnumDropdown("壁纸铺满方式", WallpaperFitMode.entries, fitMode) { fitMode = it }
         Text("填充=等比铺满裁边；适应=完整显示留边；拉伸=强制变形铺满；平铺=按原图大小重复；居中=原图居中；跨区=在整个壁纸画布显示一张连续图片。修改后保存会用当前壁纸重设（不重新下载）", style = MaterialTheme.typography.bodySmall)
-        RowSwitch("桌面锁屏隔离（两次下载，可用不同关键词）", isolate) { isolate = it }
+        RowSwitch("桌面锁屏隔离（两次下载，可用不同关键词）", isolate) {
+            isolate = it
+            if (!it) pastLifeSplit = false
+        }
         RowSwitch("省电模式", powerSave) { powerSave = it }
         RowSwitch("省流量模式", dataSaver) { dataSaver = it }
         if (dataSaver) {
@@ -1186,7 +1190,10 @@ fun SettingsScreen(
                 onChecked = { v ->
                     if (canPast) {
                         pastLife = v
-                        if (!v) pastLifeDeep = false
+                        if (!v) {
+                            pastLifeDeep = false
+                            pastLifeSplit = false
+                        }
                     }
                 }
             )
@@ -1200,6 +1207,25 @@ fun SettingsScreen(
                 "深入探索：以主词为主，本图/上图提取标签为辅助词（来世仅有主词）；每段 200～300 字。关闭时每段 100～200 字。",
                 style = MaterialTheme.typography.bodySmall
             )
+            val isolateOn = settings.isolateHomeLock || isolate
+            if (isolateOn) {
+                RowSwitch(
+                    title = "桌面锁屏分栏",
+                    checked = pastLifeSplit && pastLife && canPast && isolateOn,
+                    enabled = pastLife && canPast && isolateOn,
+                    onChecked = { v -> if (pastLife && canPast && isolateOn) pastLifeSplit = v }
+                )
+                Text(
+                    "开启后左右两栏：左桌面、右锁屏，各前尘/今生/来世共六段。仅桌面锁屏隔离模式下可用。",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            } else {
+                pastLifeSplit = false
+                Text(
+                    "桌面锁屏分栏：请先开启「桌面锁屏隔离」",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
             if (!jumpOk) {
                 Text("请先开启跃迁模式", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             } else if (!aiOk) {
@@ -1457,6 +1483,7 @@ fun SettingsScreen(
                         translateAiMode = transAiMode,
                         pastLifeEnabled = pastLife,
                         pastLifeDeepExplore = pastLifeDeep,
+                        pastLifeIsolateSplit = pastLifeSplit && isolate,
                         translateAiApiKey = if (keysVisible) transAiKey.trim() else settings.translateAiApiKey,
                         translateAiBaseUrl = transAiBase.trim().ifBlank { "https://api.openai.com/v1" },
                         translateAiModel = transAiModel.trim().ifBlank { "gpt-4o-mini" },

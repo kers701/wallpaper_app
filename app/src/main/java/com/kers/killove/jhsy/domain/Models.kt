@@ -376,6 +376,8 @@ data class AppSettings(
     val pastLifeEnabled: Boolean = false,
     /** 深入探索：主词+本图/上图标签为辅助词，段落 200～300 字 */
     val pastLifeDeepExplore: Boolean = false,
+    /** 前世今生分栏：仅桌面锁屏隔离时可用，桌面/锁屏各三段 */
+    val pastLifeIsolateSplit: Boolean = false,
 
     /** UI 遮罩透明度 0.15～0.85 */
     val uiScrimAlpha: Float = 0.52f,
