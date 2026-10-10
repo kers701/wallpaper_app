@@ -915,47 +915,52 @@ class WallpaperChanger(
     }
 
 
-    /** 完整更换周期结束后更新前世今生关键词，并异步生成叙述（每周期一次） */
-    private fun finalizePastLifeCycle(settings: AppSettings, usedKeyword: String?) {
+    /**
+     * 完整更换周期结束后更新前世今生。
+     * 来世词 = 索引已推进、跃迁列表可能已更新后的「下一次 pickKeyword(0)」，与真实下次跃迁用词一致。
+     */
+    private suspend fun finalizePastLifeCycle(settings: AppSettings, usedKeyword: String?) {
         if (!settings.pastLifeEnabled || !settings.jumpModeEnabled) return
         val kw = usedKeyword?.trim().orEmpty()
         if (kw.isEmpty()) return
-        val list = settings.activeKeywords()
-        val nextKw = if (list.isEmpty()) null else {
-            val idx = list.indexOfFirst { it.equals(kw, ignoreCase = true) }
-            if (idx >= 0) list[(idx + 1).mod(list.size)] else pickKeyword(settings, offset = 0)
-        }
         val cycleAt = System.currentTimeMillis()
         val tags = lastPastLifeTags
         lastPastLifeTags = emptyList()
+
+        // 读最新配置：本轮已 advance，且跃迁过滤可能已重写 jumpKeywords
+        val fresh = try {
+            settingsRepo.settingsFlow.first()
+        } catch (_: Exception) {
+            settings
+        }
+        // 与下次自动更换同一套选词：activeKeywords[activeKeywordIndex]
+        val nextKw = pickKeyword(fresh, offset = 0)
+
         PastLifeStore.onCycleComplete(
             context, kw, nextKw, cycleAt,
             currImageTags = tags,
-            deepExplore = settings.pastLifeDeepExplore
+            deepExplore = fresh.pastLifeDeepExplore || settings.pastLifeDeepExplore
         )
-        // 服务进程内生成一次，避免仅依赖 UI 打开
-        prefetchScope.launch {
-            runCatching {
-                val s = settingsRepo.settingsFlow.first()
-                if (!PastLifeAi.canUse(s)) return@runCatching
-                var st = PastLifeStore.read(context)
-                if (!st.needsNarrative) return@runCatching
-                val words = (
-                    listOf(st.prevKw, st.currKw, st.nextKw) + st.prevAux + st.currAux
-                ).map { it.trim() }.filter { it.isNotBlank() }.distinct()
-                val zh = try {
-                    KeywordTranslator().translateList(words, s)
-                } catch (_: Exception) {
-                    emptyMap()
-                }
-                st = st.copy(
-                    prevZh = zh[st.prevKw].orEmpty(),
-                    currZh = zh[st.currKw].orEmpty(),
-                    nextZh = zh[st.nextKw].orEmpty()
-                )
-                PastLifeStore.write(context, st)
-                PastLifeAi.refresh(context, s, st, zh, force = false)
+        runCatching {
+            val s = try { settingsRepo.settingsFlow.first() } catch (_: Exception) { fresh }
+            if (!PastLifeAi.canUse(s)) return@runCatching
+            var st = PastLifeStore.read(context)
+            if (!st.needsNarrative) return@runCatching
+            val words = (
+                listOf(st.prevKw, st.currKw, st.nextKw) + st.prevAux + st.currAux
+            ).map { it.trim() }.filter { it.isNotBlank() }.distinct()
+            val zh = try {
+                KeywordTranslator().translateList(words, s)
+            } catch (_: Exception) {
+                emptyMap()
             }
+            st = st.copy(
+                prevZh = zh[st.prevKw].orEmpty(),
+                currZh = zh[st.currKw].orEmpty(),
+                nextZh = zh[st.nextKw].orEmpty()
+            )
+            PastLifeStore.write(context, st)
+            PastLifeAi.refresh(context, s, st, zh, force = false)
         }
     }
 

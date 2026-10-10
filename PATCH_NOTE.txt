@@ -1,1 +1,4 @@
-Fix: save pastLifeDeepExplore on settings save
+修复来世词与跃迁下次用词不一致（不推送）
+
+原因：来世曾用「列表中当前词的下一项」推算，未用推进后的索引，且忽略本轮跃迁重写列表。
+修复：周期结束后读最新 settings，来世词 = pickKeyword(offset=0)，与下次跃迁同一选词逻辑。
