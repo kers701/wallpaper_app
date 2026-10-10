@@ -7,17 +7,15 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import kotlinx.coroutines.launch
-import androidx.compose.ui.zIndex
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInParent
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.clickable
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
+import kotlinx.coroutines.launch
+import com.kers.killove.jhsy.ui.LocalUiTextColor
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -171,8 +169,7 @@ fun SettingsScreen(
         showSettingsSearch = false
         settingsScope.launch {
             kotlinx.coroutines.delay(80)
-            val y = sectionOffsets[key] ?: 0
-            settingsScroll.animateScrollTo(y.coerceAtLeast(0))
+            settingsScroll.animateScrollTo((sectionOffsets[key] ?: 0).coerceAtLeast(0))
         }
     }
     var powerTh by remember(settings.powerSaveBatteryThreshold) { mutableIntStateOf(settings.powerSaveBatteryThreshold) }
@@ -295,27 +292,131 @@ fun SettingsScreen(
         }
     }
 
-    Box(Modifier = Modifier.fillMaxSize()) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(settingsScroll)
-            .padding(20.dp)
-            .padding(bottom = 100.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        ThemeOutlinedButton(
-            onClick = { showSettingsSearch = true },
-            modifier = Modifier.fillMaxWidth()
-        ) { Text("搜索配置板块") }
+    Column(modifier = Modifier.fillMaxSize()) {
+        // 顶部固定：左搜索 右保存
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            ThemeOutlinedButton(
+                onClick = { showSettingsSearch = true },
+                modifier = Modifier.weight(1f)
+            ) { Text("搜索") }
+            ThemeButton(
+                onClick = {
+                                    val keys = if (keysVisible) SettingsRepository.splitLines(apiKeysText) else settings.apiKeys
+                                    val kws = if (keysVisible) SettingsRepository.splitLines(keywordsText) else settings.keywords
+                                    val kwsZh = if (keysVisible) SettingsRepository.splitLines(keywordsZhText) else settings.keywordsChinese
+                                    val kwUrl = if (keysVisible) keywordsUrl.trim() else settings.keywordsRemoteUrl
+                                    val fbUrl = if (keysVisible) fallbackApi.trim() else settings.fallbackApiUrl
+                                    vm.saveSettings(
+                                        settings.copy(
+                                            intervalMinutes = interval.toInt().coerceIn(5, 180),
+                                            cacheRetention = cacheRetention,
+                                            purity = if (purityFilterOn) {
+                                                Purity.fromFlags(puritySfw, puritySketchy, purityNsfw) ?: purity
+                                            } else purity,
+                                            purityFilterEnabled = purityFilterOn,
+                                            destinyEnabled = settings.destinyEnabled,
+                                            destinyRulesJson = settings.destinyRulesJson,
+                                            categoryMode = category,
+                                            target = target,
+                                            resolutionMode = resMode,
+                                            useForegroundService = fgs,
+                                            skipWhenScreenOff = skipOff,
+                                            orientationFilter = orientFilter,
+                                            aspectRatioMin = aspectRatioMinText.trim().toFloatOrNull()?.takeIf { it > 0f } ?: 0f,
+                                            aspectRatioMax = aspectRatioMaxText.trim().toFloatOrNull()?.takeIf { it > 0f } ?: 0f,
+                                            aspectRatioFilterEnabled = run {
+                                                val lo = aspectRatioMinText.trim().toFloatOrNull()?.takeIf { it > 0f }
+                                                val hi = aspectRatioMaxText.trim().toFloatOrNull()?.takeIf { it > 0f }
+                                                val on = aspectRatioOn && (lo != null || hi != null)
+                                                on
+                                            },
+                                            fitMode = fitMode,
+                                            isolateHomeLock = isolate,
+                                            powerSaveEnabled = powerSave,
+                                            dataSaverEnabled = dataSaver,
+                                            powerSaveBatteryThreshold = powerTh.coerceIn(5, 50),
+                                            superServiceEnabled = superSvc,
+                                            translateProvider = transProv,
+                                            translateApiKey = if (keysVisible) transKey.trim() else settings.translateApiKey,
+                                            translateAiMode = transAiMode,
+                                            pastLifeEnabled = pastLife,
+                                            pastLifeDeepExplore = pastLifeDeep,
+                                            pastLifeIsolateSplit = pastLifeSplit && isolate,
+                                            translateAiApiKey = if (keysVisible) transAiKey.trim() else settings.translateAiApiKey,
+                                            translateAiBaseUrl = transAiBase.trim().ifBlank { "https://api.openai.com/v1" },
+                                            translateAiModel = transAiModel.trim().ifBlank { "gpt-4o-mini" },
+                                            translateSecret = if (keysVisible) transSecret.trim() else settings.translateSecret,
+                                            translateRegion = transRegion.trim().ifBlank { "global" },
+                                            uiScrimAlpha = scrim,
+                                            uiCardAlpha = cardA,
+                                            uiTextColor = textColorOpt,
+                                            cardStyle = cardStyleOpt,
+                                            minWidth = minW.toIntOrNull() ?: settings.minWidth,
+                                            minHeight = minH.toIntOrNull() ?: settings.minHeight,
+                                            apiKeys = keys,
+                                            keywords = kws,
+                                            keywordsChinese = kwsZh,
+                                            keywordsRemoteUrl = kwUrl,
+                                            useKeywords = useKeywords,
+                                            jumpModeEnabled = jumpMode,
+                                            annihilationModeEnabled = annihilMode && jumpMode,
+                                            illusionModeEnabled = illusionMode && annihilMode && jumpMode,
+                                            annihilationEpoch = settings.annihilationEpoch,
+                                            networkFallbackEnabled = netFb,
+                                            fallbackApiUrl = fbUrl,
+                                            localFallbackEnabled = localFb,
+                                            forceLocalMode = forceLocal,
+                                            localFallbackDir = localDir.trim(),
+                                            localFallbackUseCache = localFbCache,
+                                            localFallbackCacheSkipNewest = localFbSkip,
+                                            locationAvoidEnabled = locAvoid,
+                                            amapApiKey = if (keysVisible) amapKey.trim() else settings.amapApiKey,
+                                            locationFallbackEnabled = locFb,
+                                            locationExtremeFallbackEnabled = locExtreme,
+                                            bgApiUrl = bgApi.trim(),
+                                            bgLocalPath = bgLocal.trim(),
+                                            bgMode = bgMode,
+                                            accelModeEnabled = accelOn && !proxyOn,
+                                            accelPrivacyAccepted = accelPrivacy,
+                                            accelNodesRemoteUrl = accelNodesUrl.trim(),
+                                            proxyEnabled = proxyOn && !accelOn,
+                                            proxyType = if (keysVisible) proxyType else settings.proxyType,
+                                            proxyHost = if (keysVisible) proxyHost.trim() else settings.proxyHost,
+                                            proxyPort = if (keysVisible) (proxyPort.toIntOrNull() ?: 0) else settings.proxyPort,
+                                            proxyUser = if (keysVisible) proxyUser.trim() else settings.proxyUser,
+                                            proxyPassword = if (keysVisible) proxyPass else settings.proxyPassword,
+                                            proxySubUrl = if (keysVisible) proxySub.trim() else settings.proxySubUrl,
+                                            superProxyEnabled = superProxyOn,
+                                            superProxyBinPath = if (keysVisible) superBin.trim() else settings.superProxyBinPath,
+                                            superProxyConfigPath = if (keysVisible) superCfg.trim() else settings.superProxyConfigPath,
+                                            superProxySubUrl = if (keysVisible) superSub.trim() else settings.superProxySubUrl,
+                                            superProxyArgs = if (keysVisible) superArgs.trim() else settings.superProxyArgs,
+                                            superProxyLocalPort = superPort.toIntOrNull()?.coerceIn(1025, 65535)
+                                                ?: settings.superProxyLocalPort
+                                        )
+                                    )
+                },
+                modifier = Modifier.weight(1f)
+            ) { Text("保存") }
+        }
 
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(settingsScroll)
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
 
         // —— 常用：调度与来源 ——
-        Box(
-            Modifier.onGloballyPositioned { coords ->
-                sectionOffsets["basic"] = coords.positionInParent().y.toInt()
-            }
-        ) {
+        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["basic"] = c.positionInParent().y.toInt() }) { }
         CollapsibleSection(
             title = "基础",
             expanded = openSection == "basic",
@@ -577,13 +678,8 @@ fun SettingsScreen(
         }
 
         }
-        }
 
-        Box(
-            Modifier.onGloballyPositioned { coords ->
-                sectionOffsets["keys"] = coords.positionInParent().y.toInt()
-            }
-        ) {
+        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["keys"] = c.positionInParent().y.toInt() }) { }
         CollapsibleSection(
             title = "API 密钥（可多个，每行一个）",
             expanded = openSection == "keys",
@@ -603,13 +699,8 @@ fun SettingsScreen(
             LockedField("Wallhaven API Keys", onRequestUnlock = { showPinDialog = true })
         }
         }
-        }
 
-        Box(
-            Modifier.onGloballyPositioned { coords ->
-                sectionOffsets["kw"] = coords.positionInParent().y.toInt()
-            }
-        ) {
+        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["kw"] = c.positionInParent().y.toInt() }) { }
         CollapsibleSection(
             title = "关键词",
             expanded = openSection == "kw",
@@ -730,13 +821,8 @@ fun SettingsScreen(
         } // end if (useKeywords)
 
         }
-        }
 
-        Box(
-            Modifier.onGloballyPositioned { coords ->
-                sectionOffsets["fb"] = coords.positionInParent().y.toInt()
-            }
-        ) {
+        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["fb"] = c.positionInParent().y.toInt() }) { }
         CollapsibleSection(
             title = "兜底策略",
             expanded = openSection == "fb",
@@ -787,15 +873,10 @@ fun SettingsScreen(
         }
 
         }
-        }
 
 
         // —— 网络与保活 ——
-        Box(
-            Modifier.onGloballyPositioned { coords ->
-                sectionOffsets["proxy"] = coords.positionInParent().y.toInt()
-            }
-        ) {
+        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["proxy"] = c.positionInParent().y.toInt() }) { }
         CollapsibleSection(
             title = "网络代理",
             expanded = openSection == "proxy",
@@ -1032,13 +1113,8 @@ fun SettingsScreen(
             LockedField("网络代理（请先解锁 PIN）", onRequestUnlock = { showPinDialog = true })
         }
         }
-        }
 
-        Box(
-            Modifier.onGloballyPositioned { coords ->
-                sectionOffsets["super"] = coords.positionInParent().y.toInt()
-            }
-        ) {
+        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["super"] = c.positionInParent().y.toInt() }) { }
         CollapsibleSection(
             title = "超级服务（独立进程保活）",
             expanded = openSection == "super",
@@ -1138,15 +1214,10 @@ fun SettingsScreen(
         }
 
         }
-        }
 
 
         // —— 场景限制 ——
-        Box(
-            Modifier.onGloballyPositioned { coords ->
-                sectionOffsets["bl"] = coords.positionInParent().y.toInt()
-            }
-        ) {
+        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["bl"] = c.positionInParent().y.toInt() }) { }
         CollapsibleSection(
             title = "应用黑名单",
             expanded = openSection == "bl",
@@ -1161,13 +1232,8 @@ fun SettingsScreen(
             modifier = Modifier.fillMaxWidth()
         ) { Text("管理黑名单（名单在次级页）…") }
         }
-        }
 
-        Box(
-            Modifier.onGloballyPositioned { coords ->
-                sectionOffsets["destiny"] = coords.positionInParent().y.toInt()
-            }
-        ) {
+        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["destiny"] = c.positionInParent().y.toInt() }) { }
         CollapsibleSection(
             title = "命运先机",
             expanded = openSection == "destiny",
@@ -1185,13 +1251,8 @@ fun SettingsScreen(
                 }
             }
         }
-        }
 
-        Box(
-            Modifier.onGloballyPositioned { coords ->
-                sectionOffsets["loc"] = coords.positionInParent().y.toInt()
-            }
-        ) {
+        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["loc"] = c.positionInParent().y.toInt() }) { }
         CollapsibleSection(
             title = "定位避让",
             expanded = openSection == "loc",
@@ -1216,15 +1277,10 @@ fun SettingsScreen(
         }
 
         }
-        }
 
 
         // —— 外观与展示 ——
-        Box(
-            Modifier.onGloballyPositioned { coords ->
-                sectionOffsets["ui"] = coords.positionInParent().y.toInt()
-            }
-        ) {
+        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["ui"] = c.positionInParent().y.toInt() }) { }
         CollapsibleSection(
             title = "界面外观",
             expanded = openSection == "ui",
@@ -1239,13 +1295,8 @@ fun SettingsScreen(
         Text("液态玻璃 / 高斯模糊 / 雾化 / 无 — 所有页面板块同步", style = MaterialTheme.typography.bodySmall)
 
         }
-        }
 
-        Box(
-            Modifier.onGloballyPositioned { coords ->
-                sectionOffsets["bg"] = coords.positionInParent().y.toInt()
-            }
-        ) {
+        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["bg"] = c.positionInParent().y.toInt() }) { }
         CollapsibleSection(
             title = "软件背景",
             expanded = openSection == "bg",
@@ -1274,14 +1325,9 @@ fun SettingsScreen(
         )
 
         }
-        }
 
         // 前世今生：独立板块；需跃迁 + AI
-        Box(
-            Modifier.onGloballyPositioned { coords ->
-                sectionOffsets["pastlife"] = coords.positionInParent().y.toInt()
-            }
-        ) {
+        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["pastlife"] = c.positionInParent().y.toInt() }) { }
         CollapsibleSection(
             title = "前世今生",
             expanded = openSection == "pastlife",
@@ -1342,13 +1388,8 @@ fun SettingsScreen(
                 Text("请配置 AI 模式与 API Key", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
         }
-        }
 
-        Box(
-            Modifier.onGloballyPositioned { coords ->
-                sectionOffsets["trans"] = coords.positionInParent().y.toInt()
-            }
-        ) {
+        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["trans"] = c.positionInParent().y.toInt() }) { }
         CollapsibleSection(
             title = "关键词翻译（仅展示/日志）",
             expanded = openSection == "trans",
@@ -1437,15 +1478,10 @@ fun SettingsScreen(
         Text("翻译结果只显示在首页跃迁列表与状态；中文关键词同步会改写本地关键词", style = MaterialTheme.typography.bodySmall)
 
         }
-        }
 
 
         // —— 安全与备份 ——
-        Box(
-            Modifier.onGloballyPositioned { coords ->
-                sectionOffsets["pin"] = coords.positionInParent().y.toInt()
-            }
-        ) {
+        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["pin"] = c.positionInParent().y.toInt() }) { }
         CollapsibleSection(
             title = "PIN 锁定",
             expanded = openSection == "pin",
@@ -1527,13 +1563,8 @@ fun SettingsScreen(
         }
 
         }
-        }
 
-        Box(
-            Modifier.onGloballyPositioned { coords ->
-                sectionOffsets["backup"] = coords.positionInParent().y.toInt()
-            }
-        ) {
+        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["backup"] = c.positionInParent().y.toInt() }) { }
         CollapsibleSection(
             title = "云同步",
             expanded = openSection == "backup",
@@ -1554,15 +1585,10 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth()
             ) { Text("打开云同步配置") }
         }
-        }
 
 
         // —— 维护 ——
-        Box(
-            Modifier.onGloballyPositioned { coords ->
-                sectionOffsets["cache"] = coords.positionInParent().y.toInt()
-            }
-        ) {
+        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["cache"] = c.positionInParent().y.toInt() }) { }
         CollapsibleSection(
             title = "缓存与日志",
             expanded = openSection == "cache",
@@ -1574,141 +1600,10 @@ fun SettingsScreen(
         }
 
         }
-        }
 
+        } // scroll Column
 
-
-    }  // end Column
-
-    // 悬浮保存：始终最上层
-    Box(
-        modifier = Modifier
-            .align(Alignment.BottomCenter)
-            .padding(bottom = 20.dp)
-            .size(72.dp)
-            .zIndex(100f)
-            .clickable {
-
-
-                val keys = if (keysVisible) SettingsRepository.splitLines(apiKeysText) else settings.apiKeys
-                val kws = if (keysVisible) SettingsRepository.splitLines(keywordsText) else settings.keywords
-                val kwsZh = if (keysVisible) SettingsRepository.splitLines(keywordsZhText) else settings.keywordsChinese
-                val kwUrl = if (keysVisible) keywordsUrl.trim() else settings.keywordsRemoteUrl
-                val fbUrl = if (keysVisible) fallbackApi.trim() else settings.fallbackApiUrl
-                vm.saveSettings(
-                    settings.copy(
-                        intervalMinutes = interval.toInt().coerceIn(5, 180),
-                        cacheRetention = cacheRetention,
-                        purity = if (purityFilterOn) {
-                            Purity.fromFlags(puritySfw, puritySketchy, purityNsfw) ?: purity
-                        } else purity,
-                        purityFilterEnabled = purityFilterOn,
-                        destinyEnabled = settings.destinyEnabled,
-                        destinyRulesJson = settings.destinyRulesJson,
-                        categoryMode = category,
-                        target = target,
-                        resolutionMode = resMode,
-                        useForegroundService = fgs,
-                        skipWhenScreenOff = skipOff,
-                        orientationFilter = orientFilter,
-                        aspectRatioMin = aspectRatioMinText.trim().toFloatOrNull()?.takeIf { it > 0f } ?: 0f,
-                        aspectRatioMax = aspectRatioMaxText.trim().toFloatOrNull()?.takeIf { it > 0f } ?: 0f,
-                        aspectRatioFilterEnabled = run {
-                            val lo = aspectRatioMinText.trim().toFloatOrNull()?.takeIf { it > 0f }
-                            val hi = aspectRatioMaxText.trim().toFloatOrNull()?.takeIf { it > 0f }
-                            val on = aspectRatioOn && (lo != null || hi != null)
-                            on
-                        },
-                        fitMode = fitMode,
-                        isolateHomeLock = isolate,
-                        powerSaveEnabled = powerSave,
-                        dataSaverEnabled = dataSaver,
-                        powerSaveBatteryThreshold = powerTh.coerceIn(5, 50),
-                        superServiceEnabled = superSvc,
-                        translateProvider = transProv,
-                        translateApiKey = if (keysVisible) transKey.trim() else settings.translateApiKey,
-                        translateAiMode = transAiMode,
-                        pastLifeEnabled = pastLife,
-                        pastLifeDeepExplore = pastLifeDeep,
-                        pastLifeIsolateSplit = pastLifeSplit && isolate,
-                        translateAiApiKey = if (keysVisible) transAiKey.trim() else settings.translateAiApiKey,
-                        translateAiBaseUrl = transAiBase.trim().ifBlank { "https://api.openai.com/v1" },
-                        translateAiModel = transAiModel.trim().ifBlank { "gpt-4o-mini" },
-                        translateSecret = if (keysVisible) transSecret.trim() else settings.translateSecret,
-                        translateRegion = transRegion.trim().ifBlank { "global" },
-                        uiScrimAlpha = scrim,
-                        uiCardAlpha = cardA,
-                        uiTextColor = textColorOpt,
-                        cardStyle = cardStyleOpt,
-                        minWidth = minW.toIntOrNull() ?: settings.minWidth,
-                        minHeight = minH.toIntOrNull() ?: settings.minHeight,
-                        apiKeys = keys,
-                        keywords = kws,
-                        keywordsChinese = kwsZh,
-                        keywordsRemoteUrl = kwUrl,
-                        useKeywords = useKeywords,
-                        jumpModeEnabled = jumpMode,
-                        annihilationModeEnabled = annihilMode && jumpMode,
-                        illusionModeEnabled = illusionMode && annihilMode && jumpMode,
-                        annihilationEpoch = settings.annihilationEpoch,
-                        networkFallbackEnabled = netFb,
-                        fallbackApiUrl = fbUrl,
-                        localFallbackEnabled = localFb,
-                        forceLocalMode = forceLocal,
-                        localFallbackDir = localDir.trim(),
-                        localFallbackUseCache = localFbCache,
-                        localFallbackCacheSkipNewest = localFbSkip,
-                        locationAvoidEnabled = locAvoid,
-                        amapApiKey = if (keysVisible) amapKey.trim() else settings.amapApiKey,
-                        locationFallbackEnabled = locFb,
-                        locationExtremeFallbackEnabled = locExtreme,
-                        bgApiUrl = bgApi.trim(),
-                        bgLocalPath = bgLocal.trim(),
-                        bgMode = bgMode,
-                        accelModeEnabled = accelOn && !proxyOn,
-                        accelPrivacyAccepted = accelPrivacy,
-                        accelNodesRemoteUrl = accelNodesUrl.trim(),
-                        proxyEnabled = proxyOn && !accelOn,
-                        proxyType = if (keysVisible) proxyType else settings.proxyType,
-                        proxyHost = if (keysVisible) proxyHost.trim() else settings.proxyHost,
-                        proxyPort = if (keysVisible) (proxyPort.toIntOrNull() ?: 0) else settings.proxyPort,
-                        proxyUser = if (keysVisible) proxyUser.trim() else settings.proxyUser,
-                        proxyPassword = if (keysVisible) proxyPass else settings.proxyPassword,
-                        proxySubUrl = if (keysVisible) proxySub.trim() else settings.proxySubUrl,
-                        superProxyEnabled = superProxyOn,
-                        superProxyBinPath = if (keysVisible) superBin.trim() else settings.superProxyBinPath,
-                        superProxyConfigPath = if (keysVisible) superCfg.trim() else settings.superProxyConfigPath,
-                        superProxySubUrl = if (keysVisible) superSub.trim() else settings.superProxySubUrl,
-                        superProxyArgs = if (keysVisible) superArgs.trim() else settings.superProxyArgs,
-                        superProxyLocalPort = superPort.toIntOrNull()?.coerceIn(1025, 65535)
-                            ?: settings.superProxyLocalPort
-                    )
-                )
-            
-                    
-            },
-        contentAlignment = Alignment.Center
-    ) {
-        androidx.compose.material3.Surface(
-            shape = CircleShape,
-            color = LocalUiTextColor.current.copy(alpha = 0.32f),
-            shadowElevation = 8.dp,
-            border = androidx.compose.foundation.BorderStroke(
-                1.5.dp,
-                LocalUiTextColor.current.copy(alpha = 0.6f)
-            ),
-            modifier = Modifier.fillMaxSize()
-        ) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(
-                    "保存",
-                    color = LocalUiTextColor.current,
-                    style = MaterialTheme.typography.titleMedium
-                )
-            }
-        }
-    }
-    }  // end outer Box
+    } // root Column
 
     LaunchedEffect(unlocked) {
         if (unlocked && showPinDialog) {
@@ -1782,9 +1677,7 @@ fun SettingsScreen(
                     catalog.filter { q.isBlank() || it.first.contains(q, ignoreCase = true) }.forEach { (name, key) ->
                         Text(
                             "· $name",
-                            modifier = Modifier.fillMaxWidth().clickable {
-                                jumpToSection(key)
-                            }
+                            modifier = Modifier.fillMaxWidth().clickable { jumpToSection(key) }
                         )
                     }
                 }
@@ -1878,9 +1771,7 @@ private fun PurityChip(
 @Composable
 private fun LockedField(label: String, onRequestUnlock: () -> Unit = {}) {
     Column(
-        Modifier
-            .fillMaxWidth()
-            .clickable { onRequestUnlock() },
+        Modifier.fillMaxWidth().clickable { onRequestUnlock() },
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         OutlinedTextField(
@@ -1893,7 +1784,7 @@ private fun LockedField(label: String, onRequestUnlock: () -> Unit = {}) {
             maxLines = 4
         )
         Text(
-            "点击输入 PIN 临时解锁；离开配置页后自动重新锁定",
+            "点击输入 PIN 临时解锁；离开本页后自动重新锁定",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.error
         )
