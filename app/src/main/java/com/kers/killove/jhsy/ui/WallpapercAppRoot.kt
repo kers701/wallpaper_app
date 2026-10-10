@@ -20,6 +20,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -71,7 +74,15 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
 
     var updateDialog by remember { mutableStateOf<com.kers.killove.jhsy.util.AppUpdateChecker.ReleaseInfo?>(null) }
     var updateChecked by remember { mutableStateOf(false) }
+    var updateDownloading by remember { mutableStateOf(false) }
+    var updateProgress by remember { mutableFloatStateOf(0f) }
+    var updateMsg by remember { mutableStateOf("") }
     val appContext = androidx.compose.ui.platform.LocalContext.current
+    val appScope = rememberCoroutineScope()
+    val status by vm.status.collectAsState()
+    var statusPopup by remember { mutableStateOf<String?>(null) }
+    var lastStatusSeen by remember { mutableStateOf("") }
+
     LaunchedEffect(Unit) {
         if (updateChecked) return@LaunchedEffect
         updateChecked = true
@@ -86,25 +97,121 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
             }
         }
     }
+
+    // 状态变化弹窗：任意页面可见（排除壁纸更换过程中的进度类文案）
+    LaunchedEffect(status) {
+        val s = status.trim()
+        if (s.isBlank() || s == lastStatusSeen) return@LaunchedEffect
+        lastStatusSeen = s
+        val wallpaperProgress = listOf(
+            "已交由", "当场下载", "更换流程", "正在下载壁纸", "正在设置壁纸",
+            "预下载中", "更换中", "下载壁纸", "设置壁纸", "正在更换"
+        ).any { s.contains(it) }
+        if (wallpaperProgress) return@LaunchedEffect
+        // 忽略过于琐碎的初始态
+        if (s in listOf("就绪", "空闲", "—", "-")) return@LaunchedEffect
+        statusPopup = s
+    }
+
     updateDialog?.let { info ->
+        val sizeMb = if (info.apkSize > 0)
+            String.format("%.1f MB", info.apkSize / (1024.0 * 1024.0))
+        else "未知大小"
         androidx.compose.material3.AlertDialog(
-            onDismissRequest = { updateDialog = null },
-            title = { androidx.compose.material3.Text("发现新版本") },
+            onDismissRequest = {
+                if (!updateDownloading) updateDialog = null
+            },
+            title = { androidx.compose.material3.Text("发现新版本 ${info.tag}") },
             text = {
-                androidx.compose.material3.Text(
-                    listOf(info.name, info.versionName, info.body.take(240)).filter { it.isNotBlank() }.joinToString("\n")
-                )
+                androidx.compose.foundation.layout.Column(
+                    verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
+                ) {
+                    androidx.compose.material3.Text(
+                        listOf(info.name, info.versionName, "大小 $sizeMb", info.body.take(280))
+                            .filter { it.isNotBlank() }
+                            .joinToString("\n")
+                    )
+                    if (updateDownloading) {
+                        androidx.compose.material3.LinearProgressIndicator(
+                            progress = { updateProgress },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        androidx.compose.material3.Text(
+                            if (updateMsg.isNotBlank()) updateMsg
+                            else "下载中 ${(updateProgress * 100).toInt()}%"
+                        )
+                    } else if (updateMsg.isNotBlank()) {
+                        androidx.compose.material3.Text(updateMsg)
+                    }
+                }
             },
             confirmButton = {
-                androidx.compose.material3.TextButton(onClick = {
-                    com.kers.killove.jhsy.util.AppUpdateChecker.openReleasePage(appContext, info.htmlUrl)
-                    updateDialog = null
-                }) { androidx.compose.material3.Text("查看更新") }
+                com.kers.killove.jhsy.ui.screens.ThemeOutlinedButton(
+                    onClick = {
+                        if (updateDownloading) return@ThemeOutlinedButton
+                        val ctx = appContext
+                        if (!com.kers.killove.jhsy.util.AppUpdateChecker.canInstallPackages(ctx)) {
+                            updateMsg = "需要允许安装未知应用，已打开系统设置"
+                            com.kers.killove.jhsy.util.AppUpdateChecker.openInstallPermissionSettings(ctx)
+                            return@ThemeOutlinedButton
+                        }
+                        updateDownloading = true
+                        updateProgress = 0f
+                        updateMsg = "正在下载…"
+                        appScope.launch {
+                            val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                com.kers.killove.jhsy.util.AppUpdateChecker.downloadApk(ctx, info) { p ->
+                                    updateProgress = p
+                                }
+                            }
+                            updateDownloading = false
+                            when (result) {
+                                is com.kers.killove.jhsy.util.AppUpdateChecker.DownloadResult.Ok -> {
+                                    updateMsg = "下载完成，正在调起安装…"
+                                    val ok = com.kers.killove.jhsy.util.AppUpdateChecker.installApk(ctx, result.file)
+                                    if (!ok) {
+                                        updateMsg = "无法调起安装，可打开发布页手动下载"
+                                    } else {
+                                        updateDialog = null
+                                    }
+                                }
+                                is com.kers.killove.jhsy.util.AppUpdateChecker.DownloadResult.Failed -> {
+                                    updateMsg = "下载失败：${result.message}"
+                                }
+                            }
+                        }
+                    },
+                    enabled = !updateDownloading
+                ) { androidx.compose.material3.Text(if (updateDownloading) "下载中…" else "下载并安装") }
             },
             dismissButton = {
-                androidx.compose.material3.TextButton(onClick = { updateDialog = null }) {
-                    androidx.compose.material3.Text("稍后")
+                androidx.compose.foundation.layout.Row(
+                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
+                ) {
+                    com.kers.killove.jhsy.ui.screens.ThemeOutlinedButton(
+                        onClick = {
+                            com.kers.killove.jhsy.util.AppUpdateChecker.openReleasePage(appContext, info.htmlUrl)
+                        },
+                        enabled = !updateDownloading
+                    ) { androidx.compose.material3.Text("浏览器") }
+                    com.kers.killove.jhsy.ui.screens.ThemeOutlinedButton(
+                        onClick = { if (!updateDownloading) updateDialog = null },
+                        enabled = !updateDownloading
+                    ) { androidx.compose.material3.Text("稍后") }
                 }
+            }
+        )
+    }
+
+    statusPopup?.let { msg ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { statusPopup = null },
+            title = { androidx.compose.material3.Text("状态更新") },
+            text = { androidx.compose.material3.Text(msg) },
+            confirmButton = {
+                com.kers.killove.jhsy.ui.screens.ThemeOutlinedButton(
+                    onClick = { statusPopup = null }
+                ) { androidx.compose.material3.Text("知道了") }
             }
         )
     }

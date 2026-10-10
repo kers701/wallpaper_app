@@ -89,6 +89,7 @@ fun SettingsScreen(
     var pinTempInput by remember { mutableStateOf("") }
     var settingsSearch by remember { mutableStateOf("") }
     var showSettingsSearch by remember { mutableStateOf(false) }
+    var showSavedDialog by remember { mutableStateOf(false) }
     val settingsScroll = rememberScrollState()
     val sectionOffsets = remember { mutableStateMapOf<String, Int>() }
     val settingsScope = rememberCoroutineScope()
@@ -293,7 +294,7 @@ fun SettingsScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // 顶部固定：左搜索 右保存
+        // 顶部固定：左搜索 右保存（同款圆角描边，美化一致）
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -304,7 +305,7 @@ fun SettingsScreen(
                 onClick = { showSettingsSearch = true },
                 modifier = Modifier.weight(1f)
             ) { Text("搜索") }
-            ThemeButton(
+            ThemeOutlinedButton(
                 onClick = {
                                     val keys = if (keysVisible) SettingsRepository.splitLines(apiKeysText) else settings.apiKeys
                                     val kws = if (keysVisible) SettingsRepository.splitLines(keywordsText) else settings.keywords
@@ -400,6 +401,7 @@ fun SettingsScreen(
                                                 ?: settings.superProxyLocalPort
                                         )
                                     )
+                    showSavedDialog = true
                 },
                 modifier = Modifier.weight(1f)
             ) { Text("保存") }
@@ -1638,6 +1640,17 @@ fun SettingsScreen(
             },
             dismissButton = {
                 ThemeOutlinedButton(onClick = { showPinDialog = false; pinTempInput = "" }) { Text("取消") }
+            }
+        )
+    }
+
+    if (showSavedDialog) {
+        AlertDialog(
+            onDismissRequest = { showSavedDialog = false },
+            title = { Text("已保存") },
+            text = { Text("配置已写入。自动更换、纯度、网络等将按新设置生效。") },
+            confirmButton = {
+                ThemeOutlinedButton(onClick = { showSavedDialog = false }) { Text("好的") }
             }
         )
     }
