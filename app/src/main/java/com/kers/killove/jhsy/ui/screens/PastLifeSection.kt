@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -37,6 +38,7 @@ import com.kers.killove.jhsy.util.PastLifeStore
  * 前世今生：点击打开弹层；分栏时左右滑动切换桌面/锁屏。
  * 弹层使用 GlassCard，跟随全局板块美化。
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun PastLifeSection(vm: MainViewModel) {
     val settings by vm.settings.collectAsState()

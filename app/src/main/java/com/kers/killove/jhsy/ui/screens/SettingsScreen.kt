@@ -1608,12 +1608,10 @@ private fun PurityChip(
         ThemeOutlinedButton(
             onClick = { handleClick() },
             modifier = modifier,
-            colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
-                contentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-            )
+            enabled = false
         ) { Text(label) }
     } else if (selected) {
-        Button(
+        ThemeButton(
             onClick = { handleClick() },
             modifier = modifier
         ) { Text(label) }

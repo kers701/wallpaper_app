@@ -1,6 +1,1 @@
-UI：虚妄翻译 + 前世今生弹层滑动 + 主题按钮 + 使用说明（不推送）
-
-1. 虚妄关键词展开显示「英文（中文）」，MainViewModel 增加 illusionZh
-2. 前世今生点击打开弹层；分栏左右滑动切换桌面/锁屏；GlassCard 美化
-3. ThemeOutlinedButton / ThemeButton 跟随板块美化与文字色
-4. 使用说明补充前世今生、虚妄翻译、跃迁三词、按钮主题
+Fix: ThemeOutlinedButton has no colors param (PurityChip); PastLife OptIn ExperimentalFoundationApi
