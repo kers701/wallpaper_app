@@ -310,7 +310,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             } else s
             val wasSuper = settings.value.superProxyEnabled && settings.value.proxyEnabled
             val nowSuper = final.superProxyEnabled && final.proxyEnabled
-            val normalized = clearGreenIfNoAvoidPoints(final)
+            val pastOn = final.pastLifeEnabled && final.jumpModeEnabled
+            val gated = final.copy(
+                pastLifeEnabled = pastOn,
+                pastLifeDeepExplore = pastOn && final.pastLifeDeepExplore
+            )
+            val normalized = clearGreenIfNoAvoidPoints(gated)
             settingsRepo.save(normalized)
             if (wasSuper && !nowSuper) {
                 withContext(Dispatchers.IO) {
@@ -1092,7 +1097,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // 本周期已有叙述且不强制：只刷新 UI，不调 AI
             if (!forceAi && !st.needsNarrative && st.present.isNotBlank()) return@launch
             if (!forceAi && !st.needsNarrative) return@launch
-            val words = listOf(st.prevKw, st.currKw, st.nextKw).filter { it.isNotBlank() }
+            val words = (listOf(st.prevKw, st.currKw, st.nextKw) + st.prevAux + st.currAux)
+                .map { it.trim() }.filter { it.isNotBlank() }.distinct()
             val zh = if (words.isNotEmpty()) {
                 try { translator.translateList(words, s) } catch (_: Exception) { emptyMap() }
             } else emptyMap()

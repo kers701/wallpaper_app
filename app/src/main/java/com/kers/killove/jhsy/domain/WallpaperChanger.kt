@@ -42,6 +42,9 @@ class WallpaperChanger(
 ) {
     private val pageCache by lazy { PageCacheStore.from(context) }
     private val nextStore by lazy { NextWallpaperStore(context) }
+    /** 本周期最后一张成功 Wallhaven 图的标签，供前世今生深入探索 */
+    @Volatile private var lastPastLifeTags: List<String> = emptyList()
+
     private val prefetchScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var currentTrigger: TriggerType = TriggerType.Auto
 
@@ -573,6 +576,7 @@ class WallpaperChanger(
         // 跃迁/虚妄/湮灭：现场下载与预下载共用
         if (fromWallhaven && item.source == "wallhaven") {
             applyJumpFilterChain(settings, item.id, item.tags, usedKeyword)
+            if (item.tags.isNotEmpty()) lastPastLifeTags = item.tags
         }
 
         // 非隔离路径才在这里 +1；隔离在外层 +2
@@ -913,7 +917,7 @@ class WallpaperChanger(
 
     /** 完整更换周期结束后更新前世今生关键词，并异步生成叙述（每周期一次） */
     private fun finalizePastLifeCycle(settings: AppSettings, usedKeyword: String?) {
-        if (!settings.pastLifeEnabled) return
+        if (!settings.pastLifeEnabled || !settings.jumpModeEnabled) return
         val kw = usedKeyword?.trim().orEmpty()
         if (kw.isEmpty()) return
         val list = settings.activeKeywords()
@@ -922,7 +926,13 @@ class WallpaperChanger(
             if (idx >= 0) list[(idx + 1).mod(list.size)] else pickKeyword(settings, offset = 0)
         }
         val cycleAt = System.currentTimeMillis()
-        PastLifeStore.onCycleComplete(context, kw, nextKw, cycleAt)
+        val tags = lastPastLifeTags
+        lastPastLifeTags = emptyList()
+        PastLifeStore.onCycleComplete(
+            context, kw, nextKw, cycleAt,
+            currImageTags = tags,
+            deepExplore = settings.pastLifeDeepExplore
+        )
         // 服务进程内生成一次，避免仅依赖 UI 打开
         prefetchScope.launch {
             runCatching {
@@ -930,8 +940,9 @@ class WallpaperChanger(
                 if (!PastLifeAi.canUse(s)) return@runCatching
                 var st = PastLifeStore.read(context)
                 if (!st.needsNarrative) return@runCatching
-                val words = listOf(st.prevKw, st.currKw, st.nextKw).filter { it.isNotBlank() }
-                // 先英→中，再让 AI 按「英文（中文）」写作
+                val words = (
+                    listOf(st.prevKw, st.currKw, st.nextKw) + st.prevAux + st.currAux
+                ).map { it.trim() }.filter { it.isNotBlank() }.distinct()
                 val zh = try {
                     KeywordTranslator().translateList(words, s)
                 } catch (_: Exception) {

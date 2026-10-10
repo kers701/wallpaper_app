@@ -372,8 +372,10 @@ data class AppSettings(
     /** OpenAI 兼容接口，如 https://api.openai.com/v1 或中转 */
     val translateAiBaseUrl: String = "https://api.openai.com/v1",
     val translateAiModel: String = "gpt-4o-mini",
-    /** 前世今生：更换后用 AI 描述本次词与前后词关系 */
+    /** 前世今生：需跃迁模式；更换后用 AI 描述本次词与前后词关系 */
     val pastLifeEnabled: Boolean = false,
+    /** 深入探索：主词+本图/上图标签为辅助词，段落 200～300 字 */
+    val pastLifeDeepExplore: Boolean = false,
 
     /** UI 遮罩透明度 0.15～0.85 */
     val uiScrimAlpha: Float = 0.52f,

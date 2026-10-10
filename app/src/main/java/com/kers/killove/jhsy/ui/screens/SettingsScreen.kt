@@ -151,6 +151,7 @@ fun SettingsScreen(
     var powerTh by remember(settings.powerSaveBatteryThreshold) { mutableIntStateOf(settings.powerSaveBatteryThreshold) }
     var transProv by remember(settings.translateProvider) { mutableStateOf(settings.translateProvider) }
     var pastLife by remember(settings.pastLifeEnabled) { mutableStateOf(settings.pastLifeEnabled) }
+    var pastLifeDeep by remember(settings.pastLifeDeepExplore) { mutableStateOf(settings.pastLifeDeepExplore) }
     var transAiMode by remember(settings.translateAiMode) { mutableStateOf(settings.translateAiMode) }
     var transAiKey by remember(settings.translateAiApiKey, keysVisible) {
         mutableStateOf(if (keysVisible) settings.translateAiApiKey else "")
@@ -563,6 +564,8 @@ fun SettingsScreen(
             if (!it) {
                 annihilMode = false
                 illusionMode = false
+                pastLife = false
+                pastLifeDeep = false
             }
         }
         Text(
@@ -1163,30 +1166,44 @@ fun SettingsScreen(
 
         }
 
-        // 前世今生：独立 CollapsibleSection 板块（与其它设置板块同 GlassCard 样式）
+        // 前世今生：独立板块；需跃迁 + AI
         CollapsibleSection(
             title = "前世今生",
             expanded = openSection == "pastlife",
             onToggle = { toggleSection("pastlife") }
         ) {
+            val jumpOk = settings.jumpModeEnabled || jumpMode
             val aiOk = settings.translateAiMode && settings.translateAiApiKey.isNotBlank()
+            val canPast = jumpOk && aiOk
             Text(
-                if (aiOk) "开启后，每次换壁纸成功将用 AI 描述本次关键词与前后词关系（首页/概览以独立板块展示）"
-                else "需先在「关键词翻译」中开启 AI 模式并配置 API Key",
+                "需开启「跃迁模式」与 AI 模式后可用。换壁纸成功后描述主词与前后词关系。",
                 style = MaterialTheme.typography.bodySmall
             )
             RowSwitch(
                 title = "启用前世今生",
-                checked = pastLife && aiOk,
-                enabled = aiOk,
-                onChecked = { v -> if (aiOk) pastLife = v }
+                checked = pastLife && canPast,
+                enabled = canPast,
+                onChecked = { v ->
+                    if (canPast) {
+                        pastLife = v
+                        if (!v) pastLifeDeep = false
+                    }
+                }
             )
-            if (!aiOk) {
-                Text(
-                    "当前不可用（AI 未就绪）",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error
-                )
+            RowSwitch(
+                title = "深入探索",
+                checked = pastLifeDeep && pastLife && canPast,
+                enabled = pastLife && canPast,
+                onChecked = { v -> if (pastLife && canPast) pastLifeDeep = v }
+            )
+            Text(
+                "深入探索：以主词为主，本图/上图提取标签为辅助词（来世仅有主词）；每段 200～300 字。关闭时每段 100～200 字。",
+                style = MaterialTheme.typography.bodySmall
+            )
+            if (!jumpOk) {
+                Text("请先开启跃迁模式", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            } else if (!aiOk) {
+                Text("请配置 AI 模式与 API Key", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
         }
 
