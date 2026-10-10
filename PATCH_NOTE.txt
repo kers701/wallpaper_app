@@ -1,7 +1,5 @@
-状态弹窗：仅用户操作触发 + 主题美化（不推送）
+修复 MainViewModel setStatus 语法错误（不推送）
 
-1. MainViewModel 增加 statusAlert SharedFlow
-2. setStatus(msg, popup)：popup=true 才弹窗
-3. 按钮/改配置反馈 popup=true；壁纸进度、桥接轮询 popup=false
-4. 全局弹窗监听 statusAlert，不再监听任意 status 变化
-5. 弹窗使用 textColor / ThemeOutlinedButton / 半透明 container 对齐美化
+- setStatus(if (...) {, popup = ...) 多行表达式被错误截断
+- 已改为先算 statusMsg 再 setStatus(statusMsg, popup = true)
+- 涉及：refreshOverview / 设置已保存 / 移除避让点

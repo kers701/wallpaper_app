@@ -173,12 +173,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             refreshCacheSize()
             promoteWeeklyHotKeywords()
             val ts = ProcessBridgePrefs.effectiveLastChangeAt(app)
-            setStatus(if (ts > 0L) {, popup = false)
+            val statusMsg = if (ts > 0L) {
                 val fmt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
                 "已刷新 · 上次更换 ${fmt.format(Date(ts))}"
             } else {
                 "已刷新 · 尚无更换记录"
             }
+            setStatus(statusMsg, popup = true)
         }
     }
 
@@ -357,8 +358,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             if (normalized.fitMode != oldFit) {
                 reapplyCurrentWallpapers(normalized)
             } else {
-                setStatus(, popup = false)
-                    "设置已保存（关键词 ${final.keywords.size} 个，跃迁 ${final.jumpKeywords.size} 个，密钥 ${final.apiKeys.size} 个）"
+                setStatus(
+                    "设置已保存（关键词 ${final.keywords.size} 个，跃迁 ${final.jumpKeywords.size} 个，密钥 ${final.apiKeys.size} 个）",
+                    popup = true
+                )
             }
         }
     }
@@ -1463,11 +1466,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // 列表清空后立刻退出绿色模式，不等下次换壁纸
             next = clearGreenIfNoAvoidPoints(next)
             settingsRepo.save(next)
-            setStatus(if (cur.isEmpty()) {, popup = false)
+            val statusMsg = if (cur.isEmpty()) {
                 "已清空避让点，绿色模式已解除"
             } else {
                 "已移除避让点（剩余 ${cur.size}）"
             }
+            setStatus(statusMsg, popup = true)
         }
     }
 
