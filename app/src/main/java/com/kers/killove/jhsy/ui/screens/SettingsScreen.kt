@@ -89,7 +89,6 @@ fun SettingsScreen(
     var pinTempInput by remember { mutableStateOf("") }
     var settingsSearch by remember { mutableStateOf("") }
     var showSettingsSearch by remember { mutableStateOf(false) }
-    var showSavedDialog by remember { mutableStateOf(false) }
     val settingsScroll = rememberScrollState()
     val sectionOffsets = remember { mutableStateMapOf<String, Int>() }
     val settingsScope = rememberCoroutineScope()
@@ -401,7 +400,6 @@ fun SettingsScreen(
                                                 ?: settings.superProxyLocalPort
                                         )
                                     )
-                    showSavedDialog = true
                 },
                 modifier = Modifier.weight(1f)
             ) { Text("保存") }
@@ -1640,17 +1638,6 @@ fun SettingsScreen(
             },
             dismissButton = {
                 ThemeOutlinedButton(onClick = { showPinDialog = false; pinTempInput = "" }) { Text("取消") }
-            }
-        )
-    }
-
-    if (showSavedDialog) {
-        AlertDialog(
-            onDismissRequest = { showSavedDialog = false },
-            title = { Text("已保存") },
-            text = { Text("配置已写入。自动更换、纯度、网络等将按新设置生效。") },
-            confirmButton = {
-                ThemeOutlinedButton(onClick = { showSavedDialog = false }) { Text("好的") }
             }
         )
     }

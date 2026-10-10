@@ -1,4 +1,4 @@
-修复 SharedFlow / collect 未解析（不推送）
+取消配置页「已保存」弹窗（不推送）
 
-- MainViewModel 补 import kotlinx.coroutines.flow.SharedFlow
-- WallpapercAppRoot statusAlert.collect 参数显式 String
+- 移除 showSavedDialog 状态与 AlertDialog
+- 点击保存仍会写入配置，不再弹「已保存」
