@@ -54,9 +54,11 @@ import android.net.Uri
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.Dispatchers
@@ -83,7 +85,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         onProgress = { frac, label ->
             _downloadProgress.value = frac
             _downloadLabel.value = label
-            if (label.isNotBlank()) _status.value = label
+            if (label.isNotBlank()) setStatus(label, popup = false)
         },
         localStore = localStore
     )
@@ -156,7 +158,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val added = toAdd.take(room)
                 val next = s.copy(keywords = s.keywords + added)
                 settingsRepo.save(next)
-                _status.value = "本周热词已写入本地关键词：${added.joinToString("、")}（+${added.size}）"
+                setStatus("本周热词已写入本地关键词：${added.joinToString("、")}（+${added.size}）", popup = true)
             } catch (e: Exception) {
                 // 静默失败，不影响概览
             }
@@ -171,7 +173,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             refreshCacheSize()
             promoteWeeklyHotKeywords()
             val ts = ProcessBridgePrefs.effectiveLastChangeAt(app)
-            _status.value = if (ts > 0L) {
+            setStatus(if (ts > 0L) {, popup = false)
                 val fmt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
                 "已刷新 · 上次更换 ${fmt.format(Date(ts))}"
             } else {
@@ -222,6 +224,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _status = MutableStateFlow("就绪")
     val status: StateFlow<String> = _status.asStateFlow()
+
+    /** 仅用户点击/改配置触发的状态，用于全局弹窗 */
+    private val _statusAlert = MutableSharedFlow<String>(extraBufferCapacity = 8)
+    val statusAlert: SharedFlow<String> = _statusAlert.asSharedFlow()
+
+    /** popup=true 时同步弹出状态窗；壁纸进度/轮询等用 false */
+    private fun setStatus(msg: String, popup: Boolean = false) {
+        _status.value = msg
+        if (popup && msg.isNotBlank()) {
+            _statusAlert.tryEmit(msg)
+        }
+    }
 
     /** 跨进程桥接中的上次更换时间（:svc/:manual 写入，主进程可能更准） */
     private val _bridgeLastChange = MutableStateFlow(0L)
@@ -343,7 +357,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             if (normalized.fitMode != oldFit) {
                 reapplyCurrentWallpapers(normalized)
             } else {
-                _status.value =
+                setStatus(, popup = false)
                     "设置已保存（关键词 ${final.keywords.size} 个，跃迁 ${final.jumpKeywords.size} 个，密钥 ${final.apiKeys.size} 个）"
             }
         }
@@ -360,7 +374,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun reapplyCurrentWallpapersSuspend(s: AppSettings) {
         _busy.value = true
-        _status.value = "铺满方式已更新，正在用当前壁纸重新设置…"
+        setStatus("铺满方式已更新，正在用当前壁纸重新设置…", popup = true)
         try {
             val list = dao.recentList(40)
             fun match(e: com.kers.killove.jhsy.data.local.WallpaperEntity, keys: List<String>): Boolean {
@@ -407,13 +421,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
 
-            _status.value = when {
+            setStatus(when {
                 ok > 0 && fail == 0 -> "铺满方式「${s.fitMode.label}」已应用到当前壁纸（未重新下载）"
                 ok > 0 -> "铺满已部分应用（成功 $ok，失败 $fail），请确认缓存图仍在"
                 else -> "没有可用的本地壁纸缓存，请先更换一次壁纸"
-            }
+            }, popup = true)
         } catch (e: Exception) {
-            _status.value = "重新设置失败：${e.message}"
+            setStatus("重新设置失败：${e.message}", popup = true)
         } finally {
             _busy.value = false
         }
@@ -429,9 +443,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val json = ConfigBackup.toJson(s)
                 val cm = getApplication<Application>().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 cm.setPrimaryClip(ClipData.newPlainText("jhsy_config", json))
-                _status.value = "配置已备份（不含 PIN）\n${file.absolutePath}\n并已复制到剪贴板"
+                setStatus("配置已备份（不含 PIN）\n${file.absolutePath}\n并已复制到剪贴板", popup = true)
             } catch (e: Exception) {
-                _status.value = "备份失败：${e.message}"
+                setStatus("备份失败：${e.message}", popup = true)
             }
         }
     }
@@ -443,14 +457,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val ctx = getApplication<Application>()
                 val file = ConfigBackup.defaultFile(ctx)
                 if (!file.exists()) {
-                    _status.value = "备份文件不存在\n${file.absolutePath}\n请先点「备份配置」或使用「从 JSON 恢复」"
+                    setStatus("备份文件不存在\n${file.absolutePath}\n请先点「备份配置」或使用「从 JSON 恢复」", popup = true)
                     return@launch
                 }
                 val restored = ConfigBackup.readFromFile(ctx, settings.value, file)
                 applyRestored(restored, "默认文件")
             } catch (e: Exception) {
                 e.printStackTrace()
-                _status.value = "恢复失败：${e.message ?: e.javaClass.simpleName}"
+                setStatus("恢复失败：${e.message ?: e.javaClass.simpleName}", popup = true)
             }
         }
     }
@@ -461,13 +475,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val f = File(path)
                 if (!f.exists() || !f.canRead()) {
-                    _status.value = "无法读取：$path"
+                    setStatus("无法读取：$path", popup = true)
                     return@launch
                 }
                 val restored = ConfigBackup.fromJson(f.readText(Charsets.UTF_8), settings.value)
                 applyRestored(restored, "所选路径")
             } catch (e: Exception) {
-                _status.value = "恢复失败：${e.message}"
+                setStatus("恢复失败：${e.message}", popup = true)
             }
         }
     }
@@ -488,11 +502,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     saveFileToGallery(getApplication(), path)
                 }
                 val msg = if (ok) "已保存到相册 Pictures/JHSY" else "保存失败：文件不存在或无法写入"
-                _status.value = msg
+                setStatus(msg, popup = true)
                 onDone?.invoke(ok, msg)
             } catch (e: Exception) {
                 val msg = "保存到相册失败：${e.message}"
-                _status.value = msg
+                setStatus(msg, popup = true)
                 onDone?.invoke(false, msg)
             }
         }
@@ -571,9 +585,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     out.write(byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()))
                     out.write(sb.toString().toByteArray(Charsets.UTF_8))
                 } ?: throw IllegalStateException("无法写入所选位置")
-                _status.value = "已导出 ${list.size} 条更换记录到所选文件"
+                setStatus("已导出 ${list.size} 条更换记录到所选文件", popup = true)
             } catch (e: Exception) {
-                _status.value = "导出更换记录失败：${e.message}"
+                setStatus("导出更换记录失败：${e.message}", popup = true)
             }
         }
     }
@@ -605,9 +619,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 val nodes = com.kers.killove.jhsy.data.remote.BuiltinAccelNodes.parseJson(text)
                 com.kers.killove.jhsy.data.remote.BuiltinAccelNodes.setRemoteNodes(nodes)
-                _status.value = "加速节点已更新：${nodes.size} 个"
+                setStatus("加速节点已更新：${nodes.size} 个", popup = true)
             } catch (e: Exception) {
-                _status.value = "加速节点拉取失败：${e.message}"
+                setStatus("加速节点拉取失败：${e.message}", popup = true)
             }
         }
     }
@@ -623,9 +637,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 } ?: throw IllegalStateException("无法写入所选位置")
                 // 同时写默认文件
                 ConfigBackup.writeToFile(getApplication(), settings.value)
-                _status.value = "已备份到所选公共位置（不含 PIN）"
+                setStatus("已备份到所选公共位置（不含 PIN）", popup = true)
             } catch (e: Exception) {
-                _status.value = "备份失败：${e.message}"
+                setStatus("备份失败：${e.message}", popup = true)
             }
         }
     }
@@ -639,7 +653,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val restored = ConfigBackup.fromJson(text, settings.value)
                 applyRestored(restored, "所选文件")
             } catch (e: Exception) {
-                _status.value = "恢复失败：${e.message}"
+                setStatus("恢复失败：${e.message}", popup = true)
             }
         }
     }
@@ -648,14 +662,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** 从粘贴的 JSON 恢复；保留当前 PIN。 */
     fun restoreConfigFromJson(json: String) {
         if (json.isBlank()) {
-            _status.value = "请先粘贴备份 JSON"
+            setStatus("请先粘贴备份 JSON", popup = true)
             return
         }
         viewModelScope.launch {
             try {
                 applyRestored(ConfigBackup.fromJson(json, settings.value), "JSON")
             } catch (e: Exception) {
-                _status.value = "恢复失败：${e.message}"
+                setStatus("恢复失败：${e.message}", popup = true)
             }
         }
     }
@@ -667,18 +681,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun importRemoteConfig(url: String) {
         val u = url.trim()
         if (u.isEmpty()) {
-            _status.value = "请填写远程配置 URL"
+            setStatus("请填写远程配置 URL", popup = true)
             return
         }
         viewModelScope.launch {
             try {
-                _status.value = "正在拉取远程配置…"
+                setStatus("正在拉取远程配置…", popup = true)
                 val json = withContext(Dispatchers.IO) {
                     ConfigBackup.fetchRemoteJson(u)
                 }
                 applyRestored(ConfigBackup.fromJson(json, settings.value), "远程配置")
             } catch (e: Exception) {
-                _status.value = "远程配置导入失败：${e.message}"
+                setStatus("远程配置导入失败：${e.message}", popup = true)
             }
         }
     }
@@ -694,7 +708,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         settingsRepo.save(restored)
         applySchedule(restored)
         ProxyHttp.applySettings(getApplication(), restored)
-        _status.value = "已从${source}恢复（不含 PIN；本机 PIN 未改动）"
+        setStatus("已从${source}恢复（不含 PIN；本机 PIN 未改动）", popup = true)
     }
 
     fun setEnabled(enabled: Boolean) {
@@ -708,7 +722,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             } else {
                 refreshServiceStatus()
             }
-            _status.value = if (enabled) "已开启自动更换" else "已停止"
+            setStatus(if (enabled) "已开启自动更换" else "已停止", popup = true)
             RunLog.i(getApplication(), "enabled=$enabled")
         }
     }
@@ -735,7 +749,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val app = getApplication<Application>()
             val s = settings.value
             if (!NextWallpaperStore(app).isReadyForSettings(s.target, s.isolateHomeLock)) {
-                _status.value = "预下载未成功，无法归零等待"
+                setStatus("预下载未成功，无法归零等待", popup = true)
                 return@launch
             }
             val now = System.currentTimeMillis()
@@ -749,7 +763,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             WallpaperForegroundService.scheduleDueAlarm(app, nextAt)
             // 归零按钮不能只改时间戳；确保 :svc 已运行，之后走与正常到期完全相同的流程。
             WallpaperForegroundService.start(app)
-            _status.value = "等待时间已归零，将在约 1 分钟后执行正常更换"
+            setStatus("等待时间已归零，将在约 1 分钟后执行正常更换", popup = true)
         }
     }
 
@@ -758,13 +772,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val ctx = getApplication<Application>()
             if (ProcessBridgePrefs.isChanging(ctx)) {
-                _status.value = "已有更换在进行中，请稍候"
+                setStatus("已有更换在进行中，请稍候", popup = true)
                 return@launch
             }
             _busy.value = true
             _downloadProgress.value = 0f
             _downloadLabel.value = ""
-            _status.value = "已交由 :manual 进程当场下载更换…"
+            setStatus("已交由 :manual 进程当场下载更换…", popup = false)
             ProcessBridgePrefs.setStatusHint(ctx, "已交由 :manual 进程当场下载更换…")
             // 第三进程 :manual：当场下载、不用预缓存、不触发定时，换完即死
             ManualChangeService.start(ctx)
@@ -779,12 +793,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val hint = ProcessBridgePrefs.statusHint(ctx)
                 if (hint.isNotBlank() && hint != lastHint) {
                     lastHint = hint
-                    _status.value = hint
+                    setStatus(hint, popup = false)
                 }
                 // 曾进入更换且已释放锁 → 结束
                 if (sawBusy && !changing) {
                     val finalHint = ProcessBridgePrefs.statusHint(ctx)
-                    if (finalHint.isNotBlank()) _status.value = finalHint
+                    if (finalHint.isNotBlank()) setStatus(finalHint, popup = false)
                     break
                 }
                 // 未抢到锁但已有终态文案
@@ -793,14 +807,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     hint.isNotBlank() &&
                     (hint.startsWith("已设置") || hint.startsWith("失败") || hint.contains("已有更换"))
                 ) {
-                    _status.value = hint
+                    setStatus(hint, popup = false)
                     break
                 }
             }
             if (_status.value.contains("已交由")) {
                 val h = ProcessBridgePrefs.statusHint(ctx)
-                if (h.isNotBlank() && !h.contains("已交由")) _status.value = h
-                else if (_status.value.contains("已交由")) _status.value = "更换流程已结束"
+                if (h.isNotBlank() && !h.contains("已交由")) setStatus(h, popup = false)
+                else if (_status.value.contains("已交由")) setStatus("更换流程已结束", popup = false)
             }
             // 手动不改定时时钟；仅刷新桥接读数供展示（仍是自动上次时间）
             _bridgeLastChange.value = ProcessBridgePrefs.lastChangeAt(ctx)
@@ -812,16 +826,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun importKeywordsFromUrl(url: String, replace: Boolean = true) {
         if (url.isBlank()) {
-            _status.value = "请填写远程关键词 URL"
+            setStatus("请填写远程关键词 URL", popup = true)
             return
         }
         viewModelScope.launch {
             _busy.value = true
-            _status.value = "正在导入关键词…"
+            setStatus("正在导入关键词…", popup = true)
             try {
                 val remote = api.fetchRemoteKeywordList(url.trim())
                 if (remote.isEmpty()) {
-                    _status.value = "远程列表为空"
+                    setStatus("远程列表为空", popup = true)
                 } else {
                     val merged = if (replace) remote
                     else (settings.value.keywords + remote).distinct()
@@ -830,10 +844,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         keywordsRemoteUrl = url.trim()
                     )
                     settingsRepo.save(next)
-                    _status.value = "已导入 ${remote.size} 个关键词"
+                    setStatus("已导入 ${remote.size} 个关键词", popup = true)
                 }
             } catch (e: Exception) {
-                _status.value = "导入失败：${e.message}"
+                setStatus("导入失败：${e.message}", popup = true)
             }
             _busy.value = false
         }
@@ -856,7 +870,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (PinSecurity.verify(pin, s.pinHash)) {
             _unlocked.value = true
             _pinMessage.value = "已解锁"
-            _status.value = "PIN 解锁成功"
+            setStatus("PIN 解锁成功", popup = true)
         } else {
             _pinMessage.value = "PIN 错误"
         }
@@ -865,7 +879,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun lockNow() {
         _unlocked.value = false
         _pinMessage.value = "已锁定"
-        _status.value = "已锁定，密钥/关键词/兜底 API 已隐藏"
+        setStatus("已锁定，密钥/关键词/兜底 API 已隐藏", popup = false)
     }
 
     fun setPinWithConfirm(newPin: String, confirmPin: String) {
@@ -890,7 +904,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 settingsRepo.save(next)
                 _unlocked.value = true
                 _pinMessage.value = "PIN 已设置"
-                _status.value = "PIN 已启用"
+                setStatus("PIN 已启用", popup = true)
             } else {
                 if (settings.value.pinEnabled && !_unlocked.value) {
                     _pinMessage.value = "请先解锁再关闭 PIN"
@@ -900,7 +914,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 settingsRepo.save(next)
                 _unlocked.value = true
                 _pinMessage.value = "PIN 已关闭"
-                _status.value = "PIN 已关闭"
+                setStatus("PIN 已关闭", popup = true)
             }
         }
     }
@@ -982,7 +996,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val next = settings.value.copy(overviewMinimalMode = enabled)
             settingsRepo.save(next)
-            _status.value = if (enabled) "已开启极简模式" else "已关闭极简模式"
+            setStatus(if (enabled) "已开启极简模式" else "已关闭极简模式", popup = false)
         }
     }
 
@@ -995,9 +1009,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val r = withContext(Dispatchers.IO) { GitSync.upload(getApplication(), s) }
                 if (r.isSuccess) {
                     settingsRepo.save(s.copy(gitLastUploadAt = System.currentTimeMillis()))
-                    _status.value = r.getOrNull() ?: "上传成功"
+                    setStatus(r.getOrNull() ?: "上传成功", popup = false)
                 } else {
-                    _status.value = "上传失败：${r.exceptionOrNull()?.message}"
+                    setStatus("上传失败：${r.exceptionOrNull()?.message}", popup = false)
                 }
             } finally {
                 _busy.value = false
@@ -1012,7 +1026,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val s = settings.value
                 val r = withContext(Dispatchers.IO) { GitSync.download(s) }
                 if (r.isFailure) {
-                    _status.value = "拉取失败：${r.exceptionOrNull()?.message}"
+                    setStatus("拉取失败：${r.exceptionOrNull()?.message}", popup = false)
                     return@launch
                 }
                 val json = r.getOrNull().orEmpty()
@@ -1050,9 +1064,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 ProcessBridgePrefs.writeBlacklist(getApplication(), merged.blacklistPackages)
                 ProcessBridgePrefs.writeAvoidLocationsJson(getApplication(), merged.avoidanceLocationsJson)
                 GitSyncWorker.schedule(getApplication(), merged.gitUploadIntervalMinutes)
-                _status.value = "已从 Git 同步到本地"
+                setStatus("已从 Git 同步到本地", popup = true)
             } catch (e: Exception) {
-                _status.value = "同步失败：${e.message}"
+                setStatus("同步失败：${e.message}", popup = false)
             } finally {
                 _busy.value = false
             }
@@ -1068,15 +1082,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val s = settings.value
             if (!s.translateAiMode) {
-                _status.value = "请先开启 AI 模式"
+                setStatus("请先开启 AI 模式", popup = true)
                 return@launch
             }
             if (s.translateAiApiKey.isBlank()) {
-                _status.value = "请填写 AI API Key"
+                setStatus("请填写 AI API Key", popup = true)
                 return@launch
             }
             _busy.value = true
-            _status.value = "正在检测 AI 模型…"
+            setStatus("正在检测 AI 模型…", popup = true)
             try {
                 val reply = withContext(Dispatchers.IO) {
                     AiOneShot.chat(
@@ -1087,13 +1101,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     )
                 }
                 if (reply.isNullOrBlank()) {
-                    _status.value = "AI 不可用：无响应（检查 Key / Base URL / 网络）"
+                    setStatus("AI 不可用：无响应（检查 Key / Base URL / 网络）", popup = true)
                 } else {
                     val model = s.translateAiModel.ifBlank { "gpt-4o-mini" }
-                    _status.value = "AI 可用 · 模型 $model · 回复：${reply.take(80)}"
+                    setStatus("AI 可用 · 模型 $model · 回复：${reply.take(80)}", popup = true)
                 }
             } catch (e: Exception) {
-                _status.value = "AI 检测失败：${e.message}"
+                setStatus("AI 检测失败：${e.message}", popup = true)
             } finally {
                 _busy.value = false
             }
@@ -1143,7 +1157,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun clearJumpKeywords() {
         viewModelScope.launch {
             settingsRepo.setJumpKeywords(emptyList())
-            _status.value = "跃迁列表已清空，将从本地关键词重新跃迁"
+            setStatus("跃迁列表已清空，将从本地关键词重新跃迁", popup = true)
         }
     }
 
@@ -1155,23 +1169,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val s = settings.value
             val zhList = s.keywordsChinese.map { it.trim() }.filter { it.isNotEmpty() }
             if (zhList.isEmpty()) {
-                _status.value = "中文关键词列表为空"
+                setStatus("中文关键词列表为空", popup = true)
                 return@launch
             }
             if (!s.translateAiMode && s.translateProvider == com.kers.killove.jhsy.domain.TranslateProvider.Off) {
-                _status.value = "请开启 AI 模式或翻译提供方"
+                setStatus("请开启 AI 模式或翻译提供方", popup = true)
                 return@launch
             }
             if (s.translateAiMode && s.translateAiApiKey.isBlank()) {
-                _status.value = "请配置 AI API Key"
+                setStatus("请配置 AI API Key", popup = true)
                 return@launch
             }
             _busy.value = true
-            _status.value = "正在翻译中文关键词（${zhList.size}）…"
+            setStatus("正在翻译中文关键词（${zhList.size}）…", popup = true)
             try {
                 val map = translator.translateListToEn(zhList, s)
                 if (map.isEmpty()) {
-                    _status.value = "翻译失败：无结果（检查翻译配置/网络）"
+                    setStatus("翻译失败：无结果（检查翻译配置/网络）", popup = true)
                     return@launch
                 }
                 val existing = s.keywords.map { it.trim() }.filter { it.isNotEmpty() }
@@ -1185,14 +1199,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     appended.add(en)
                 }
                 if (appended.isEmpty()) {
-                    _status.value = "翻译完成，无新英文词可追加（可能均已存在）"
+                    setStatus("翻译完成，无新英文词可追加（可能均已存在）", popup = true)
                     return@launch
                 }
                 val next = existing + appended
                 settingsRepo.save(s.copy(keywords = next))
-                _status.value = "已追加 ${appended.size} 个英文关键词（共 ${next.size}）"
+                setStatus("已追加 ${appended.size} 个英文关键词（共 ${next.size}）", popup = false)
             } catch (e: Exception) {
-                _status.value = "同步失败：${e.message}"
+                setStatus("同步失败：${e.message}", popup = false)
             } finally {
                 _busy.value = false
             }
@@ -1209,7 +1223,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             ProcessBridgePrefs.writeBlacklist(getApplication(), list)
             val next = settings.value.copy(blacklistPackages = list)
             settingsRepo.save(next)
-            _status.value = "黑名单已更新（${list.size} 个应用）"
+            setStatus("黑名单已更新（${list.size} 个应用）", popup = false)
         }
     }
 
@@ -1298,9 +1312,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     frames.listFiles()?.forEach { if (it.isFile) { it.delete(); n++ } }
                 }
                 refreshCacheSize()
-                _status.value = "已清空壁纸缓存（$n 个文件）"
+                setStatus("已清空壁纸缓存（$n 个文件）", popup = true)
             } catch (e: Exception) {
-                _status.value = "清空缓存失败：${e.message}"
+                setStatus("清空缓存失败：${e.message}", popup = false)
             }
         }
     }
@@ -1314,7 +1328,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     destinyEnabled = s.destinyEnabled
                 )
             )
-            _status.value = "命运先机配置已保存"
+            setStatus("命运先机配置已保存", popup = false)
         }
     }
 
@@ -1329,9 +1343,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             try {
                 dao.deleteAll()
-                _status.value = "已清空更换记录（日志）"
+                setStatus("已清空更换记录（日志）", popup = true)
             } catch (e: Exception) {
-                _status.value = "清空记录失败：${e.message}"
+                setStatus("清空记录失败：${e.message}", popup = false)
             }
         }
     }
@@ -1354,12 +1368,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val ctx = getApplication<Application>()
             if (!LocationHelper.hasLocationPermission(ctx)) {
-                _status.value = "请先授予定位权限"
+                setStatus("请先授予定位权限", popup = false)
                 return@launch
             }
             val cur = LocationHelper.currentLocation(ctx)
             if (cur == null) {
-                _status.value = "暂无定位，请打开系统定位后重试"
+                setStatus("暂无定位，请打开系统定位后重试", popup = false)
                 return@launch
             }
             val name = label.trim().ifBlank {
@@ -1371,7 +1385,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             addAvoidanceLocation(
                 AvoidanceLocation(id, name, cur.latitude, cur.longitude)
             )
-            _status.value = "已将当前位置加入避让：$name"
+            setStatus("已将当前位置加入避让：$name", popup = false)
         }
     }
 
@@ -1401,7 +1415,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val json = LocationHelper.locationsToJson(cur)
             ProcessBridgePrefs.writeAvoidLocationsJson(ctx, json)
             settingsRepo.save(settings.value.copy(avoidanceLocationsJson = json))
-            _status.value = "已加入避让：${loc.name}"
+            setStatus("已加入避让：${loc.name}", popup = false)
         }
     }
 
@@ -1409,7 +1423,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val m = meters.coerceIn(5, 500)
             settingsRepo.save(settings.value.copy(locationAvoidRadiusMeters = m))
-            _status.value = "避让触发范围已设为 ${m} 米"
+            setStatus("避让触发范围已设为 ${m} 米", popup = false)
         }
     }
 
@@ -1449,7 +1463,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // 列表清空后立刻退出绿色模式，不等下次换壁纸
             next = clearGreenIfNoAvoidPoints(next)
             settingsRepo.save(next)
-            _status.value = if (cur.isEmpty()) {
+            setStatus(if (cur.isEmpty()) {, popup = false)
                 "已清空避让点，绿色模式已解除"
             } else {
                 "已移除避让点（剩余 ${cur.size}）"
@@ -1462,12 +1476,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** 从 SAF 选择内核文件 → 复制到私有目录并写路径。 */
     fun importSuperProxyBin(uri: android.net.Uri) {
         viewModelScope.launch {
-            _status.value = "正在导入内核…"
+            setStatus("正在导入内核…", popup = false)
             val result = withContext(Dispatchers.IO) {
                 SuperProxyController.importBinFromUri(getApplication(), uri)
             }
             if (!result.ok) {
-                _status.value = result.message
+                setStatus(result.message, popup = false)
                 return@launch
             }
             val next = settings.value.copy(
@@ -1475,19 +1489,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 superProxyBinPath = result.path
             )
             withContext(Dispatchers.IO) { settingsRepo.save(next) }
-            _status.value = result.message
+            setStatus(result.message, popup = false)
         }
     }
 
     /** 从 SAF 选择配置文件 → 复制到私有目录并写路径。 */
     fun importSuperProxyConfig(uri: android.net.Uri) {
         viewModelScope.launch {
-            _status.value = "正在导入配置…"
+            setStatus("正在导入配置…", popup = false)
             val result = withContext(Dispatchers.IO) {
                 SuperProxyController.importConfigFromUri(getApplication(), uri)
             }
             if (!result.ok) {
-                _status.value = result.message
+                setStatus(result.message, popup = false)
                 return@launch
             }
             val next = settings.value.copy(
@@ -1495,7 +1509,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 superProxyConfigPath = result.path
             )
             withContext(Dispatchers.IO) { settingsRepo.save(next) }
-            _status.value = result.message
+            setStatus(result.message, popup = false)
         }
     }
 
@@ -1522,29 +1536,29 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 settings.value
             }
             if (!s.proxyEnabled) {
-                _status.value = "请先启用「代理」，再开超级代理"
+                setStatus("请先启用「代理」，再开超级代理", popup = true)
                 return@launch
             }
             if (!s.superProxyEnabled) {
-                _status.value = "请先打开「启用超级代理」开关"
+                setStatus("请先打开「启用超级代理」开关", popup = true)
                 return@launch
             }
             if (s.superProxyBinPath.isBlank()) {
-                _status.value = "请先点「选择内核文件并导入」"
+                setStatus("请先点「选择内核文件并导入」", popup = false)
                 return@launch
             }
-            _status.value = "正在解析配置并启动超级代理内核…"
+            setStatus("正在解析配置并启动超级代理内核…", popup = true)
             val err = withContext(Dispatchers.IO) {
                 SuperProxyController.start(getApplication(), s)
             }
             if (err == null) {
                 ProxyHttp.applySettings(getApplication(), s)
                 ProxyHttp.setSuperRunning(true)
-                _status.value = SuperProxyController.status(getApplication(), s).message
+                setStatus(SuperProxyController.status(getApplication(), s).message, popup = false)
             } else {
                 ProxyHttp.setSuperRunning(false)
                 ProxyHttp.applySettings(getApplication(), s)
-                _status.value = "超级代理启动失败：$err（已回退普通代理/系统网络）"
+                setStatus("超级代理启动失败：$err（已回退普通代理/系统网络）", popup = true)
             }
         }
     }
@@ -1556,18 +1570,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             ProxyHttp.setSuperRunning(false)
             ProxyHttp.applySettings(getApplication(), settings.value)
-            _status.value = "超级代理内核已停止（已回退普通代理/系统网络）"
+            setStatus("超级代理内核已停止（已回退普通代理/系统网络）", popup = true)
         }
     }
 
     fun importProxySubscription(urlOrBody: String) {
         viewModelScope.launch {
-            _status.value = "正在解析代理订阅…"
+            setStatus("正在解析代理订阅…", popup = false)
             val result = withContext(Dispatchers.IO) {
                 ProxySubscription.fetchAndParse(urlOrBody)
             }
             if (result.nodes.isEmpty()) {
-                _status.value = result.message
+                setStatus(result.message, popup = false)
                 return@launch
             }
             val json = ProxySubscription.nodesToJson(result.nodes)
@@ -1585,7 +1599,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             )
             settingsRepo.save(next)
             ProxyHttp.applySettings(next)
-            _status.value = result.message + "，已选用：${first.name}"
+            setStatus(result.message + "，已选用：${first.name}", popup = false)
         }
     }
 
@@ -1596,7 +1610,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             if (mode == ProxySelectMode.Auto) {
                 autoSelectBestProxyNode()
             }
-            _status.value = "代理选择模式：${mode.label}"
+            setStatus("代理选择模式：${mode.label}", popup = false)
         }
     }
 
@@ -1604,7 +1618,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val m = minutes.coerceIn(5, 180)
             settingsRepo.save(settings.value.copy(proxyAutoTestIntervalMinutes = m))
-            _status.value = "自动测速间隔：${m} 分钟"
+            setStatus("自动测速间隔：${m} 分钟", popup = false)
         }
     }
 
@@ -1613,7 +1627,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val list = settings.value.proxyNodes()
             val node = list.find { it.id == nodeId } ?: return@launch
             applyProxyNode(node, selectMode = ProxySelectMode.Manual)
-            _status.value = "已选用节点：${node.name}"
+            setStatus("已选用节点：${node.name}", popup = false)
         }
     }
 
@@ -1638,17 +1652,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         proxyTestJob = viewModelScope.launch {
             val list = settings.value.proxyNodes()
             if (list.isEmpty()) {
-                _status.value = "无节点可测"
+                setStatus("无节点可测", popup = false)
                 return@launch
             }
             _proxyTestBusy.value = true
-            _status.value = "测速中 0/${list.size}…"
+            setStatus("测速中 0/${list.size}…", popup = false)
             try {
                 val updated = mutableListOf<ProxyNode>()
                 for ((i, n) in list.withIndex()) {
                     ensureActive()
                     if (!isActive) break
-                    _status.value = "测速 ${i + 1}/${list.size}：${n.name}"
+                    setStatus("测速 ${i + 1}/${list.size}：${n.name}", popup = false)
                     val ms = withContext(Dispatchers.IO) {
                         ensureActive()
                         ProxyHttp.measureLatencyMs(
@@ -1681,9 +1695,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     )
                 )
                 val ok = merged.count { it.latencyMs >= 0 }
-                _status.value = "测速完成：可用 $ok/${merged.size}"
+                setStatus("测速完成：可用 $ok/${merged.size}", popup = false)
             } catch (e: kotlinx.coroutines.CancellationException) {
-                _status.value = "测速已中断（已保存已测节点）"
+                setStatus("测速已中断（已保存已测节点）", popup = false)
                 throw e
             } finally {
                 _proxyTestBusy.value = false
@@ -1696,14 +1710,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         proxyTestJob?.cancel()
         proxyTestJob = null
         _proxyTestBusy.value = false
-        _status.value = "测速已中断"
+        setStatus("测速已中断", popup = false)
     }
 
     fun autoSelectBestProxyNode() {
         viewModelScope.launch {
             var list = settings.value.proxyNodes()
             if (list.isEmpty()) {
-                _status.value = "无节点"
+                setStatus("无节点", popup = false)
                 return@launch
             }
             // 若全未测或间隔到了，先测一遍
@@ -1720,11 +1734,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             val best = list.filter { it.latencyMs >= 0 }.minByOrNull { it.latencyMs }
             if (best == null) {
-                _status.value = "没有可用节点（全部超时）"
+                setStatus("没有可用节点（全部超时）", popup = false)
                 return@launch
             }
             applyProxyNode(best, selectMode = ProxySelectMode.Auto)
-            _status.value = "自动选用最快：${best.name}（${best.latencyMs}ms）"
+            setStatus("自动选用最快：${best.name}（${best.latencyMs}ms）", popup = false)
         }
     }
 

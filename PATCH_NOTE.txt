@@ -1,6 +1,7 @@
-搜索/保存美化一致 + 保存提示 + 更新下载 + 状态弹窗（不推送）
+状态弹窗：仅用户操作触发 + 主题美化（不推送）
 
-1. 配置页顶部「搜索」「保存」均用 ThemeOutlinedButton，描边圆角一致
-2. 点击保存后弹出「已保存」说明
-3. 启动更新弹窗：主题按钮；支持「下载并安装」进度；保留浏览器/稍后
-4. 任意页面监听 status：新日志（排除壁纸更换进度类）弹窗同步状态描述
+1. MainViewModel 增加 statusAlert SharedFlow
+2. setStatus(msg, popup)：popup=true 才弹窗
+3. 按钮/改配置反馈 popup=true；壁纸进度、桥接轮询 popup=false
+4. 全局弹窗监听 statusAlert，不再监听任意 status 变化
+5. 弹窗使用 textColor / ThemeOutlinedButton / 半透明 container 对齐美化

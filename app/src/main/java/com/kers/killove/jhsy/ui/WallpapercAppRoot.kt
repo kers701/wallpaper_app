@@ -79,9 +79,7 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
     var updateMsg by remember { mutableStateOf("") }
     val appContext = androidx.compose.ui.platform.LocalContext.current
     val appScope = rememberCoroutineScope()
-    val status by vm.status.collectAsState()
     var statusPopup by remember { mutableStateOf<String?>(null) }
-    var lastStatusSeen by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         if (updateChecked) return@LaunchedEffect
@@ -98,19 +96,11 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
         }
     }
 
-    // 状态变化弹窗：任意页面可见（排除壁纸更换过程中的进度类文案）
-    LaunchedEffect(status) {
-        val s = status.trim()
-        if (s.isBlank() || s == lastStatusSeen) return@LaunchedEffect
-        lastStatusSeen = s
-        val wallpaperProgress = listOf(
-            "已交由", "当场下载", "更换流程", "正在下载壁纸", "正在设置壁纸",
-            "预下载中", "更换中", "下载壁纸", "设置壁纸", "正在更换"
-        ).any { s.contains(it) }
-        if (wallpaperProgress) return@LaunchedEffect
-        // 忽略过于琐碎的初始态
-        if (s in listOf("就绪", "空闲", "—", "-")) return@LaunchedEffect
-        statusPopup = s
+    // 仅用户点击/改配置触发的 statusAlert 才弹窗
+    LaunchedEffect(Unit) {
+        vm.statusAlert.collect { msg ->
+            if (msg.isNotBlank()) statusPopup = msg
+        }
     }
 
     updateDialog?.let { info ->
@@ -206,13 +196,30 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
     statusPopup?.let { msg ->
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { statusPopup = null },
-            title = { androidx.compose.material3.Text("状态更新") },
-            text = { androidx.compose.material3.Text(msg) },
+            title = {
+                androidx.compose.material3.Text(
+                    "状态更新",
+                    color = textColor
+                )
+            },
+            text = {
+                androidx.compose.material3.Text(
+                    msg,
+                    color = textColor.copy(alpha = 0.92f)
+                )
+            },
             confirmButton = {
                 com.kers.killove.jhsy.ui.screens.ThemeOutlinedButton(
                     onClick = { statusPopup = null }
-                ) { androidx.compose.material3.Text("知道了") }
-            }
+                ) {
+                    androidx.compose.material3.Text("知道了")
+                }
+            },
+            containerColor = androidx.compose.ui.graphics.Color.Black.copy(
+                alpha = (0.55f + cardAlpha * 0.35f).coerceIn(0.45f, 0.88f)
+            ),
+            titleContentColor = textColor,
+            textContentColor = textColor
         )
     }
 
