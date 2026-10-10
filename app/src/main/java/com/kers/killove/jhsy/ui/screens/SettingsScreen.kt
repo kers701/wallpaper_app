@@ -1456,6 +1456,7 @@ fun SettingsScreen(
                         translateApiKey = if (keysVisible) transKey.trim() else settings.translateApiKey,
                         translateAiMode = transAiMode,
                         pastLifeEnabled = pastLife,
+                        pastLifeDeepExplore = pastLifeDeep,
                         translateAiApiKey = if (keysVisible) transAiKey.trim() else settings.translateAiApiKey,
                         translateAiBaseUrl = transAiBase.trim().ifBlank { "https://api.openai.com/v1" },
                         translateAiModel = transAiModel.trim().ifBlank { "gpt-4o-mini" },
