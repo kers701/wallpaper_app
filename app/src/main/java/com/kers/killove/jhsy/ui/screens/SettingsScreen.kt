@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.size
@@ -86,7 +85,6 @@ fun SettingsScreen(
     var pinTempInput by remember { mutableStateOf("") }
     var settingsSearch by remember { mutableStateOf("") }
     var showSettingsSearch by remember { mutableStateOf(false) }
-    val settingsScroll = rememberScrollState()
     val createDocLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
     ) { uri ->
@@ -279,37 +277,19 @@ fun SettingsScreen(
         }
     }
 
-    val nestedScrollConn = remember {
-        object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
-            var pulled = 0f
-            override fun onPreScroll(
-                available: androidx.compose.ui.geometry.Offset,
-                source: androidx.compose.ui.input.nestedscroll.NestedScrollSource
-            ): androidx.compose.ui.geometry.Offset {
-                if (settingsScroll.value == 0 && available.y > 0f) {
-                    pulled += available.y
-                    if (pulled > 90f) {
-                        showSettingsSearch = true
-                        pulled = 0f
-                    }
-                    return androidx.compose.ui.geometry.Offset(0f, available.y * 0.25f)
-                }
-                pulled = 0f
-                return androidx.compose.ui.geometry.Offset.Zero
-            }
-        }
-    }
-
-    Box(Modifier = Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .nestedScroll(nestedScrollConn)
-            .verticalScroll(settingsScroll)
+            .verticalScroll(rememberScrollState())
             .padding(20.dp)
-            .padding(bottom = 96.dp),
+            .padding(bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        ThemeOutlinedButton(
+            onClick = { showSettingsSearch = true },
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("搜索配置板块") }
+
 
         // —— 常用：调度与来源 ——
         CollapsibleSection(
@@ -1482,16 +1462,17 @@ fun SettingsScreen(
         }
 
 
-        // 保存改为悬浮按钮
-    }
-
-    // 悬浮圆形「保存」
-    Box(
-        modifier = Modifier
-            .align(Alignment.BottomCenter)
-            .padding(bottom = 22.dp)
-            .size(68.dp)
-            .clickable {
+        // 底部圆形保存（固定在列表末尾，始终可滚到）
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(72.dp)
+                    .clickable {
 
                 val keys = if (keysVisible) SettingsRepository.splitLines(apiKeysText) else settings.apiKeys
                 val kws = if (keysVisible) SettingsRepository.splitLines(keywordsText) else settings.keywords
@@ -1588,17 +1569,26 @@ fun SettingsScreen(
                     )
                 )
             
-            },
-        contentAlignment = Alignment.Center
-    ) {
-        androidx.compose.material3.Surface(
-            shape = CircleShape,
-            color = LocalUiTextColor.current.copy(alpha = 0.28f),
-            border = androidx.compose.foundation.BorderStroke(1.5.dp, LocalUiTextColor.current.copy(alpha = 0.55f)),
-            modifier = Modifier.fillMaxSize()
-        ) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("保存", color = LocalUiTextColor.current, style = MaterialTheme.typography.titleMedium)
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                androidx.compose.material3.Surface(
+                    shape = CircleShape,
+                    color = LocalUiTextColor.current.copy(alpha = 0.28f),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.5.dp,
+                        LocalUiTextColor.current.copy(alpha = 0.55f)
+                    ),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(
+                            "保存",
+                            color = LocalUiTextColor.current,
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                    }
+                }
             }
         }
     }
@@ -1646,11 +1636,10 @@ fun SettingsScreen(
             title = { Text("搜索配置") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("下拉到顶可打开搜索。输入板块关键词。")
                     OutlinedTextField(
                         value = settingsSearch,
                         onValueChange = { settingsSearch = it },
-                        label = { Text("搜索") },
+                        label = { Text("板块关键词") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -1689,7 +1678,6 @@ fun SettingsScreen(
             }
         )
     }
-    } // end outer Box
 
     if (showAccelDialog) {
         AccelPrivacyDialog(

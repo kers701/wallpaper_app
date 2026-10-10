@@ -1,6 +1,7 @@
-构建修复 5.2.0（不推送）
+构建修复：SettingsScreen 结构简化（不推送）
 
-1. SettingsScreen：从 5.1.7 干净重建悬浮保存/下拉搜索/PIN 弹窗结构，修复 Box/align/损坏的 save 块
-2. LockedField 增加 onRequestUnlock
-3. HomeScreen：补 SwitchDefaults/SliderDefaults 导入；ThemeSlider 支持 onValueChangeFinished
-4. DestinyScheduleScreen：TextThemeButton → TextButton（误替换修复）
+- 去掉外层 Box + align（导致 Composable 上下文错误）
+- 圆形「保存」放在配置列表底部（可滚到）
+- 顶部「搜索配置板块」按钮 + PIN 临时解锁弹窗
+- 离开配置页自动锁定
+- Home ThemeSlider 支持 onValueChangeFinished；SwitchDefaults 导入
