@@ -987,7 +987,7 @@ fun SettingsScreen(
                 onClick = {
                     if (!superSt.canEnable) {
                         SuperServiceController.openAccessibilitySettings(context)
-                        return@OutlinedButton
+                        return@ThemeOutlinedButton
                     }
                     val err = SuperServiceController.enable(context)
                     if (err == null) {

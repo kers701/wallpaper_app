@@ -1,1 +1,1 @@
-Fix: ThemeOutlinedButton has no colors param (PurityChip); PastLife OptIn ExperimentalFoundationApi
+Fix: return@OutlinedButton -> return@ThemeOutlinedButton after button rename
