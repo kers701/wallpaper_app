@@ -469,7 +469,7 @@ fun SettingsScreen(
             else "电池优化：未忽略（划掉/息屏易被系统杀进程）",
             style = MaterialTheme.typography.bodySmall
         )
-        OutlinedButton(
+        ThemeOutlinedButton(
             onClick = { BatteryHelper.requestIgnoreBatteryOptimizations(context) },
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -618,7 +618,7 @@ fun SettingsScreen(
             )
         }
         if (jumpMode) {
-            OutlinedButton(
+            ThemeOutlinedButton(
                 onClick = { vm.clearJumpKeywords() },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = settings.jumpKeywords.isNotEmpty()
@@ -642,7 +642,7 @@ fun SettingsScreen(
                 minLines = 3,
                 maxLines = 10
             )
-            OutlinedButton(
+            ThemeOutlinedButton(
                 onClick = {
                     val zh = SettingsRepository.splitLines(keywordsZhText)
                     val en = SettingsRepository.splitLines(keywordsText)
@@ -659,11 +659,11 @@ fun SettingsScreen(
                 singleLine = true,
                 placeholder = { Text("https://example.com/keywords.txt") }
             )
-            OutlinedButton(
+            ThemeOutlinedButton(
                 onClick = { vm.importKeywordsFromUrl(keywordsUrl, replace = true) },
                 modifier = Modifier.fillMaxWidth()
             ) { Text("从远程导入并覆盖本地列表") }
-            OutlinedButton(
+            ThemeOutlinedButton(
                 onClick = { vm.importKeywordsFromUrl(keywordsUrl, replace = false) },
                 modifier = Modifier.fillMaxWidth()
             ) { Text("从远程导入并合并到本地") }
@@ -815,7 +815,7 @@ fun SettingsScreen(
                 "支持：订阅 URL / Base64 列表 / 每行 socks5://、http://、host:port；不支持 ss/vmess/trojan。",
                 style = MaterialTheme.typography.bodySmall
             )
-            OutlinedButton(
+            ThemeOutlinedButton(
                 onClick = { vm.importProxySubscription(proxySub) },
                 modifier = Modifier.fillMaxWidth()
             ) { Text("导入订阅 / 解析节点") }
@@ -826,7 +826,7 @@ fun SettingsScreen(
                         (settings.selectedProxyNode()?.let { " · 选用 ${it.name}" } ?: ""),
                     style = MaterialTheme.typography.bodySmall
                 )
-                OutlinedButton(
+                ThemeOutlinedButton(
                     onClick = onOpenProxyNodes,
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("节点选择（手动 / 自动测速）…") }
@@ -877,7 +877,7 @@ fun SettingsScreen(
                     "内核：${if (settings.superProxyBinPath.isNotBlank()) settings.superProxyBinPath else "未导入"}",
                     style = MaterialTheme.typography.bodySmall
                 )
-                OutlinedButton(
+                ThemeOutlinedButton(
                     onClick = { pickSuperBinLauncher.launch(arrayOf("*/*")) },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = (superProxyOn && proxyOn)
@@ -896,7 +896,7 @@ fun SettingsScreen(
                     "配置：${if (settings.superProxyConfigPath.isNotBlank()) settings.superProxyConfigPath else "未导入（可用订阅自动生成）"}",
                     style = MaterialTheme.typography.bodySmall
                 )
-                OutlinedButton(
+                ThemeOutlinedButton(
                     onClick = { pickSuperCfgLauncher.launch(arrayOf("application/*", "text/*", "*/*")) },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = (superProxyOn && proxyOn)
@@ -920,7 +920,7 @@ fun SettingsScreen(
                     enabled = (superProxyOn && proxyOn)
                 )
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(
+                    ThemeOutlinedButton(
                         onClick = {
                             vm.startSuperProxy(
                                 settings.copy(
@@ -937,7 +937,7 @@ fun SettingsScreen(
                         modifier = Modifier.weight(1f),
                         enabled = (superProxyOn && proxyOn)
                     ) { Text("启动内核") }
-                    OutlinedButton(
+                    ThemeOutlinedButton(
                         onClick = { vm.stopSuperProxy() },
                         modifier = Modifier.weight(1f)
                     ) { Text("停止内核") }
@@ -979,11 +979,11 @@ fun SettingsScreen(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            OutlinedButton(
+            ThemeOutlinedButton(
                 onClick = { SuperServiceController.openAccessibilitySettings(context) },
                 modifier = Modifier.weight(1f)
             ) { Text("申请无障碍") }
-            OutlinedButton(
+            ThemeOutlinedButton(
                 onClick = {
                     if (!superSt.canEnable) {
                         SuperServiceController.openAccessibilitySettings(context)
@@ -999,7 +999,7 @@ fun SettingsScreen(
             ) { Text(if (superSvc) "已开启" else "开启超级服务") }
         }
         if (superSvc) {
-            OutlinedButton(
+            ThemeOutlinedButton(
                 onClick = {
                     SuperServiceController.disable(context)
                     superSvc = false
@@ -1075,7 +1075,7 @@ fun SettingsScreen(
             "已选 ${settings.blacklistPackages.size} 个 · 前台休眠不换壁纸",
             style = MaterialTheme.typography.bodySmall
         )
-        OutlinedButton(
+        ThemeOutlinedButton(
             onClick = onOpenBlacklist,
             modifier = Modifier.fillMaxWidth()
         ) { Text("管理黑名单（名单在次级页）…") }
@@ -1093,7 +1093,7 @@ fun SettingsScreen(
             if (settings.destinyEnabled) {
                 val n = com.kers.killove.jhsy.util.DestinyHelper.parseRules(settings.destinyRulesJson).size
                 Text("已配置 $n 条规则", style = MaterialTheme.typography.bodySmall)
-                OutlinedButton(onClick = onOpenDestiny, modifier = Modifier.fillMaxWidth()) {
+                ThemeOutlinedButton(onClick = onOpenDestiny, modifier = Modifier.fillMaxWidth()) {
                     Text("命运先机配置…")
                 }
             }
@@ -1117,7 +1117,7 @@ fun SettingsScreen(
                 "已选 ${settings.avoidanceLocations().size} 个点 · 半径 ${settings.locationAvoidRadiusMeters} 米 · 区内: ${if (settings.locationInAvoidZone) "生效中" else "未触发"} · 后台需「始终允许」定位",
                 style = MaterialTheme.typography.bodySmall
             )
-            OutlinedButton(onClick = onOpenLocationAvoid, modifier = Modifier.fillMaxWidth()) {
+            ThemeOutlinedButton(onClick = onOpenLocationAvoid, modifier = Modifier.fillMaxWidth()) {
                 Text("管理避让地点（名单在次级页）…")
             }
         }
@@ -1266,7 +1266,7 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
-                OutlinedButton(
+                ThemeOutlinedButton(
                     onClick = {
                         // 先写入当前编辑中的 AI 配置再检测
                         vm.saveSettings(
@@ -1359,7 +1359,7 @@ fun SettingsScreen(
             ) { Text("解锁") }
         } else {
             if (settings.pinEnabled) {
-                OutlinedButton(
+                ThemeOutlinedButton(
                     onClick = { vm.lockNow() },
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("立即锁定") }
@@ -1383,7 +1383,7 @@ fun SettingsScreen(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword)
             )
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(
+                ThemeButton(
                     onClick = {
                         vm.setPinWithConfirm(newPin, confirmPin)
                         if (newPin.isNotEmpty() && newPin == confirmPin) {
@@ -1420,7 +1420,7 @@ fun SettingsScreen(
                 if (settings.gitLastUploadAt > 0L) append(" · 有上传记录")
             }
             Text(syncHint, style = MaterialTheme.typography.bodySmall)
-            OutlinedButton(
+            ThemeOutlinedButton(
                 onClick = onOpenCloudSync,
                 modifier = Modifier.fillMaxWidth()
             ) { Text("打开云同步配置") }
@@ -1434,8 +1434,8 @@ fun SettingsScreen(
             onToggle = { toggleSection("cache") }
         ) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { cacheConfirm = "cache" }, modifier = Modifier.weight(1f)) { Text("清空缓存文件") }
-            OutlinedButton(onClick = { cacheConfirm = "logs" }, modifier = Modifier.weight(1f)) { Text("清空更换记录") }
+            ThemeOutlinedButton(onClick = { cacheConfirm = "cache" }, modifier = Modifier.weight(1f)) { Text("清空缓存文件") }
+            ThemeOutlinedButton(onClick = { cacheConfirm = "logs" }, modifier = Modifier.weight(1f)) { Text("清空更换记录") }
         }
 
         }
@@ -1605,7 +1605,7 @@ private fun PurityChip(
         }
     }
     if (!enabled) {
-        OutlinedButton(
+        ThemeOutlinedButton(
             onClick = { handleClick() },
             modifier = modifier,
             colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
@@ -1618,7 +1618,7 @@ private fun PurityChip(
             modifier = modifier
         ) { Text(label) }
     } else {
-        OutlinedButton(
+        ThemeOutlinedButton(
             onClick = { handleClick() },
             modifier = modifier
         ) { Text(label) }
@@ -1741,7 +1741,7 @@ private fun AccelPrivacyDialog(
             }
         },
         dismissButton = {
-            OutlinedButton(onClick = onDismiss) { Text("不同意") }
+            ThemeOutlinedButton(onClick = onDismiss) { Text("不同意") }
         }
     )
 

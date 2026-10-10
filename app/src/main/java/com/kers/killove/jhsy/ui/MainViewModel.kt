@@ -191,9 +191,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val anniWords = withContext(Dispatchers.IO) {
             AnnihilationStore.lastRoundBlocked(ctx)
         }
-        if (s.translateProvider.name == "Off") {
+        val illuWords = withContext(Dispatchers.IO) {
+            com.kers.killove.jhsy.util.IllusionStore.lastRoundIllusory(ctx)
+        }
+        if (s.translateProvider.name == "Off" && !s.translateAiMode) {
             _jumpKeywordsZh.value = emptyMap()
             _annihilationZh.value = emptyMap()
+            _illusionZh.value = emptyMap()
             return
         }
         if (s.jumpKeywords.isEmpty()) {
@@ -205,6 +209,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _annihilationZh.value = emptyMap()
         } else {
             _annihilationZh.value = translator.translateList(anniWords, s)
+        }
+        if (illuWords.isEmpty()) {
+            _illusionZh.value = emptyMap()
+        } else {
+            _illusionZh.value = translator.translateList(illuWords, s)
         }
     }
 
@@ -248,6 +257,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** 上一轮被湮灭关键词的中文（展示用） */
     private val _annihilationZh = MutableStateFlow<Map<String, String>>(emptyMap())
     val annihilationZh: StateFlow<Map<String, String>> = _annihilationZh.asStateFlow()
+
+    private val _illusionZh = MutableStateFlow<Map<String, String>>(emptyMap())
+    val illusionZh: StateFlow<Map<String, String>> = _illusionZh.asStateFlow()
 
     /** 会话内是否已解锁（进程重启后需重新输入 PIN） */
     private val _unlocked = MutableStateFlow(false)

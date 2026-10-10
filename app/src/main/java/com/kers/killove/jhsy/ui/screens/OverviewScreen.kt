@@ -81,6 +81,7 @@ fun OverviewScreen(vm: MainViewModel) {
     var lockBmp by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
     var jumpExpanded by remember { mutableStateOf(false) }
     val jumpZh by vm.jumpKeywordsZh.collectAsState()
+    val illuZh by vm.illusionZh.collectAsState()
     val anniZh by vm.annihilationZh.collectAsState()
 
     fun reloadMeta() {
@@ -148,7 +149,7 @@ fun OverviewScreen(vm: MainViewModel) {
             Text("下次更换", style = MaterialTheme.typography.labelMedium, color = textColor.copy(alpha = 0.7f))
             Text(nextStr, style = MaterialTheme.typography.titleMedium, color = textColor)
             Spacer(Modifier.height(10.dp))
-            OutlinedButton(
+            ThemeOutlinedButton(
                 onClick = { vm.refreshOverview() },
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -188,7 +189,7 @@ fun OverviewScreen(vm: MainViewModel) {
                 style = MaterialTheme.typography.bodyMedium
             )
             if (prefetchReady && settings.enabled) {
-                OutlinedButton(
+                ThemeOutlinedButton(
                     onClick = { vm.zeroWaitTimer() },
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -378,7 +379,11 @@ fun OverviewScreen(vm: MainViewModel) {
                     )
                     if (illuHas && !illuNone && illuExpanded && illuList.isNotEmpty()) {
                         Spacer(Modifier.height(6.dp))
-                        Text(illuList.joinToString("、"), color = textColor, style = MaterialTheme.typography.bodySmall)
+                        val shown = illuList.joinToString("、") { w ->
+                            val zh = illuZh[w] ?: jumpZh[w]
+                            if (zh.isNullOrBlank()) w else "$w（$zh）"
+                        }
+                        Text(shown, color = textColor, style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }

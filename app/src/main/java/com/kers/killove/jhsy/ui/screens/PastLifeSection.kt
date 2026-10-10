@@ -7,9 +7,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -17,19 +23,26 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.kers.killove.jhsy.ui.LocalUiTextColor
 import com.kers.killove.jhsy.ui.MainViewModel
 import com.kers.killove.jhsy.util.PastLifeAi
 import com.kers.killove.jhsy.util.PastLifeStore
 
+/**
+ * 前世今生：点击打开弹层；分栏时左右滑动切换桌面/锁屏。
+ * 弹层使用 GlassCard，跟随全局板块美化。
+ */
 @Composable
 fun PastLifeSection(vm: MainViewModel) {
     val settings by vm.settings.collectAsState()
     val state by vm.pastLifeState.collectAsState()
     val textColor = LocalUiTextColor.current
-    var expanded by remember { mutableStateOf(false) }
+    var showDetail by remember { mutableStateOf(false) }
 
     if (!settings.pastLifeEnabled) return
     val aiOk = PastLifeAi.canUse(settings)
@@ -43,55 +56,111 @@ fun PastLifeSection(vm: MainViewModel) {
         Column(
             Modifier
                 .fillMaxWidth()
-                .clickable { expanded = !expanded }
+                .clickable { showDetail = true }
                 .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Text("前世今生", style = MaterialTheme.typography.titleMedium, color = textColor)
             Text(
                 when {
-                    !aiOk -> "前世今生：开启 · 需配置 AI"
-                    split -> "前世今生：分栏 · 左桌面 / 右锁屏" +
-                        if (expanded) " · 点击收起" else " · 点击展开"
-                    state.currKw.isBlank() -> "前世今生：开启 · 等待下次更换" +
-                        if (expanded) " · 点击收起" else " · 点击展开"
-                    state.needsNarrative || state.present.isBlank() ->
-                        "前世今生：开启 · 生成本期叙述中…" +
-                            if (expanded) " · 点击收起" else " · 点击展开"
-                    else -> "前世今生：开启 · 本期已更新" +
-                        if (expanded) " · 点击收起" else " · 点击展开"
+                    !aiOk -> "前世今生：开启 · 需配置 AI · 点击查看"
+                    split -> "前世今生：分栏 · 点击查看（左右滑动切换桌面/锁屏）"
+                    state.currKw.isBlank() && state.unified.currKw.isBlank() ->
+                        "前世今生：开启 · 等待下次更换 · 点击查看"
+                    state.needsNarrative ->
+                        "前世今生：开启 · 生成本期叙述中… · 点击查看"
+                    else -> "前世今生：开启 · 本期已更新 · 点击查看"
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = textColor.copy(alpha = 0.85f)
             )
+        }
+    }
 
-            if (!expanded) return@Column
-            if (!aiOk) {
-                Text(
-                    "请开启 AI 模式并配置 API Key 后生效",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = textColor.copy(alpha = 0.65f)
-                )
-                return@Column
-            }
-
-            Spacer(Modifier.height(4.dp))
-            if (split) {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+    if (showDetail) {
+        Dialog(
+            onDismissRequest = { showDetail = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            GlassCard(
+                modifier = Modifier
+                    .fillMaxWidth(0.94f)
+                    .padding(horizontal = 12.dp)
+            ) {
+                Column(
+                    Modifier
+                        .padding(16.dp)
+                        .heightIn(max = 520.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("桌面", style = MaterialTheme.typography.titleSmall, color = textColor)
-                        TrackBlocks(state.home, textColor)
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("前世今生", style = MaterialTheme.typography.titleMedium, color = textColor)
+                        TextButton(onClick = { showDetail = false }) {
+                            Text("关闭", color = textColor)
+                        }
                     }
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("锁屏", style = MaterialTheme.typography.titleSmall, color = textColor)
-                        TrackBlocks(state.lock, textColor)
+
+                    if (!aiOk) {
+                        Text(
+                            "请开启跃迁、AI 模式并配置 API Key 后生效",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = textColor.copy(alpha = 0.65f)
+                        )
+                    } else if (split) {
+                        val pagerState = rememberPagerState(pageCount = { 2 })
+                        Text(
+                            if (pagerState.currentPage == 0) "桌面 · 左右滑动切换锁屏"
+                            else "锁屏 · 左右滑动切换桌面",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = textColor.copy(alpha = 0.75f)
+                        )
+                        HorizontalPager(
+                            state = pagerState,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(360.dp)
+                        ) { page ->
+                            Column(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(vertical = 4.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                val track = if (page == 0) state.home else state.lock
+                                Text(
+                                    if (page == 0) "桌面" else "锁屏",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = textColor
+                                )
+                                TrackBlocks(track, textColor)
+                            }
+                        }
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Text(
+                                if (pagerState.currentPage == 0) "● ○" else "○ ●",
+                                color = textColor.copy(alpha = 0.6f),
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    } else {
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            TrackBlocks(state.unified, textColor)
+                        }
                     }
                 }
-            } else {
-                TrackBlocks(state.unified, textColor)
             }
         }
     }

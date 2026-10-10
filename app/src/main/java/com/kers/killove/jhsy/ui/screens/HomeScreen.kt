@@ -337,6 +337,7 @@ fun HomeScreen(vm: MainViewModel, onOpenHelp: (() -> Unit)? = null) {
     }
     val jumpZh by vm.jumpKeywordsZh.collectAsState()
     val anniZh by vm.annihilationZh.collectAsState()
+    val illuZh by vm.illusionZh.collectAsState()
     var jumpExpanded by remember { mutableStateOf(false) }
 
     val bridgeLast by vm.bridgeLastChange.collectAsState()
@@ -396,7 +397,7 @@ fun HomeScreen(vm: MainViewModel, onOpenHelp: (() -> Unit)? = null) {
                 )
             }
             if (onOpenHelp != null) {
-                OutlinedButton(onClick = onOpenHelp) {
+                ThemeOutlinedButton(onClick = onOpenHelp) {
                     Text("使用说明")
                 }
             }
@@ -440,7 +441,7 @@ fun HomeScreen(vm: MainViewModel, onOpenHelp: (() -> Unit)? = null) {
                     style = MaterialTheme.typography.bodyMedium
                 )
                 if (prefetchReady && settings.enabled) {
-                    OutlinedButton(
+                    ThemeOutlinedButton(
                         onClick = { vm.zeroWaitTimer() },
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -640,7 +641,11 @@ fun HomeScreen(vm: MainViewModel, onOpenHelp: (() -> Unit)? = null) {
                         color = textColor.copy(alpha = 0.85f)
                     )
                     if (illuHas && !illuNone && illuList.isNotEmpty() && illuExpanded) {
-                        Text(illuList.joinToString("、"), color = textColor)
+                        val shown = illuList.joinToString("、") { w ->
+                            val zh = illuZh[w] ?: jumpZh[w]
+                            if (zh.isNullOrBlank()) w else "$w（$zh）"
+                        }
+                        Text(shown, color = textColor)
                     }
                     Text(
                         "身前虚妄，身后亦是虚妄",
@@ -659,7 +664,7 @@ fun HomeScreen(vm: MainViewModel, onOpenHelp: (() -> Unit)? = null) {
                 Text("网络检测", style = MaterialTheme.typography.titleMedium, color = textColor)
                 Text(networkProbe, style = MaterialTheme.typography.bodySmall, color = textColor.copy(alpha = 0.9f))
                 if (probing) CircularProgressIndicator(color = textColor)
-                OutlinedButton(
+                ThemeOutlinedButton(
                     onClick = { vm.testNetwork() },
                     enabled = !probing && !busy,
                     modifier = Modifier.fillMaxWidth()
@@ -726,8 +731,8 @@ fun HomeScreen(vm: MainViewModel, onOpenHelp: (() -> Unit)? = null) {
                         style = MaterialTheme.typography.bodySmall,
                         color = textColor.copy(alpha = 0.7f)
                     )
-                    OutlinedButton(onClick = { confirmClearRunLog = true }) { Text("清空日志") }
-                    OutlinedButton(onClick = {
+                    ThemeOutlinedButton(onClick = { confirmClearRunLog = true }) { Text("清空日志") }
+                    ThemeOutlinedButton(onClick = {
                         RunLog.setDeveloperMode(context, false)
                         runLogOn = false
                         devMode = false
@@ -859,6 +864,64 @@ fun JumpKeywordsTimeline(
     }
 }
 
+
+
+@Composable
+fun ThemeOutlinedButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit
+) {
+    val textColor = LocalUiTextColor.current
+    val alpha = LocalCardAlpha.current
+    val style = LocalCardStyle.current
+    val borderAlpha = when (style) {
+        CardStyle.LiquidGlass -> 0.45f
+        CardStyle.GaussianBlur -> 0.35f
+        CardStyle.Fog -> 0.30f
+        else -> 0.40f
+    }
+    androidx.compose.material3.OutlinedButton(
+        onClick = onClick,
+        modifier = modifier,
+        enabled = enabled,
+        colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+            contentColor = textColor,
+            containerColor = Color.White.copy(alpha = (alpha * 0.18f).coerceIn(0.06f, 0.28f)),
+            disabledContentColor = textColor.copy(alpha = 0.38f),
+            disabledContainerColor = Color.White.copy(alpha = 0.04f)
+        ),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            textColor.copy(alpha = borderAlpha)
+        ),
+        content = content
+    )
+}
+
+@Composable
+fun ThemeButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit
+) {
+    val textColor = LocalUiTextColor.current
+    val alpha = LocalCardAlpha.current
+    androidx.compose.material3.Button(
+        onClick = onClick,
+        modifier = modifier,
+        enabled = enabled,
+        colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+            containerColor = textColor.copy(alpha = (0.22f + alpha * 0.25f).coerceIn(0.18f, 0.45f)),
+            contentColor = textColor,
+            disabledContainerColor = textColor.copy(alpha = 0.08f),
+            disabledContentColor = textColor.copy(alpha = 0.35f)
+        ),
+        content = content
+    )
+}
 
 @Composable
 fun CollapsibleSection(
