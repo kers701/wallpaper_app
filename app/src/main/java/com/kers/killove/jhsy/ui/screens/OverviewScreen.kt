@@ -283,13 +283,14 @@ fun OverviewScreen(vm: MainViewModel) {
                 )
                 if (settings.jumpKeywords.isNotEmpty()) {
                     val list = settings.jumpKeywords
-                    val idx = settings.jumpKeywordIndex.mod(list.size)
-                    val next = list[idx]
-                    val nextZh = jumpZh[next]
-                    Text(
-                        "下次将用：" + if (nextZh.isNullOrBlank()) next else "$next（$nextZh）",
-                        color = textColor,
-                        style = MaterialTheme.typography.bodySmall
+                    val idx = settings.jumpKeywordIndex
+                    val isolate = settings.isolateHomeLock && settings.target == com.kers.killove.jhsy.domain.WallpaperTarget.Both
+                    JumpKeywordsTimeline(
+                        list = list,
+                        index = idx,
+                        isolate = isolate,
+                        zhMap = jumpZh,
+                        textColor = textColor
                     )
                     if (jumpExpanded) {
                         Spacer(Modifier.height(6.dp))

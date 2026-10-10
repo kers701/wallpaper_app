@@ -547,13 +547,14 @@ fun HomeScreen(vm: MainViewModel, onOpenHelp: (() -> Unit)? = null) {
                 )
                 if (settings.jumpKeywords.isNotEmpty()) {
                     val list = settings.jumpKeywords
-                    val idx = settings.jumpKeywordIndex.mod(list.size)
-                    val next = list[idx]
-                    val nextZh = jumpZh[next]
-                    Text(
-                        "下次将用：" + if (nextZh.isNullOrBlank()) next else "$next（$nextZh）",
-                        color = textColor,
-                        style = MaterialTheme.typography.bodySmall
+                    val idx = settings.jumpKeywordIndex
+                    val isolate = settings.isolateHomeLock && settings.target == com.kers.killove.jhsy.domain.WallpaperTarget.Both
+                    JumpKeywordsTimeline(
+                        list = list,
+                        index = idx,
+                        isolate = isolate,
+                        zhMap = jumpZh,
+                        textColor = textColor
                     )
                     if (jumpExpanded) {
                         val shown = list.joinToString("、") { w ->
@@ -776,6 +777,85 @@ fun RowSwitch(
             color = textColor.copy(alpha = if (enabled) 1f else 0.45f)
         )
         Switch(checked = checked, onCheckedChange = onChecked, enabled = enabled)
+    }
+}
+
+
+
+/** 跃迁列表上的「上次 / 本次 / 下次」相对当前索引（索引指向下次将用）。 */
+private fun jumpTimelineWords(list: List<String>, index: Int, stepsPerCycle: Int): Triple<String, String, String> {
+    if (list.isEmpty()) return Triple("", "", "")
+    val n = list.size
+    val idx = index.mod(n)
+    val next = list[idx]
+    val curr = list[(idx - stepsPerCycle).mod(n)]
+    val prev = list[(idx - 2 * stepsPerCycle).mod(n)]
+    return Triple(prev, curr, next)
+}
+
+@Composable
+private fun JumpWordLine(
+    label: String,
+    word: String,
+    zhMap: Map<String, String>,
+    textColor: androidx.compose.ui.graphics.Color
+) {
+    val zh = zhMap[word]
+    val body = when {
+        word.isBlank() -> "—"
+        zh.isNullOrBlank() -> word
+        else -> "$word（$zh）"
+    }
+    Text(
+        "$label：$body",
+        color = textColor,
+        style = MaterialTheme.typography.bodySmall
+    )
+}
+
+@Composable
+fun JumpKeywordsTimeline(
+    list: List<String>,
+    index: Int,
+    isolate: Boolean,
+    zhMap: Map<String, String>,
+    textColor: androidx.compose.ui.graphics.Color
+) {
+    if (list.isEmpty()) return
+    if (isolate) {
+        val n = list.size
+        val idx = index.mod(n)
+        // 隔离每轮桌面+锁屏各一词，索引一次 +2：桌面用 idx-2，锁屏 idx-1，下次桌面 idx、锁屏 idx+1
+        val homePrev = list[(idx - 4).mod(n)]
+        val homeCurr = list[(idx - 2).mod(n)]
+        val homeNext = list[idx]
+        val lockPrev = list[(idx - 3).mod(n)]
+        val lockCurr = list[(idx - 1).mod(n)]
+        val lockNext = list[(idx + 1).mod(n)]
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("桌面", style = MaterialTheme.typography.titleSmall, color = textColor)
+                JumpWordLine("上次", homePrev, zhMap, textColor)
+                JumpWordLine("本次", homeCurr, zhMap, textColor)
+                JumpWordLine("下次", homeNext, zhMap, textColor)
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("锁屏", style = MaterialTheme.typography.titleSmall, color = textColor)
+                JumpWordLine("上次", lockPrev, zhMap, textColor)
+                JumpWordLine("本次", lockCurr, zhMap, textColor)
+                JumpWordLine("下次", lockNext, zhMap, textColor)
+            }
+        }
+    } else {
+        val (prev, curr, next) = jumpTimelineWords(list, index, stepsPerCycle = 1)
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            JumpWordLine("上次用词", prev, zhMap, textColor)
+            JumpWordLine("本次用词", curr, zhMap, textColor)
+            JumpWordLine("下次用词", next, zhMap, textColor)
+        }
     }
 }
 

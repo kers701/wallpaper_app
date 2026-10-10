@@ -1,1 +1,5 @@
-Fix: State.copy(prevZh) invalid after Track refactor; split-mode hasKw check
+跃迁关键词：上次/本次/下次展示（不推送）
+
+- 非隔离：显示上次用词、本次用词、下次用词
+- 隔离：左右栏分别显示桌面/锁屏的上次、本次、下次
+- 展开后仍显示完整跃迁列表
