@@ -22,6 +22,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -65,6 +68,46 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
     val cardAlpha = settings.uiCardAlpha
     val cardStyle = settings.cardStyle
     val minimal = settings.overviewMinimalMode
+
+    var updateDialog by remember { mutableStateOf<com.kers.killove.jhsy.util.AppUpdateChecker.ReleaseInfo?>(null) }
+    var updateChecked by remember { mutableStateOf(false) }
+    val appContext = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(Unit) {
+        if (updateChecked) return@LaunchedEffect
+        updateChecked = true
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching {
+                when (val r = com.kers.killove.jhsy.util.AppUpdateChecker.checkLatest()) {
+                    is com.kers.killove.jhsy.util.AppUpdateChecker.CheckResult.UpdateAvailable -> {
+                        updateDialog = r.info
+                    }
+                    else -> Unit
+                }
+            }
+        }
+    }
+    updateDialog?.let { info ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { updateDialog = null },
+            title = { androidx.compose.material3.Text("发现新版本") },
+            text = {
+                androidx.compose.material3.Text(
+                    listOf(info.name, info.versionName, info.body.take(240)).filter { it.isNotBlank() }.joinToString("\n")
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    com.kers.killove.jhsy.util.AppUpdateChecker.openReleasePage(appContext, info.htmlUrl)
+                    updateDialog = null
+                }) { androidx.compose.material3.Text("查看更新") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { updateDialog = null }) {
+                    androidx.compose.material3.Text("稍后")
+                }
+            }
+        )
+    }
 
     LaunchedEffect(minimal) {
         if (minimal && route != "overview") {

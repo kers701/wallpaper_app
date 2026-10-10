@@ -238,7 +238,7 @@ fun CloudSyncScreen(vm: MainViewModel, onBack: () -> Unit) {
                 modifier = Modifier.weight(1f),
                 enabled = !busy
             ) { Text("立即上传") }
-            OutlinedButton(
+            ThemeOutlinedButton(
                 onClick = {
                     vm.saveSettings(currentSettings())
                     vm.gitSyncDownload()
@@ -276,6 +276,6 @@ private fun CloudSyncScopeRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(title, color = textColor, modifier = Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onChange)
+        ThemeSwitch(checked = checked, onCheckedChange = onChange)
     }
 }

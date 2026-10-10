@@ -157,7 +157,7 @@ fun LocationAvoidScreen(vm: MainViewModel, onBack: () -> Unit, onOpenList: () ->
                             color = textColor.copy(alpha = 0.85f)
                         )
                     }
-                    OutlinedButton(
+                    ThemeOutlinedButton(
                         onClick = {
                             val need = mutableListOf(
                                 Manifest.permission.ACCESS_FINE_LOCATION,
@@ -211,12 +211,12 @@ fun LocationAvoidScreen(vm: MainViewModel, onBack: () -> Unit, onOpenList: () ->
                             style = MaterialTheme.typography.bodySmall,
                             color = textColor.copy(alpha = 0.8f)
                         )
-                        OutlinedButton(
+                        ThemeOutlinedButton(
                             onClick = { LocationHelper.openAppLocationSettings(context) },
                             modifier = Modifier.fillMaxWidth()
                         ) { Text("打开应用权限设置") }
                         if (RootKeepAlive.hasRoot()) {
-                            OutlinedButton(
+                            ThemeOutlinedButton(
                                 onClick = {
                                     val ok = RootKeepAlive.grantBackgroundLocation(context.packageName)
                                     refreshLocation()
@@ -251,7 +251,7 @@ fun LocationAvoidScreen(vm: MainViewModel, onBack: () -> Unit, onOpenList: () ->
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        OutlinedButton(
+                        ThemeOutlinedButton(
                             onClick = {
                                 resolvingName = true
                                 vm.resolveCurrentPlaceName { name ->
@@ -262,7 +262,7 @@ fun LocationAvoidScreen(vm: MainViewModel, onBack: () -> Unit, onOpenList: () ->
                             enabled = !resolvingName,
                             modifier = Modifier.weight(1f)
                         ) { Text(if (resolvingName) "解析中…" else "自动获取地名") }
-                        OutlinedButton(
+                        ThemeOutlinedButton(
                             onClick = { vm.addCurrentLocationAsAvoid(customLabel) },
                             modifier = Modifier.weight(1f)
                         ) { Text("设为避让点") }
@@ -284,7 +284,7 @@ fun LocationAvoidScreen(vm: MainViewModel, onBack: () -> Unit, onOpenList: () ->
                         style = MaterialTheme.typography.bodySmall,
                         color = textColor.copy(alpha = 0.7f)
                     )
-                    Slider(
+                    ThemeSlider(
                         value = radius,
                         onValueChange = { radius = it },
                         valueRange = 5f..500f,
@@ -308,7 +308,7 @@ fun LocationAvoidScreen(vm: MainViewModel, onBack: () -> Unit, onOpenList: () ->
             )
         }
         item {
-            OutlinedButton(
+            ThemeOutlinedButton(
                 onClick = {
                     searching = true
                     vm.searchAvoidPlaces(keyword) { result ->
@@ -341,7 +341,7 @@ fun LocationAvoidScreen(vm: MainViewModel, onBack: () -> Unit, onOpenList: () ->
                             style = MaterialTheme.typography.bodySmall,
                             color = textColor.copy(alpha = 0.6f)
                         )
-                        OutlinedButton(
+                        ThemeOutlinedButton(
                             onClick = {
                                 vm.addAvoidanceLocation(
                                     AvoidanceLocation(hit.id, hit.name, hit.lat, hit.lng)
@@ -354,7 +354,7 @@ fun LocationAvoidScreen(vm: MainViewModel, onBack: () -> Unit, onOpenList: () ->
         }
 
         item {
-            OutlinedButton(
+            ThemeOutlinedButton(
                 onClick = onOpenList,
                 modifier = Modifier.fillMaxWidth()
             ) {

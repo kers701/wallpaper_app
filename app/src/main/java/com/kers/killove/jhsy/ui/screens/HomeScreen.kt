@@ -32,6 +32,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -700,7 +701,7 @@ fun HomeScreen(vm: MainViewModel, onOpenHelp: (() -> Unit)? = null) {
             }
         }
 
-        Button(
+        ThemeButton(
             onClick = { vm.changeNow() },
             enabled = !busy,
             modifier = Modifier.fillMaxWidth()
@@ -781,8 +782,66 @@ fun RowSwitch(
             modifier = Modifier.weight(1f),
             color = textColor.copy(alpha = if (enabled) 1f else 0.45f)
         )
-        Switch(checked = checked, onCheckedChange = onChecked, enabled = enabled)
+        ThemeSwitch(checked = checked, onCheckedChange = onChecked, enabled = enabled)
     }
+}
+
+@Composable
+fun ThemeSwitch(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
+) {
+    val textColor = LocalUiTextColor.current
+    Switch(
+        checked = checked,
+        onCheckedChange = onCheckedChange,
+        enabled = enabled,
+        modifier = modifier,
+        colors = SwitchDefaults.colors(
+            checkedThumbColor = textColor,
+            checkedTrackColor = textColor.copy(alpha = 0.45f),
+            checkedBorderColor = textColor.copy(alpha = 0.55f),
+            uncheckedThumbColor = textColor.copy(alpha = 0.55f),
+            uncheckedTrackColor = textColor.copy(alpha = 0.12f),
+            uncheckedBorderColor = textColor.copy(alpha = 0.35f),
+            disabledCheckedThumbColor = textColor.copy(alpha = 0.25f),
+            disabledCheckedTrackColor = textColor.copy(alpha = 0.12f),
+            disabledUncheckedThumbColor = textColor.copy(alpha = 0.2f),
+            disabledUncheckedTrackColor = textColor.copy(alpha = 0.08f)
+        )
+    )
+}
+
+@Composable
+fun ThemeSlider(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    valueRange: ClosedFloatingPointRange<Float>,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    steps: Int = 0
+) {
+    val textColor = LocalUiTextColor.current
+    Slider(
+        value = value,
+        onValueChange = onValueChange,
+        valueRange = valueRange,
+        modifier = modifier,
+        enabled = enabled,
+        steps = steps,
+        colors = SliderDefaults.colors(
+            thumbColor = textColor,
+            activeTrackColor = textColor.copy(alpha = 0.75f),
+            inactiveTrackColor = textColor.copy(alpha = 0.2f),
+            activeTickColor = textColor.copy(alpha = 0.5f),
+            inactiveTickColor = textColor.copy(alpha = 0.2f),
+            disabledThumbColor = textColor.copy(alpha = 0.25f),
+            disabledActiveTrackColor = textColor.copy(alpha = 0.2f),
+            disabledInactiveTrackColor = textColor.copy(alpha = 0.1f)
+        )
+    )
 }
 
 

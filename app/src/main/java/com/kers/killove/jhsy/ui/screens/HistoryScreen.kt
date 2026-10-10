@@ -74,15 +74,15 @@ fun HistoryScreen(vm: MainViewModel) {
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            OutlinedButton(onClick = {
+            ThemeOutlinedButton(onClick = {
                 exportLauncher.launch("jhsy_history_${System.currentTimeMillis()}.csv")
             }) {
                 Text("导出记录")
             }
-            OutlinedButton(onClick = { confirmAction = "logs" }) {
+            ThemeOutlinedButton(onClick = { confirmAction = "logs" }) {
                 Text("清空记录")
             }
-            OutlinedButton(onClick = { confirmAction = "cache" }) {
+            ThemeOutlinedButton(onClick = { confirmAction = "cache" }) {
                 Text("清空缓存")
             }
         }
@@ -131,7 +131,7 @@ fun HistoryScreen(vm: MainViewModel) {
                                 color = textColor.copy(alpha = 0.75f)
                             )
                             if (cacheExists) {
-                                OutlinedButton(
+                                ThemeOutlinedButton(
                                     onClick = { previewPath = item.path },
                                     modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
                                 ) {
@@ -259,7 +259,7 @@ private fun WallpaperPreviewDialog(
                     .padding(top = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedButton(
+                ThemeOutlinedButton(
                     onClick = onDismiss,
                     modifier = Modifier.weight(1f)
                 ) { Text("返回") }

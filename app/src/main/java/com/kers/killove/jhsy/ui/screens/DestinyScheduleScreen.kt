@@ -301,8 +301,8 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        OutlinedButton(onClick = { openEditor(rule) }) { Text("编辑") }
-                        OutlinedButton(onClick = {
+                        ThemeOutlinedButton(onClick = { openEditor(rule) }) { Text("编辑") }
+                        ThemeOutlinedButton(onClick = {
                             val next = rules.toMutableList().also {
                                 it[index] = rule.copy(
                                     confidence = 0,
@@ -314,7 +314,7 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
                             status = "已重置置信度：${rule.name}"
                         }) { Text("置信度重置") }
                         if (rule.isSuppressed()) {
-                            OutlinedButton(onClick = {
+                            ThemeOutlinedButton(onClick = {
                                 val next = rules.toMutableList().also {
                                     it[index] = rule.copy(
                                         suppressedUntilEpoch = 0L,
@@ -326,7 +326,7 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
                                 status = "已恢复命中：${rule.name}（本时段可再次生效）"
                             }) { Text("恢复") }
                         }
-                        OutlinedButton(onClick = {
+                        ThemeOutlinedButton(onClick = {
                             pendingDeleteIndex = index
                             pendingDeleteName = rule.name
                         }) { Text("删除") }
@@ -360,7 +360,7 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
         DatePickerDialog(
             onDismissRequest = { showDateRangePicker = false },
             confirmButton = {
-                TextButton(
+                TextThemeButton(
                     onClick = {
                         val s = rangeState.selectedStartDateMillis
                         val e = rangeState.selectedEndDateMillis
@@ -464,7 +464,7 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text("启用时间范围", style = MaterialTheme.typography.bodyMedium)
-                        Switch(checked = timeOn, onCheckedChange = { timeOn = it })
+                        ThemeSwitch(checked = timeOn, onCheckedChange = { timeOn = it })
                     }
                     if (timeOn) {
                     Text("开始时间（24 小时）")
@@ -508,7 +508,7 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text("启用星期", style = MaterialTheme.typography.bodyMedium)
-                        Switch(checked = weekdaysOn, onCheckedChange = { weekdaysOn = it })
+                        ThemeSwitch(checked = weekdaysOn, onCheckedChange = { weekdaysOn = it })
                     }
                     if (weekdaysOn) {
                     Text("生效星期（周一～周日）")
@@ -576,14 +576,14 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text("启用年月日范围", style = MaterialTheme.typography.bodyMedium)
-                        Switch(checked = dateRangeOn, onCheckedChange = { dateRangeOn = it })
+                        ThemeSwitch(checked = dateRangeOn, onCheckedChange = { dateRangeOn = it })
                     }
                     if (dateRangeOn) {
                         Text(
                             "日期范围：${formatYmdLabel(startYear, startMonth, startDay)} ～ ${formatYmdLabel(endYear, endMonth, endDay)}",
                             style = MaterialTheme.typography.bodyMedium
                         )
-                        OutlinedButton(
+                        ThemeOutlinedButton(
                             onClick = { showDateRangePicker = true },
                             modifier = Modifier.fillMaxWidth()
                         ) {

@@ -7,6 +7,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -76,6 +82,11 @@ fun SettingsScreen(
     onOpenCloudSync: () -> Unit = {}
 ) {
     var cacheConfirm by remember { mutableStateOf<String?>(null) }
+    var showPinDialog by remember { mutableStateOf(false) }
+    var pinTempInput by remember { mutableStateOf("") }
+    var settingsSearch by remember { mutableStateOf("") }
+    var showSettingsSearch by remember { mutableStateOf(false) }
+    val settingsScroll = rememberScrollState()
     val createDocLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
     ) { uri ->
@@ -262,11 +273,41 @@ fun SettingsScreen(
     var newPin by remember { mutableStateOf("") }
     var confirmPin by remember { mutableStateOf("") }
 
+    DisposableEffect(Unit) {
+        onDispose {
+            if (settings.pinEnabled) vm.lockNow()
+        }
+    }
+
+    val nestedScroll = remember {
+        object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
+            var pulled = 0f
+            override fun onPreScroll(
+                available: androidx.compose.ui.geometry.Offset,
+                source: androidx.compose.ui.input.nestedscroll.NestedScrollSource
+            ): androidx.compose.ui.geometry.Offset {
+                if (settingsScroll.value == 0 && available.y > 0f) {
+                    pulled += available.y
+                    if (pulled > 90f) {
+                        showSettingsSearch = true
+                        pulled = 0f
+                    }
+                    return androidx.compose.ui.geometry.Offset(0f, available.y * 0.25f)
+                }
+                pulled = 0f
+                return androidx.compose.ui.geometry.Offset.Zero
+            }
+        }
+    }
+
+    Box(Modifier = Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(20.dp),
+            .nestedScroll(nestedScroll)
+            .verticalScroll(settingsScroll)
+            .padding(20.dp)
+            .padding(bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
 
@@ -277,7 +318,7 @@ fun SettingsScreen(
             onToggle = { toggleSection("basic") }
         ) {
         Text("更换间隔：${interval.toInt()} 分钟")
-        Slider(
+        ThemeSlider(
             value = interval,
             onValueChange = { interval = it },
             valueRange = 5f..60f,
@@ -496,7 +537,7 @@ fun SettingsScreen(
                 modifier = Modifier.weight(1f),
                 color = LocalUiTextColor.current.copy(alpha = if (!proxyOn) 1f else 0.45f)
             )
-            Switch(
+            ThemeSwitch(
                 checked = accelOn,
                 enabled = !proxyOn,
                 onCheckedChange = { want ->
@@ -549,7 +590,7 @@ fun SettingsScreen(
             )
             Text("失败时会自动轮换到下一个密钥", style = MaterialTheme.typography.bodySmall)
         } else {
-            LockedField("Wallhaven API Keys")
+            LockedField("Wallhaven API Keys", onRequestUnlock = { showPinDialog = true })
         }
         }
 
@@ -668,7 +709,7 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth()
             ) { Text("从远程导入并合并到本地") }
         } else {
-            LockedField("本地关键词 / 远程地址")
+            LockedField("本地关键词 / 远程地址", onRequestUnlock = { showPinDialog = true })
         }
         } // end if (useKeywords)
 
@@ -696,7 +737,7 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.bodySmall
             )
         } else {
-            LockedField("兜底 API URL")
+            LockedField("兜底 API URL", onRequestUnlock = { showPinDialog = true })
         }
         }
 
@@ -714,7 +755,7 @@ fun SettingsScreen(
         RowSwitch("本地兜底也使用下载缓存（跳过最新图）", localFbCache) { localFbCache = it }
         if (localFbCache) {
             Text("跳过最新 ${localFbSkip} 张缓存", style = MaterialTheme.typography.bodySmall)
-            Slider(
+            ThemeSlider(
                 value = localFbSkip.toFloat(),
                 onValueChange = { localFbSkip = it.toInt().coerceIn(0, 20) },
                 valueRange = 0f..20f,
@@ -750,7 +791,7 @@ fun SettingsScreen(
                     modifier = Modifier.weight(1f),
                     color = LocalUiTextColor.current.copy(alpha = if (!accelOn) 1f else 0.45f)
                 )
-                Switch(
+                ThemeSwitch(
                     checked = proxyOn && !accelOn,
                     enabled = !accelOn,
                     onCheckedChange = { on ->
@@ -960,7 +1001,7 @@ fun SettingsScreen(
             }
             } // end if (proxyOn)
         } else {
-            LockedField("网络代理（请先解锁 PIN）")
+            LockedField("网络代理（请先解锁 PIN）", onRequestUnlock = { showPinDialog = true })
         }
         }
 
@@ -1054,7 +1095,7 @@ fun SettingsScreen(
         }
         if (powerSave) {
             Text("电量低于 ${powerTh}% 时休眠，充电忽略，恢复后继续", style = MaterialTheme.typography.bodySmall)
-            Slider(
+            ThemeSlider(
                 value = powerTh.toFloat(),
                 onValueChange = { powerTh = it.toInt().coerceIn(5, 50) },
                 valueRange = 5f..50f,
@@ -1109,7 +1150,7 @@ fun SettingsScreen(
             if (keysVisible) {
                 OutlinedTextField(value = amapKey, onValueChange = { amapKey = it }, label = { Text("高德 Web 服务 Key") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
             } else {
-                LockedField("高德 Key")
+                LockedField("高德 Key", onRequestUnlock = { showPinDialog = true })
             }
             RowSwitch("绿色模式（区内锁定保守+模糊，关限制级）", locFb) { locFb = it }
             RowSwitch("定位极限回退（区内仅本地换壁纸）", locExtreme) { locExtreme = it }
@@ -1132,9 +1173,9 @@ fun SettingsScreen(
             onToggle = { toggleSection("ui") }
         ) {
         Text("主题遮罩透明度：${"%.0f".format(scrim * 100)}%", style = MaterialTheme.typography.bodySmall)
-        Slider(value = scrim, onValueChange = { scrim = it }, valueRange = 0.15f..0.85f)
+        ThemeSlider(value = scrim, onValueChange = { scrim = it }, valueRange = 0.15f..0.85f)
         Text("卡片透明度：${"%.0f".format(cardA * 100)}%（越高越实）", style = MaterialTheme.typography.bodySmall)
-        Slider(value = cardA, onValueChange = { cardA = it }, valueRange = 0.05f..0.65f)
+        ThemeSlider(value = cardA, onValueChange = { cardA = it }, valueRange = 0.05f..0.65f)
         EnumDropdown("文字颜色", UiTextColor.entries, textColorOpt) { textColorOpt = it }
         EnumDropdown("板块美化（全局）", CardStyle.entries, cardStyleOpt) { cardStyleOpt = it }
         Text("液态玻璃 / 高斯模糊 / 雾化 / 无 — 所有页面板块同步", style = MaterialTheme.typography.bodySmall)
@@ -1283,7 +1324,7 @@ fun SettingsScreen(
                     enabled = transAiKey.isNotBlank()
                 ) { Text("检查 AI 模型可用性") }
             } else {
-                LockedField("AI API Key / 模型配置")
+                LockedField("AI API Key / 模型配置", onRequestUnlock = { showPinDialog = true })
             }
         } else {
             EnumDropdown("翻译引擎", TranslateProvider.entries, transProv) { transProv = it }
@@ -1314,7 +1355,7 @@ fun SettingsScreen(
                     )
                 }
             } else {
-                LockedField("翻译 API 密钥")
+                LockedField("翻译 API 密钥", onRequestUnlock = { showPinDialog = true })
             }
         }
         Text("翻译结果只显示在首页跃迁列表与状态；中文关键词同步会改写本地关键词", style = MaterialTheme.typography.bodySmall)
@@ -1440,9 +1481,18 @@ fun SettingsScreen(
 
         }
 
-        Button(
-            onClick = {
-                val keys = if (keysVisible) SettingsRepository.splitLines(apiKeysText) else settings.apiKeys
+
+        // 原底部「保存设置」已改为悬浮圆形按钮
+    }
+
+    // 悬浮保存：始终最上层
+    Box(
+        Modifier
+            .align(Alignment.BottomCenter)
+            .padding(bottom = 22.dp)
+            .size(68.dp)
+            .clickable {
+val keys = if (keysVisible) SettingsRepository.splitLines(apiKeysText) else settings.apiKeys
                 val kws = if (keysVisible) SettingsRepository.splitLines(keywordsText) else settings.keywords
                 val kwsZh = if (keysVisible) SettingsRepository.splitLines(keywordsZhText) else settings.keywordsChinese
                 val kwUrl = if (keysVisible) keywordsUrl.trim() else settings.keywordsRemoteUrl
@@ -1537,10 +1587,113 @@ fun SettingsScreen(
                     )
                 )
             },
-            modifier = Modifier.fillMaxWidth()
+        contentAlignment = Alignment.Center
+    ) {
+        androidx.compose.material3.Surface(
+            shape = CircleShape,
+            color = LocalUiTextColor.current.copy(alpha = 0.28f),
+            border = androidx.compose.foundation.BorderStroke(1.5.dp, LocalUiTextColor.current.copy(alpha = 0.55f)),
+            modifier = Modifier.fillMaxSize()
         ) {
-            Text("保存设置")
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("保存", color = LocalUiTextColor.current, style = MaterialTheme.typography.titleMedium)
+            }
         }
+    }
+
+    LaunchedEffect(unlocked) {
+        if (unlocked && showPinDialog) {
+            showPinDialog = false
+            pinTempInput = ""
+        }
+    }
+
+    if (showPinDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showPinDialog = false; pinTempInput = "" },
+            title = { Text("临时解锁") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("输入 PIN 后可查看/编辑敏感配置，离开本页将重新锁定")
+                    OutlinedTextField(
+                        value = pinTempInput,
+                        onValueChange = { pinTempInput = it.filter(Char::isDigit).take(8) },
+                        label = { Text("PIN") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    pinMessage?.takeIf { it.isNotBlank() }?.let { msg ->
+                        Text(msg, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            },
+            confirmButton = {
+                ThemeButton(onClick = {
+                    vm.unlock(pinTempInput)
+                }) { Text("解锁") }
+            },
+            dismissButton = {
+                ThemeOutlinedButton(onClick = { showPinDialog = false; pinTempInput = "" }) { Text("取消") }
+            }
+        )
+    }
+
+    if (showSettingsSearch) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showSettingsSearch = false },
+            title = { Text("搜索配置") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("下拉到顶可打开此搜索。输入板块或词条关键词。")
+                    OutlinedTextField(
+                        value = settingsSearch,
+                        onValueChange = { settingsSearch = it },
+                        label = { Text("搜索") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    val q = settingsSearch.trim()
+                    val catalog = listOf(
+                        "基础" to "basic",
+                        "API Keys" to "keys",
+                        "关键词 / 跃迁" to "kw",
+                        "兜底 / 网络" to "fb",
+                        "代理" to "proxy",
+                        "超级服务" to "super",
+                        "黑名单" to "bl",
+                        "命运先机" to "destiny",
+                        "定位避让" to "loc",
+                        "外观美化" to "ui",
+                        "背景" to "bg",
+                        "前世今生" to "pastlife",
+                        "翻译 / AI" to "trans",
+                        "PIN" to "pin",
+                        "云同步" to "backup",
+                        "缓存与日志" to "cache"
+                    )
+                    catalog.filter { q.isBlank() || it.first.contains(q, ignoreCase = true) }
+                        .forEach { (name, key) ->
+                            Text(
+                                "· $name",
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        openSection = key
+                                        showSettingsSearch = false
+                                    }
+                            )
+                        }
+                }
+            },
+            confirmButton = {
+                ThemeOutlinedButton(onClick = { showSettingsSearch = false }) { Text("关闭") }
+            }
+        )
+    }
+
+    // close outer Box
     }
 
     if (showAccelDialog) {

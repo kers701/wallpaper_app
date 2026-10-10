@@ -159,7 +159,7 @@ fun HelpGuideScreen(onBack: () -> Unit) {
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    OutlinedButton(
+                    ThemeOutlinedButton(
                         onClick = { checkUpdate() },
                         enabled = !checking && !downloading,
                         modifier = Modifier.weight(1f)
@@ -168,7 +168,7 @@ fun HelpGuideScreen(onBack: () -> Unit) {
                     }
                     val info = pendingInfo
                     if (info != null) {
-                        OutlinedButton(
+                        ThemeOutlinedButton(
                             onClick = { downloadAndInstall(info) },
                             enabled = !checking && !downloading && info.apkUrl != null,
                             modifier = Modifier.weight(1f)

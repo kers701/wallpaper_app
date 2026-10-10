@@ -454,7 +454,7 @@ OverviewCard(cardAlpha) {
                     Text("极简模式", style = MaterialTheme.typography.titleSmall, color = textColor)
                     Text("开启后仅保留概览页", style = MaterialTheme.typography.bodySmall, color = textColor.copy(alpha = 0.65f))
                 }
-                Switch(checked = settings.overviewMinimalMode, onCheckedChange = { vm.setOverviewMinimal(it) })
+                ThemeSwitch(checked = settings.overviewMinimalMode, onCheckedChange = { vm.setOverviewMinimal(it) })
             }
         }
 
@@ -470,7 +470,7 @@ OverviewCard(cardAlpha) {
                         color = textColor.copy(alpha = 0.65f)
                     )
                 }
-                Switch(checked = settings.enabled, onCheckedChange = { vm.setEnabled(it) })
+                ThemeSwitch(checked = settings.enabled, onCheckedChange = { vm.setEnabled(it) })
             }
         }
     }

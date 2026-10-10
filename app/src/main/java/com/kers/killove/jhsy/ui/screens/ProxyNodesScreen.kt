@@ -87,7 +87,7 @@ fun ProxyNodesScreen(vm: MainViewModel, onBack: () -> Unit) {
                         style = MaterialTheme.typography.bodySmall,
                         color = textColor
                     )
-                    Slider(
+                    ThemeSlider(
                         value = interval,
                         onValueChange = { interval = it },
                         valueRange = 5f..180f,
@@ -99,12 +99,12 @@ fun ProxyNodesScreen(vm: MainViewModel, onBack: () -> Unit) {
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (busy) {
-                        OutlinedButton(
+                        ThemeOutlinedButton(
                             onClick = { vm.cancelProxyTest() },
                             modifier = Modifier.weight(1f)
                         ) { Text("强制中断测速") }
                     } else {
-                        OutlinedButton(
+                        ThemeOutlinedButton(
                             onClick = { vm.testAllProxyNodes() },
                             enabled = nodes.isNotEmpty(),
                             modifier = Modifier.weight(1f)

@@ -84,13 +84,13 @@ fun BlacklistScreen(vm: MainViewModel, onBack: () -> Unit, onOpenSelected: () ->
                 style = MaterialTheme.typography.bodySmall,
                 color = textColor
             )
-            OutlinedButton(
+            ThemeOutlinedButton(
                 onClick = { vm.openUsageAccessSettings() },
                 modifier = Modifier.fillMaxWidth()
             ) { Text(if (hasUsage) "打开使用情况访问设置" else "前往授权") }
 
             Spacer(Modifier.height(12.dp))
-            OutlinedButton(
+            ThemeOutlinedButton(
                 onClick = onOpenSelected,
                 modifier = Modifier.fillMaxWidth()
             ) { Text("查看已选名单（${selected.size}）") }

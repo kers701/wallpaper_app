@@ -74,7 +74,7 @@ fun LocationAvoidListScreen(vm: MainViewModel, onBack: () -> Unit) {
                                     color = textColor.copy(alpha = 0.7f)
                                 )
                             }
-                            OutlinedButton(onClick = {
+                            ThemeOutlinedButton(onClick = {
                                 pendingRemoveId = loc.id
                                 pendingRemoveName = loc.name.ifBlank { loc.id }
                             }) {

@@ -86,7 +86,7 @@ fun BlacklistSelectedScreen(vm: MainViewModel, onBack: () -> Unit) {
                                     color = textColor.copy(alpha = 0.65f)
                                 )
                             }
-                            OutlinedButton(onClick = {
+                            ThemeOutlinedButton(onClick = {
                                 pendingRemovePkg = pkg
                                 pendingRemoveLabel = label
                             }) {
