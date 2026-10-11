@@ -1,24 +1,22 @@
-# wallpaper_app 自然法则 AI 关键词过滤补丁
+# wallpaper_app 自然法则下次关键词时序修复补丁
 
-本补丁优化自然法则模式的 AI 提示词，并增加代码级结果过滤，避免生成没有检索价值的泛化词。
+## 问题
 
-## 过滤内容
+自然法则生成并保存新跃迁词组后，原逻辑仍使用本轮开始时的旧 `AppSettings` 推进关键词索引，导致新词组刚写入就可能被旧索引覆盖；“下次用词”也可能根据旧词组偏移计算。
 
-AI 不再推荐以下类型：
+## 修复
 
-- 壁纸格式/方向：`vertical wallpaper`、`wallpaper`、`phone wallpaper`、`desktop wallpaper` 等。
-- 泛化媒介或作品形式：`digital illustration`、`illustration`、`artwork`、`character artwork`、`fan art`。
-- 泛化审美或背景词：`anime aesthetic`、`aesthetic`、`background`、`portrait`、`4k` 等。
-- 艺术家模仿或泛化画风：`xxx style`、`in the style of xxx`、`artist style`。
+- `advanceKeywordIndex()` 每次推进前重新读取 `settingsRepo.settingsFlow.first()`，基于最终词组和最终索引推进。
+- 前世今生普通模式和桌面/锁屏隔离模式的“下次”统一从最新 DataStore 中的跃迁列表计算。
+- 预下载流程本身仍在本次壁纸处理完成后读取最新设置，因此下次预下载使用最终生成的关键词组。
 
-## 保留方向
+## 结果
 
-提示词要求 AI 优先推荐人物外观、服饰、动作、表情、场景、环境、物件、色彩及具体作品/角色名称等具有画面信息的词。
-
-除提示词外，代码还会对 AI 返回结果执行兜底过滤，防止模型未遵守提示词时污染自然关键词组。
+自然法则完成 AI 替换并保存后，才会确定并推进下次关键词；自然推荐词可以正常进入后续“下次”用词，不会因旧列表索引而丢失。
 
 ## 验证
 
 - `git diff --check` 通过。
+- 已核对更换、跃迁生成、索引推进、预下载和“下次”展示链路。
+- 补丁包含当前工作区全部源码改动，保留完整相对路径。
 - 未推送远程仓库。
-- 补丁包含当前工作区全部源码改动，并保留完整相对路径。

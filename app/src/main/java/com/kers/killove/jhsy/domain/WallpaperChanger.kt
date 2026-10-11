@@ -1029,10 +1029,11 @@ class WallpaperChanger(
             startList[(startBase + stepsAdvanced).mod(startList.size)]
         } else null
         val fresh = try { settingsRepo.settingsFlow.first() } catch (_: Exception) { cycleSettings }
-        val listChanged = cycleSettings.jumpModeEnabled &&
-            fresh.jumpKeywords != cycleSettings.jumpKeywords &&
-            fresh.jumpKeywords.isNotEmpty()
-        val nextKw = if (listChanged) pickKeyword(fresh, 0) else nextFromSteps ?: pickKeyword(fresh, 0)
+        val nextKw = if (fresh.jumpModeEnabled && fresh.jumpKeywords.isNotEmpty()) {
+            pickKeyword(fresh, 0)
+        } else {
+            nextFromSteps ?: pickKeyword(fresh, 0)
+        }
         PastLifeStore.onCycleComplete(
             context, kw, nextKw, cycleAt, tags,
             deepExplore = fresh.pastLifeDeepExplore || cycleSettings.pastLifeDeepExplore
@@ -1060,11 +1061,16 @@ class WallpaperChanger(
         fun at(offset: Int): String? =
             if (startList.isEmpty()) null else startList[(startBase + offset).mod(startList.size)]
         val fresh = try { settingsRepo.settingsFlow.first() } catch (_: Exception) { cycleSettings }
-        val listChanged = cycleSettings.jumpModeEnabled &&
-            fresh.jumpKeywords != cycleSettings.jumpKeywords &&
-            fresh.jumpKeywords.isNotEmpty()
-        val homeNext = if (listChanged) pickKeyword(fresh, 0) else at(2)
-        val lockNext = if (listChanged) pickKeyword(fresh, 1) else at(3)
+        val homeNext = if (fresh.jumpModeEnabled && fresh.jumpKeywords.isNotEmpty()) {
+            pickKeyword(fresh, 0)
+        } else {
+            at(2)
+        }
+        val lockNext = if (fresh.jumpModeEnabled && fresh.jumpKeywords.isNotEmpty()) {
+            pickKeyword(fresh, 1)
+        } else {
+            at(3)
+        }
         val deep = fresh.pastLifeDeepExplore || cycleSettings.pastLifeDeepExplore
         val split = cycleSettings.pastLifeIsolateSplit && cycleSettings.isolateHomeLock
         if (split) {
@@ -1127,11 +1133,13 @@ class WallpaperChanger(
     }
 
     private suspend fun advanceKeywordIndex(settings: AppSettings, steps: Int) {
-        if (!settings.useKeywords || settings.activeKeywords().isEmpty()) return
-        if (settings.jumpModeEnabled && settings.jumpKeywords.isNotEmpty()) {
-            settingsRepo.setJumpKeywordIndex(settings.jumpKeywordIndex + steps)
+        // applyJumpFilterChain / 自然法则可能刚刚重建并将索引归零，必须读取最新词组后再推进。
+        val current = settingsRepo.settingsFlow.first()
+        if (!current.useKeywords || current.activeKeywords().isEmpty()) return
+        if (current.jumpModeEnabled && current.jumpKeywords.isNotEmpty()) {
+            settingsRepo.setJumpKeywordIndex(current.jumpKeywordIndex + steps)
         } else {
-            settingsRepo.setKeywordIndex(settings.keywordIndex + steps)
+            settingsRepo.setKeywordIndex(current.keywordIndex + steps)
         }
     }
 

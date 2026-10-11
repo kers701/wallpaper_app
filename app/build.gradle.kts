@@ -28,8 +28,8 @@ android {
         applicationId = "com.kers.killove.jhsy"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5219
-        versionName = "5.2.19"
+        versionCode = 5220
+        versionName = "5.2.20"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
