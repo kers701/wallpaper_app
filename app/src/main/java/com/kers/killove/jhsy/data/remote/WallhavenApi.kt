@@ -257,6 +257,48 @@ class WallhavenApi {
         }
     }
 
+    /**
+     * 校验 API Key：请求需登录的 settings 接口。
+     * 401/403 → 无效；200 → 有效。
+     */
+    suspend fun validateApiKey(apiKey: String): ProbeResult = withContext(Dispatchers.IO) {
+        val key = apiKey.trim()
+        if (key.isEmpty()) return@withContext ProbeResult("Wallhaven", false, 0, "密钥为空")
+        val start = System.nanoTime()
+        try {
+            val url = "https://wallhaven.cc/api/v1/settings".toHttpUrl().newBuilder()
+                .addQueryParameter("apikey", key)
+                .build()
+            val request = Request.Builder()
+                .url(url)
+                .header("User-Agent", "Wallpaperc/1.3 (Android)")
+                .header("X-API-Key", key)
+                .get()
+                .build()
+            ProxyHttp.execute(request).use { response ->
+                val ms = (System.nanoTime() - start) / 1_000_000
+                when {
+                    response.code == 401 || response.code == 403 ->
+                        ProbeResult("Wallhaven", false, ms, "HTTP ${response.code} · 密钥无效或已失效")
+                    response.isSuccessful -> {
+                        val body = response.body?.string().orEmpty()
+                        val hasData = try {
+                            JSONObject(body).has("data")
+                        } catch (_: Exception) {
+                            body.isNotBlank()
+                        }
+                        if (hasData) ProbeResult("Wallhaven", true, ms, "HTTP ${response.code} · 密钥有效")
+                        else ProbeResult("Wallhaven", false, ms, "HTTP ${response.code} · 响应异常")
+                    }
+                    else -> ProbeResult("Wallhaven", false, ms, "HTTP ${response.code}")
+                }
+            }
+        } catch (e: Exception) {
+            val ms = (System.nanoTime() - start) / 1_000_000
+            ProbeResult("Wallhaven", false, ms, e.message ?: e.javaClass.simpleName)
+        }
+    }
+
     suspend fun probeWallhaven(apiKey: String? = null): ProbeResult = withContext(Dispatchers.IO) {
         val start = System.nanoTime()
         try {

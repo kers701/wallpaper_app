@@ -29,6 +29,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import com.kers.killove.jhsy.data.remote.WallhavenApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -54,6 +60,9 @@ fun WallhavenApiSetupDialog(
     var started by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("请填写用户名、邮箱、密码与确认密码") }
     var discoveredKey by remember { mutableStateOf<String?>(null) }
+    var keyValid by remember { mutableStateOf<Boolean?>(null) }
+    var keyValidateMsg by remember { mutableStateOf("") }
+    var keyValidating by remember { mutableStateOf(false) }
     var registrationSubmitted by remember { mutableStateOf(false) }
     var loginFilled by remember { mutableStateOf(false) }
     /** 用户确认已通过 Cloudflare 人机验证后才允许自动填表/提交 */
@@ -65,6 +74,38 @@ fun WallhavenApiSetupDialog(
     DisposableEffect(Unit) {
         onDispose { webView?.destroy() }
     }
+
+    // 提取到 Key 后自动检测有效性，通过才允许写入
+    LaunchedEffect(discoveredKey) {
+        val k = discoveredKey?.trim().orEmpty()
+        if (k.isEmpty()) return@LaunchedEffect
+        keyValidating = true
+        keyValid = null
+        keyValidateMsg = "正在检测 API Key 有效性…"
+        status = keyValidateMsg
+        val probe = withContext(Dispatchers.IO) {
+            try {
+                WallhavenApi().validateApiKey(k)
+            } catch (e: Exception) {
+                null
+            }
+        }
+        keyValidating = false
+        if (probe == null) {
+            keyValid = false
+            keyValidateMsg = "检测异常"
+            status = "API Key 检测失败，未写入本地"
+        } else {
+            keyValid = probe.ok
+            keyValidateMsg = probe.detail
+            status = if (probe.ok) {
+                "API Key 有效（${probe.detail}），可确认保存"
+            } else {
+                "API Key 无效，未写入本地：${probe.detail}"
+            }
+        }
+    }
+
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -262,7 +303,12 @@ fun WallhavenApiSetupDialog(
                                     @JavascriptInterface
                                     fun keyFound(key: String) {
                                         val k = key.trim()
-                                        if (k.isNotBlank()) discoveredKey = k
+                                        if (k.isNotBlank()) {
+                                            discoveredKey = k
+                                            keyValid = null
+                                            keyValidateMsg = ""
+                                            keyValidating = true
+                                        }
                                     }
                                 }
                                 addJavascriptInterface(bridge, "WallhavenBridge")
@@ -365,25 +411,57 @@ fun WallhavenApiSetupDialog(
 
     if (discoveredKey != null) {
         AlertDialog(
-            onDismissRequest = { discoveredKey = null },
-            title = { Text("确认保存 API Key？") },
+            onDismissRequest = {
+                if (!keyValidating) {
+                    discoveredKey = null
+                    keyValid = null
+                }
+            },
+            title = {
+                Text(
+                    when {
+                        keyValidating -> "正在检测 API Key…"
+                        keyValid == true -> "API Key 有效"
+                        keyValid == false -> "API Key 无效"
+                        else -> "确认保存 API Key？"
+                    }
+                )
+            },
             text = {
                 Column {
-                    Text("以下密钥将写入应用本地配置，不会上传到服务器。请确认：")
+                    Text(
+                        when {
+                            keyValidating -> "正在请求 Wallhaven 校验密钥，通过后才能写入本地。"
+                            keyValid == true -> "检测通过（$keyValidateMsg）。确认后写入本地配置，不会上传到服务器。"
+                            keyValid == false -> "检测未通过（$keyValidateMsg）。不会写入本地，请重新获取或手动填写。"
+                            else -> "以下密钥待检测："
+                        }
+                    )
                     SelectionContainer {
                         Text(discoveredKey.orEmpty(), modifier = Modifier.padding(top = 8.dp))
                     }
                 }
             },
             confirmButton = {
-                Button(onClick = {
-                    onSaveKey(discoveredKey.orEmpty())
-                    discoveredKey = null
-                    onDismiss()
-                }) { Text("确认保存") }
+                Button(
+                    enabled = keyValid == true && !keyValidating,
+                    onClick = {
+                        // ViewModel 内会再次校验，仅有效才落盘
+                        onSaveKey(discoveredKey.orEmpty())
+                        discoveredKey = null
+                        keyValid = null
+                        onDismiss()
+                    }
+                ) { Text(if (keyValid == true) "确认保存" else "不可保存") }
             },
             dismissButton = {
-                OutlinedButton(onClick = { discoveredKey = null }) { Text("不保存") }
+                OutlinedButton(
+                    enabled = !keyValidating,
+                    onClick = {
+                        discoveredKey = null
+                        keyValid = null
+                    }
+                ) { Text(if (keyValid == false) "关闭" else "不保存") }
             }
         )
     }

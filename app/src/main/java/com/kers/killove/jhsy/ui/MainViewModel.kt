@@ -1017,13 +1017,36 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun addWallhavenApiKey(key: String) {
+    /**
+     * 先校验 Wallhaven API Key，仅有效才写入本地。
+     * @param onResult ok / 说明（可选回调给 UI）
+     */
+    fun addWallhavenApiKey(key: String, onResult: ((Boolean, String) -> Unit)? = null) {
         val clean = key.trim()
-        if (clean.isBlank()) return
+        if (clean.isBlank()) {
+            onResult?.invoke(false, "密钥为空")
+            return
+        }
         viewModelScope.launch {
+            setStatus("正在检测 API Key 有效性…", popup = false)
+            val probe = try {
+                api.validateApiKey(clean)
+            } catch (e: Exception) {
+                setStatus("API Key 检测失败：${e.message}", popup = true)
+                onResult?.invoke(false, e.message ?: "检测失败")
+                return@launch
+            }
+            if (!probe.ok) {
+                val msg = "API Key 无效，未写入本地：${probe.detail}"
+                setStatus(msg, popup = true)
+                onResult?.invoke(false, probe.detail)
+                return@launch
+            }
             val keys = (settings.value.apiKeys + clean).map { it.trim() }.filter { it.isNotBlank() }.distinct()
             settingsRepo.save(settings.value.copy(apiKeys = keys))
-            setStatus("Wallhaven API Key 已保存到本地配置", popup = true)
+            val msg = "API Key 有效并已保存（${probe.detail}）"
+            setStatus(msg, popup = true)
+            onResult?.invoke(true, probe.detail)
         }
     }
 
