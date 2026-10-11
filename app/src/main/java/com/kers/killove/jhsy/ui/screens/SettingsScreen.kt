@@ -161,6 +161,7 @@ fun SettingsScreen(
     }
     var fitMode by remember(settings.fitMode) { mutableStateOf(settings.fitMode) }
     var isolate by remember(settings.isolateHomeLock) { mutableStateOf(settings.isolateHomeLock) }
+    var showWallpaperPreview by remember(settings.showWallpaperPreview) { mutableStateOf(settings.showWallpaperPreview) }
     var powerSave by remember(settings.powerSaveEnabled) { mutableStateOf(settings.powerSaveEnabled) }
     var dataSaver by remember(settings.dataSaverEnabled) { mutableStateOf(settings.dataSaverEnabled) }
     var superSvc by remember(settings.superServiceEnabled) { mutableStateOf(settings.superServiceEnabled) }
@@ -360,6 +361,7 @@ fun SettingsScreen(
                                             },
                                             fitMode = fitMode,
                                             isolateHomeLock = isolate,
+                                            showWallpaperPreview = showWallpaperPreview,
                                             powerSaveEnabled = powerSave,
                                             dataSaverEnabled = dataSaver,
                                             powerSaveBatteryThreshold = powerTh.coerceIn(5, 50),
@@ -458,6 +460,8 @@ fun SettingsScreen(
             steps = 10
         )
         Text("小于 15 分钟将自动使用前台服务", style = MaterialTheme.typography.bodySmall)
+        RowSwitch("概览页显示当前壁纸预览", showWallpaperPreview) { showWallpaperPreview = it }
+        Text("关闭后概览页不再加载或显示壁纸预览", style = MaterialTheme.typography.bodySmall)
 
         // 运行模式接管：健康 / 心跳 / 绿色 时纯度只读
         val modeNow = ProcessBridgePrefs.purityMode(context)

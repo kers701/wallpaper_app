@@ -31,6 +31,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -44,6 +45,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.kers.killove.jhsy.data.local.WallpaperEntity
+import com.kers.killove.jhsy.data.local.OverviewCacheStore
+import com.kers.killove.jhsy.data.local.NextWallpaperStore
 import com.kers.killove.jhsy.ui.LocalCardAlpha
 import com.kers.killove.jhsy.ui.LocalUiTextColor
 import com.kers.killove.jhsy.ui.MainViewModel
@@ -80,6 +83,7 @@ fun OverviewScreen(vm: MainViewModel) {
 
     var homeBmp by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
     var lockBmp by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+    var previewRefreshTick by remember { mutableIntStateOf(0) }
     var jumpExpanded by remember { mutableStateOf(false) }
     val jumpZh by vm.jumpKeywordsZh.collectAsState()
     val illuZh by vm.illusionZh.collectAsState()
@@ -102,12 +106,30 @@ fun OverviewScreen(vm: MainViewModel) {
         onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
     }
 
-    LaunchedEffect(effectiveLast, settings.changeCount, recent) {
+    LaunchedEffect(effectiveLast, settings.changeCount, settings.showWallpaperPreview, previewRefreshTick) {
         vm.refreshServiceStatus()
         vm.refreshCacheSize()
-        val (hPath, lPath) = pickHomeLockPaths(recent)
-        homeBmp = withContext(Dispatchers.IO) { decodeFileScaled(hPath) }
-        lockBmp = withContext(Dispatchers.IO) { decodeFileScaled(lPath) }
+        if (settings.showWallpaperPreview) {
+            val (hPath, lPath) = withContext(Dispatchers.IO) {
+                val current = OverviewCacheStore.paths(context)
+                val next = NextWallpaperStore(context)
+                val nextPaths = if (settings.isolateHomeLock && settings.target == com.kers.killove.jhsy.domain.WallpaperTarget.Both) {
+                    val home = next.get(com.kers.killove.jhsy.domain.WallpaperTarget.Home)
+                        ?.takeIf { it.isReady() }?.path
+                    val lock = next.get(com.kers.killove.jhsy.domain.WallpaperTarget.Lock)
+                        ?.takeIf { it.isReady() }?.path
+                    if (home != null && lock != null) home to lock else null
+                } else {
+                    next.get(settings.target)?.takeIf { it.isReady() }?.path?.let { it to it }
+                }
+                nextPaths ?: current
+            }
+            homeBmp = withContext(Dispatchers.IO) { decodeFileScaled(hPath) }
+            lockBmp = withContext(Dispatchers.IO) { decodeFileScaled(lPath) }
+        } else {
+            homeBmp = null
+            lockBmp = null
+        }
     }
 
     // 每 20 秒从时钟文件拉一次时间，自动换壁纸后无需杀进程
@@ -116,6 +138,12 @@ fun OverviewScreen(vm: MainViewModel) {
         while (true) {
             kotlinx.coroutines.delay(20_000)
             vm.syncChangeClockFromBridge()
+        }
+    }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(2_000)
+            previewRefreshTick++
         }
     }
 
@@ -420,15 +448,17 @@ fun OverviewScreen(vm: MainViewModel) {
 
 
 
-OverviewCard(cardAlpha) {
-            Text("壁纸预览（缓存）", style = MaterialTheme.typography.titleSmall, color = textColor)
-            Text("桌面 / 锁屏分别取最近对应目标的缓存图", style = MaterialTheme.typography.bodySmall, color = textColor.copy(alpha = 0.6f))
-            Spacer(Modifier.height(8.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                PreviewBox("桌面", homeBmp, Modifier.weight(1f))
-                PreviewBox("锁屏", lockBmp, Modifier.weight(1f))
+            if (settings.showWallpaperPreview) {
+                OverviewCard(cardAlpha) {
+                    Text("壁纸预览", style = MaterialTheme.typography.titleSmall, color = textColor)
+                    Text("预下载成功时显示下一张；否则显示当前已应用壁纸", style = MaterialTheme.typography.bodySmall, color = textColor.copy(alpha = 0.6f))
+                    Spacer(Modifier.height(8.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        PreviewBox("桌面", homeBmp, Modifier.weight(1f))
+                        PreviewBox("锁屏", lockBmp, Modifier.weight(1f))
+                    }
+                }
             }
-        }
 
         OverviewCard(cardAlpha) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

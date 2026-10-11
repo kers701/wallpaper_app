@@ -70,6 +70,7 @@ object ConfigBackup {
         o.put("superServiceEnabled", settings.superServiceEnabled)
         o.put("dataSaverEnabled", settings.dataSaverEnabled)
         o.put("overviewMinimalMode", settings.overviewMinimalMode)
+        o.put("showWallpaperPreview", settings.showWallpaperPreview)
 
         // —— 翻译 / UI ——
         o.put("translateProvider", settings.translateProvider.name)
@@ -218,6 +219,7 @@ object ConfigBackup {
             superServiceEnabled = o.optBoolean("superServiceEnabled", base.superServiceEnabled),
             dataSaverEnabled = o.optBoolean("dataSaverEnabled", base.dataSaverEnabled),
             overviewMinimalMode = o.optBoolean("overviewMinimalMode", base.overviewMinimalMode),
+            showWallpaperPreview = o.optBoolean("showWallpaperPreview", base.showWallpaperPreview),
 
             translateProvider = runCatching { TranslateProvider.valueOf(o.optString("translateProvider", base.translateProvider.name)) }.getOrDefault(base.translateProvider),
             translateApiKey = o.optString("translateApiKey", base.translateApiKey),
@@ -396,7 +398,7 @@ object ConfigBackup {
             copyKeys(listOf("translateProvider", "translateApiKey", "translateSecret", "translateRegion"))
         }
         if (settings.gitSyncUi) {
-            copyKeys(listOf("uiScrimAlpha", "uiCardAlpha", "uiTextColor", "uiTextColorHex", "uiControlTextColorHex", "cardStyle", "overviewMinimalMode"))
+            copyKeys(listOf("uiScrimAlpha", "uiCardAlpha", "uiTextColor", "uiTextColorHex", "uiControlTextColorHex", "cardStyle", "overviewMinimalMode", "showWallpaperPreview"))
         }
         return out.toString(2)
     }

@@ -1010,6 +1010,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun setWallpaperPreviewEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepo.save(settings.value.copy(showWallpaperPreview = enabled))
+            setStatus(if (enabled) "已开启壁纸预览" else "已关闭壁纸预览", popup = false)
+        }
+    }
+
 
     fun gitSyncUpload() {
         viewModelScope.launch {

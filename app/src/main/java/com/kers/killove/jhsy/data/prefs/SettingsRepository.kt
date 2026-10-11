@@ -124,6 +124,7 @@ class SettingsRepository(private val context: Context) {
         val SUPER_PROXY_PORT = intPreferencesKey("super_proxy_port")
         val BLACKLIST = stringPreferencesKey("blacklist_packages")
         val OVERVIEW_MINIMAL = booleanPreferencesKey("overview_minimal")
+        val SHOW_WALLPAPER_PREVIEW = booleanPreferencesKey("show_wallpaper_preview")
         val CHANGE_COUNT = longPreferencesKey("change_count")
         val LOCAL_FB_CACHE = booleanPreferencesKey("local_fb_use_cache")
         val LOCAL_FB_SKIP = intPreferencesKey("local_fb_cache_skip")
@@ -294,6 +295,7 @@ class SettingsRepository(private val context: Context) {
                     .filter { ProcessBridgePrefs.isValidPackageName(it) }
             },
             overviewMinimalMode = p[Keys.OVERVIEW_MINIMAL] ?: false,
+            showWallpaperPreview = p[Keys.SHOW_WALLPAPER_PREVIEW] ?: true,
             changeCount = p[Keys.CHANGE_COUNT] ?: 0L,
             localFallbackUseCache = p[Keys.LOCAL_FB_CACHE] ?: true,
             localFallbackCacheSkipNewest = (p[Keys.LOCAL_FB_SKIP] ?: 3).coerceIn(0, 50),
@@ -467,6 +469,7 @@ class SettingsRepository(private val context: Context) {
             p[Keys.SUPER_PROXY_PORT] = settings.superProxyLocalPort.coerceIn(1025, 65535)
             p[Keys.BLACKLIST] = settings.blacklistPackages.joinToString("\n")
             p[Keys.OVERVIEW_MINIMAL] = settings.overviewMinimalMode
+            p[Keys.SHOW_WALLPAPER_PREVIEW] = settings.showWallpaperPreview
             p[Keys.CHANGE_COUNT] = settings.changeCount
             p[Keys.LOCAL_FB_CACHE] = settings.localFallbackUseCache
             p[Keys.LOCAL_FB_SKIP] = settings.localFallbackCacheSkipNewest.coerceIn(0, 50)
