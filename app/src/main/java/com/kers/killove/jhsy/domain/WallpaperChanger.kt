@@ -307,7 +307,7 @@ class WallpaperChanger(
                     nextStore.clear(target)
                 } else {
                     onProgress(0.2f, "使用预下载壁纸…")
-                    when (val r = applyReadySlot(ready, settings, target, advanceKeyword, countChange, touchScheduleClock)) {
+                    when (val r = applyReadySlot(ready, settings, target, advanceKeyword, countChange, touchScheduleClock, skipJumpFilter)) {
                         is ChangeResult.Success -> {
                             onProgress(1f, "预下载已应用")
                             return r
@@ -810,7 +810,8 @@ class WallpaperChanger(
         target: WallpaperTarget,
         advanceKeyword: Boolean,
         countChange: Boolean = true,
-        touchScheduleClock: Boolean = true
+        touchScheduleClock: Boolean = true,
+        skipJumpFilter: Boolean = false
     ): ChangeResult {
         val file = slot.file()
         if (!file.exists() || file.length() < 32L) {
@@ -879,15 +880,16 @@ class WallpaperChanger(
             source = slot.source,
             fileSize = fileSize
         )
-        // 预下载路径此前不跑跃迁/虚妄/湮灭 → 看板卡死、虚妄无记录
+        // 预下载路径：默认同样跑跃迁链；隔离模式由外层合并后再跑
         if (slot.source == "wallhaven") {
-            // 预取时可能已 recordUsed；此处幂等刷新时间，并拉 tags 写看板
             if (settings.jumpModeEnabled && settings.annihilationModeEnabled) {
                 if (com.kers.killove.jhsy.util.AnnihilationStore.recordUsed(context, slot.keyword)) {
                     settingsRepo.setAnnihilationEpoch(settings.annihilationEpoch + 1)
                 }
             }
-            applyJumpFilterChain(settings, slot.id, emptyList(), slot.keyword.ifBlank { null })
+            if (!skipJumpFilter) {
+                applyJumpFilterChain(settings, slot.id, emptyList(), slot.keyword.ifBlank { null })
+            }
         }
         return ChangeResult.Success(
             item,
