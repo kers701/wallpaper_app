@@ -1,4 +1,6 @@
-修复注册助手底部按钮显示不全（不推送）
+再次修复底部按钮裁切（不推送）
 
-- safeDrawing / ime 边衬，避开系统导航栏与手势条
-- 底部按钮加高 min 48dp，左右留白，避免被裁切
+- Dialog decorFitsSystemWindows + WindowCompat 强制适配系统栏
+- 固定底部 padding 48dp（Dialog 常拿不到 insets）
+- statusBars/navigationBars/ime padding
+- 按钮 minHeight 52dp

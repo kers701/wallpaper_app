@@ -15,9 +15,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.WindowInsets
+import androidx.core.view.WindowCompat
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.runtime.SideEffect
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -121,16 +122,25 @@ fun WallhavenApiSetupDialog(
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
             dismissOnBackPress = true,
-            dismissOnClickOutside = false
+            dismissOnClickOutside = false,
+            decorFitsSystemWindows = true
         )
     ) {
+        val dialogView = LocalView.current
+        SideEffect {
+            (dialogView.parent as? DialogWindowProvider)?.window?.let { w ->
+                WindowCompat.setDecorFitsSystemWindows(w, true)
+            }
+        }
         Surface(Modifier.fillMaxSize()) {
             Column(
                 Modifier
                     .fillMaxSize()
-                    .windowInsetsPadding(WindowInsets.safeDrawing)
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
                     .imePadding()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                    // Dialog 在部分机型拿不到 insets，再固定垫高底部，保证按钮完整可见
+                    .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 48.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text("获取 Wallhaven API Key", style = MaterialTheme.typography.titleLarge)
@@ -182,15 +192,13 @@ fun WallhavenApiSetupDialog(
                     Row(
                         Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 52.dp)
-                            .padding(top = 4.dp, bottom = 8.dp),
+                            .heightIn(min = 56.dp)
+                            .padding(bottom = 12.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         OutlinedButton(
                             onClick = onDismiss,
-                            modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 48.dp)
+                            modifier = Modifier.weight(1f).heightIn(min = 52.dp)
                         ) { Text("取消") }
                         Button(
                             enabled = username.length in 3..12
@@ -202,9 +210,7 @@ fun WallhavenApiSetupDialog(
                                 started = true
                                 status = "已清空 wallhaven.cc Cookie/站点数据，正在打开注册页…"
                             },
-                            modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 48.dp)
+                            modifier = Modifier.weight(1f).heightIn(min = 52.dp)
                         ) { Text("开始注册") }
                     }
                 } else {
@@ -389,15 +395,13 @@ fun WallhavenApiSetupDialog(
                     Row(
                         Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 52.dp)
-                            .padding(top = 4.dp, bottom = 8.dp),
+                            .heightIn(min = 56.dp)
+                            .padding(bottom = 12.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         OutlinedButton(
                             onClick = onDismiss,
-                            modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 48.dp)
+                            modifier = Modifier.weight(1f).heightIn(min = 52.dp)
                         ) {
                             Text("关闭")
                         }
