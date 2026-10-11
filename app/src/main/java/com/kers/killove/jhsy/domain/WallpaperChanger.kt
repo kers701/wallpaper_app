@@ -941,7 +941,10 @@ class WallpaperChanger(
                 下面是一组用于壁纸搜索的英文关键词：
                 $source
 
-                请根据这些词组的整体语义，推荐恰好 $replaceCount 个新的、适合壁纸搜索的英文关键词或短语。
+                请根据这些词组的整体语义，推荐恰好 $replaceCount 个新的、适合图片搜索的英文关键词或短语。
+                只推荐具体且有画面信息的词：人物外观、服饰、动作、表情、场景、环境、物件、色彩或具体作品/角色名称。
+                不要推荐无意义的通用词或格式词，例如 vertical wallpaper、wallpaper、phone wallpaper、desktop wallpaper、digital illustration、illustration、artwork、character artwork、fan art、anime aesthetic、高清、4k、portrait、background。
+                不要推荐泛化的媒介/画风/发布形式词，也不要推荐艺术家模仿词（例如 xxx style、in the style of xxx、artist style）。
                 要求：每行只输出一个关键词；不要编号、解释、句号或 Markdown；不要重复输入列表中的词。
             """.trimIndent(),
             systemContent = "You recommend concise English image-search keywords. Output only one keyword or phrase per line.",
@@ -954,6 +957,7 @@ class WallpaperChanger(
             .map { it.replace(Regex("^[-*•]\\s*|^\\d+\\s*[.)、:：]\\s*"), "") }
             .map { it.trim().trim('`', '"', '\'').trimEnd('.', '。', ';', '；') }
             .filter { it.isNotBlank() && it.length <= 80 }
+            .filter { isMeaningfulNaturalKeyword(it) }
             .filter { it.lowercase() !in existing }
             .distinctBy { it.lowercase() }
             .take(replaceCount)
@@ -967,6 +971,24 @@ class WallpaperChanger(
         RunLog.i(context, "natural law replaced=$count original=${original.size}")
         val retained = original.filterIndexed { index, _ -> index !in replacementIndices }
         return NaturalLawResult(result, retained, recommended.take(count))
+    }
+
+    private fun isMeaningfulNaturalKeyword(raw: String): Boolean {
+        val keyword = raw.trim().lowercase()
+        val generic = setOf(
+            "wallpaper", "vertical wallpaper", "phone wallpaper", "desktop wallpaper",
+            "mobile wallpaper", "digital illustration", "illustration", "artwork",
+            "character artwork", "fan art", "anime aesthetic", "aesthetic", "background",
+            "高清", "4k", "8k", "portrait"
+        )
+        if (keyword in generic) return false
+        if (Regex("\\b(?:wallpaper|illustration|artwork|fan art|aesthetic|background)\\b").containsMatchIn(keyword)) {
+            return false
+        }
+        if (Regex("^(?:in the )?style of\\b|\\bstyle$|\\bstyle of\\b").containsMatchIn(keyword)) {
+            return false
+        }
+        return true
     }
 
     private fun filterJumpTags(tags: List<String>, usedKeyword: String?): List<String> {
