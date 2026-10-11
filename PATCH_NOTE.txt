@@ -1,4 +1,6 @@
-修复 skipJumpFilter 编译错误（不推送）
+真正修复 skipJumpFilter 编译错误（不推送）
 
-- changeForTarget / applyReadySlot 均声明 skipJumpFilter 参数
-- 预下载路径在隔离时同样跳过跃迁链，由外层合并后统一跑
+根因：skipJumpFilter 写在 downloadAndSet 函数体内，但参数只加在了 changeForTarget。
+现已：
+- downloadAndSet 增加 skipJumpFilter 参数
+- changeForTarget 内三处调用向下传递

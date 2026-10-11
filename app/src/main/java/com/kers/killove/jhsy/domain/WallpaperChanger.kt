@@ -377,7 +377,7 @@ class WallpaperChanger(
         if (candidates.isNotEmpty()) {
             val item = pickCandidate(candidates, excludeIds)
             if (item != null) {
-                when (val r = downloadAndSet(item, settings, category, fromWallhaven, keyword, target, advanceKeyword, countChange, touchScheduleClock)) {
+                when (val r = downloadAndSet(item, settings, category, fromWallhaven, keyword, target, advanceKeyword, countChange, touchScheduleClock, skipJumpFilter)) {
                     is ChangeResult.Success -> return r
                     is ChangeResult.Failure -> lastError = "Wallhaven 下载失败: ${r.message}"
                 }
@@ -390,7 +390,7 @@ class WallpaperChanger(
                 ).filter { it.id !in excludeIds }
                 val alt = pickCandidate(more, excludeIds)
                 if (alt != null) {
-                    when (val r = downloadAndSet(alt, settings, category, true, keyword, target, advanceKeyword, countChange, touchScheduleClock)) {
+                    when (val r = downloadAndSet(alt, settings, category, true, keyword, target, advanceKeyword, countChange, touchScheduleClock, skipJumpFilter)) {
                         is ChangeResult.Success -> return r
                         is ChangeResult.Failure -> lastError = "Wallhaven 下载失败: ${r.message}"
                     }
@@ -406,7 +406,7 @@ class WallpaperChanger(
                 try {
                     val fb = api.fetchFallbackApi(url, maxOf(settings.minWidth, dw), maxOf(settings.minHeight, dh))
                     val unique = fb.copy(id = fb.id + "_${target.name}_${System.nanoTime() % 100000}")
-                    when (val r = downloadAndSet(unique, settings, category, false, null, target, advanceKeyword = false, countChange = countChange, touchScheduleClock = touchScheduleClock)) {
+                    when (val r = downloadAndSet(unique, settings, category, false, null, target, advanceKeyword = false, countChange = countChange, touchScheduleClock = touchScheduleClock, skipJumpFilter = skipJumpFilter)) {
                         is ChangeResult.Success -> return r
                         is ChangeResult.Failure -> errors += "#${i + 1} ${r.message}"
                     }
@@ -536,7 +536,8 @@ class WallpaperChanger(
         target: WallpaperTarget,
         advanceKeyword: Boolean,
         countChange: Boolean = true,
-        touchScheduleClock: Boolean = true
+        touchScheduleClock: Boolean = true,
+        skipJumpFilter: Boolean = false
     ): ChangeResult {
         val dir = File(context.filesDir, "wallpapers").apply { mkdirs() }
         val targetSuffix = when (target) {
