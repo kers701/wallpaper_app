@@ -866,64 +866,130 @@ private fun extractApiKey(web: WebView) {
     web.evaluateJavascript(
         """
         (function() {
-          function score(s) {
-            if (!s) return -1;
-            s = s.trim();
-            // 排除明显非 key
-            if (/csrf|session|token|cookie|php|http|www\./i.test(s)) return -1;
-            if (!/^[A-Za-z0-9]+${'$'}/.test(s)) return -1;
-            if (s.length === 32 && /[A-Za-z]/.test(s) && /[0-9]/.test(s)) return 100;
-            if (s.length >= 28 && s.length <= 40 && /[A-Za-z]/.test(s) && /[0-9]/.test(s)) return 50;
-            return -1;
+          // Wallhaven 账户页 API Key：固定 32 位字母数字，出现在「API Key」区块 input 中
+          function isKey(s) {
+            if (!s) return false;
+            s = ('' + s).trim();
+            if (s.length !== 32) return false;
+            if (!/^[A-Za-z0-9]+$/.test(s)) return false;
+            if (!/[A-Za-z]/.test(s) || !/[0-9]/.test(s)) return false;
+            if (/@|csrf|session|token|password|email|http/i.test(s)) return false;
+            return true;
           }
-          let best = '';
-          let bestScore = -1;
-          // 1) 优先：标签/文案含 API Key 的附近 input
-          const labels = Array.from(document.querySelectorAll('label, th, td, dt, strong, span, p, div'));
-          for (const el of labels) {
-            const t = (el.textContent || '').toLowerCase();
-            if (!t.includes('api') || !t.includes('key')) continue;
-            let input = el.querySelector && el.querySelector('input');
-            if (!input && el.nextElementSibling) {
-              input = el.nextElementSibling.querySelector
-                ? el.nextElementSibling.querySelector('input')
-                : (el.nextElementSibling.tagName === 'INPUT' ? el.nextElementSibling : null);
+          function pickFromInputs(root, bonusList) {
+            const list = [];
+            (root || document).querySelectorAll('input').forEach(inp => {
+              const v = (inp.value || inp.getAttribute('value') || '').trim();
+              if (isKey(v)) list.push({ v: v, bonus: 0, el: inp });
+            });
+            return list;
+          }
+
+          let best = null;
+          let bestRank = -1;
+          function consider(v, rank) {
+            if (!isKey(v)) return;
+            if (rank > bestRank) { bestRank = rank; best = v.trim(); }
+          }
+
+          // 1) 精确定位：文案恰好为 "API Key" 的标题，在其后 sibling / 父级内找 input
+          const nodes = Array.from(document.querySelectorAll('h1,h2,h3,h4,h5,label,legend,div,span,p,strong,dt'));
+          for (const el of nodes) {
+            const t = (el.textContent || '').replace(/\s+/g, ' ').trim();
+            if (t !== 'API Key' && t !== 'Api Key' && t !== 'API key') continue;
+            // 标题元素自身很短
+            if ((el.textContent || '').length > 24) continue;
+
+            // 下一个兄弟子树
+            let n = el.nextElementSibling;
+            for (let step = 0; step < 6 && n; step++, n = n.nextElementSibling) {
+              n.querySelectorAll('input').forEach(inp => {
+                consider(inp.value || inp.getAttribute('value') || '', 100 - step);
+              });
+              if (n.tagName === 'INPUT') consider(n.value || n.getAttribute('value') || '', 100 - step);
             }
-            if (!input && el.parentElement) input = el.parentElement.querySelector('input[type="text"], input:not([type])');
-            if (input && input.value) {
-              const sc = score(input.value);
-              if (sc > bestScore) { bestScore = sc; best = input.value.trim(); }
+            // 父级容器（账户设置卡片）
+            let p = el.parentElement;
+            for (let depth = 0; depth < 5 && p; depth++, p = p.parentElement) {
+              p.querySelectorAll('input').forEach(inp => {
+                // 跳过 email / password
+                const ty = (inp.type || '').toLowerCase();
+                if (ty === 'password' || ty === 'email') return;
+                const meta = ((inp.name||'')+' '+(inp.id||'')+' '+(inp.placeholder||'')+' '+(inp.autocomplete||'')).toLowerCase();
+                if (/email|pass|mail|user/.test(meta)) return;
+                consider(inp.value || inp.getAttribute('value') || '', 80 - depth);
+              });
+              // 找到 Regenerate 按钮所在块，优先其前方 input
+              const regen = Array.from(p.querySelectorAll('button,a,input[type="submit"]'))
+                .find(b => /regenerate/i.test(b.textContent || b.value || ''));
+              if (regen) {
+                let prev = regen.previousElementSibling;
+                for (let i = 0; i < 5 && prev; i++, prev = prev.previousElementSibling) {
+                  if (prev.tagName === 'INPUT') consider(prev.value || prev.getAttribute('value') || '', 120);
+                  prev.querySelectorAll && prev.querySelectorAll('input').forEach(inp => {
+                    consider(inp.value || inp.getAttribute('value') || '', 115);
+                  });
+                }
+              }
             }
           }
-          // 2) name/id 含 apikey 的 input
-          const inputs = Array.from(document.querySelectorAll('input'));
-          for (const inp of inputs) {
-            const meta = ((inp.name || '') + ' ' + (inp.id || '') + ' ' + (inp.placeholder || '')).toLowerCase();
-            if (/api.?key|apikey/.test(meta) && inp.value) {
-              const sc = score(inp.value) + 20;
-              if (sc > bestScore) { bestScore = sc; best = inp.value.trim(); }
+
+          // 2) name/id 含 apikey 的 input（仍要求恰好 32 位）
+          document.querySelectorAll('input').forEach(inp => {
+            const ty = (inp.type || '').toLowerCase();
+            if (ty === 'password' || ty === 'email' || ty === 'hidden') return;
+            const meta = ((inp.name||'')+' '+(inp.id||'')+' '+(inp.className||'')).toLowerCase();
+            if (/api.?key|apikey/.test(meta)) {
+              consider(inp.value || inp.getAttribute('value') || '', 60);
+            }
+          });
+
+          // 3) 整页 input 仅收集「恰好 32 位」；若只有一个则采用
+          if (!best) {
+            const keys = [];
+            document.querySelectorAll('input').forEach(inp => {
+              const ty = (inp.type || '').toLowerCase();
+              if (ty === 'password' || ty === 'email') return;
+              const v = (inp.value || inp.getAttribute('value') || '').trim();
+              if (isKey(v) && keys.indexOf(v) < 0) keys.push(v);
+            });
+            if (keys.length === 1) { best = keys[0]; bestRank = 40; }
+            else if (keys.length > 1) {
+              // 多个时仍优先带 apikey 属性的；否则不瞎选最长的
+              best = keys[0];
+              bestRank = 30;
             }
           }
-          // 3) 所有 input value 与正文中的 32 位候选
-          for (const inp of inputs) {
-            if (!inp.value) continue;
-            const sc = score(inp.value);
-            if (sc > bestScore) { bestScore = sc; best = inp.value.trim(); }
+
+          // 4) 正文中独立的 32 位词（不拼接）
+          if (!best) {
+            const text = document.body ? (document.body.innerText || '') : '';
+            const re = /\b([A-Za-z0-9]{32})\b/g;
+            let m;
+            const found = [];
+            while ((m = re.exec(text)) !== null) {
+              if (isKey(m[1]) && found.indexOf(m[1]) < 0) found.push(m[1]);
+            }
+            // 排除整段被拼进邮箱行的情况已由 isKey 处理
+            if (found.length === 1) best = found[0];
+            else if (found.length > 1) {
+              // 取出现在 "API Key" 文案之后的第一个
+              const idx = text.toLowerCase().indexOf('api key');
+              if (idx >= 0) {
+                const after = text.slice(idx);
+                for (const k of found) {
+                  if (after.indexOf(k) >= 0) { best = k; break; }
+                }
+              }
+              if (!best) best = found[0];
+            }
           }
-          const text = document.body.innerText || '';
-          const re = /\\b([A-Za-z0-9]{28,40})\\b/g;
-          let m;
-          while ((m = re.exec(text)) !== null) {
-            const sc = score(m[1]);
-            if (sc > bestScore) { bestScore = sc; best = m[1]; }
-          }
-          if (best && bestScore >= 50) {
+
+          if (best && isKey(best)) {
             window.WallhavenBridge.keyFound(best);
-          } else if (best) {
-            window.WallhavenBridge.keyFound(best);
-            window.WallhavenBridge.status('已候选密钥（请核对长度约 32 位）：' + best);
+            window.WallhavenBridge.status('已提取 API Key（32 位）：' + best.slice(0, 6) + '…');
           } else {
-            window.WallhavenBridge.status('未找到 API Key。请确认已登录并打开账户设置页，或手动复制密钥。');
+            window.WallhavenBridge.status('未准确找到 32 位 API Key。请确认账户设置页「API Key」输入框有值，或手动复制。');
           }
         })();
         """.trimIndent(),
