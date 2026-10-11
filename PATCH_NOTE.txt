@@ -1,6 +1,6 @@
-注册前清空 wallhaven.cc Cookie 与站点数据（不推送）
+缩短登录成功提示与跳转延迟（不推送）
 
-- 覆盖 https://wallhaven.cc/ 、/login 、/join
-- 过期域名 Cookie + removeAllCookies + WebStorage.deleteAllData
-- WebView clearCache / clearFormData / clearHistory
-- 点「开始注册」与创建 WebView 时各执行一次
+- 离开 /login 时在 onPageStarted / 跳转回调里立即提示「登录成功」
+- 立刻打开账户设置，去掉 800ms postDelayed
+- 不再等首页整页 onPageFinished（可卡十几秒）
+- 账户页 onPageFinished 立即抽 Key

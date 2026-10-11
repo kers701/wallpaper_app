@@ -205,15 +205,73 @@ fun WallhavenApiSetupDialog(
                                 // 每次注册流程开始：清空本站 Cookie 与本地网站数据
                                 clearWallhavenSiteData(this)
                                 webViewClient = object : WebViewClient() {
+                                    private var accountRequested = false
+
+                                    private fun isWallhaven(u: String) =
+                                        u.contains("wallhaven.cc")
+
+                                    private fun isLogin(u: String) =
+                                        u.contains("/login") || u.contains("/auth/login")
+
+                                    private fun isJoin(u: String) =
+                                        u.contains("/join")
+
+                                    private fun isAccount(u: String) =
+                                        u.contains("/settings/account")
+
+                                    /** 登录成功：已离开登录/注册页，尽快进账户设置（不等整页加载完） */
+                                    private fun onLeftLogin(view: WebView, url: String) {
+                                        val u = url.lowercase()
+                                        if (!loginFilled || discoveredKey != null) return
+                                        if (!isWallhaven(u) || isLogin(u) || isJoin(u)) return
+                                        if (isAccount(u)) return
+                                        if (accountRequested) return
+                                        accountRequested = true
+                                        status = "登录成功，正在打开账户设置…"
+                                        view.post {
+                                            if (discoveredKey == null) {
+                                                view.loadUrl(WALLHAVEN_ACCOUNT)
+                                            }
+                                        }
+                                    }
+
                                     override fun shouldOverrideUrlLoading(
                                         view: WebView,
                                         request: WebResourceRequest
-                                    ): Boolean = false
+                                    ): Boolean {
+                                        val u = request.url?.toString().orEmpty()
+                                        onLeftLogin(view, u)
+                                        return false
+                                    }
+
+                                    override fun onPageStarted(
+                                        view: WebView,
+                                        url: String,
+                                        favicon: android.graphics.Bitmap?
+                                    ) {
+                                        super.onPageStarted(view, url, favicon)
+                                        val u = url.lowercase()
+                                        onLeftLogin(view, u)
+                                        if (isAccount(u)) {
+                                            status = "正在打开账户设置…"
+                                        }
+                                    }
 
                                     override fun onPageFinished(view: WebView, url: String) {
                                         super.onPageFinished(view, url)
                                         val u = url.lowercase()
-                                        // 检测 Cloudflare 挑战页：不填表、不刷新、不提交
+                                        // 账户页：立刻抽 Key，不等其它逻辑
+                                        if (isAccount(u)) {
+                                            status = "正在读取账户设置中的 API Key…"
+                                            extractApiKey(view)
+                                            return
+                                        }
+                                        // 登录后已离开登录页：补一次跳转（onPageStarted 可能已处理）
+                                        onLeftLogin(view, u)
+
+                                        // 仅 join/login 需要 CF 检测与填表
+                                        if (!isJoin(u) && !isLogin(u)) return
+
                                         view.evaluateJavascript(
                                             """
                                             (function(){
@@ -232,17 +290,12 @@ fun WallhavenApiSetupDialog(
                                         ) { cfResult ->
                                             val isCf = cfResult != null && cfResult.contains("cf")
                                             if (isCf) {
-                                                // 卡在 CF：重置填表许可，等用户手动过完再点按钮
-                                                if (cfPassed) {
-                                                    // 用户曾点过通过，但页面又回到 CF，不自动重试
-                                                }
                                                 status = "正在进行 Cloudflare 安全验证，请在网页中完成，完成后点「已通过CF验证」。不要反复刷新。"
                                                 return@evaluateJavascript
                                             }
                                             when {
-                                                u.contains("/join") -> {
+                                                isJoin(u) -> {
                                                     if (registrationSubmitted) {
-                                                        // 提交后仍停在注册页 = 校验失败或未真正提交
                                                         view.evaluateJavascript(
                                                             """
                                                             (function(){
@@ -259,7 +312,7 @@ fun WallhavenApiSetupDialog(
                                                             status = when {
                                                                 msg.startsWith("exists:") -> "注册失败：账号可能已存在。可改开登录页。"
                                                                 msg.startsWith("err:") -> "注册未成功：${msg.removePrefix("err:")}。请改信息后重试「提交注册」。"
-                                                                else -> "仍在注册页（未跳转登录）。请检查用户名/邮箱/密码是否符合要求后再次「提交注册」，或网页上手动点 Register。"
+                                                                else -> "仍在注册页（未跳转登录）。请检查用户名/邮箱/密码后再次「提交注册」，或网页上手动点 Register。"
                                                             }
                                                             registrationSubmitted = false
                                                         }
@@ -276,7 +329,8 @@ fun WallhavenApiSetupDialog(
                                                         status = "注册表单已填写。确认无误后点「提交注册」。"
                                                     }
                                                 }
-                                                u.contains("/login") || u.contains("/auth/login") -> {
+                                                isLogin(u) -> {
+                                                    accountRequested = false
                                                     if (cfPassed && !loginFilled) {
                                                         status = "登录页已就绪，正在填写账号密码…"
                                                         fillLogin(view, username, password, autoSubmit = false)
@@ -285,16 +339,6 @@ fun WallhavenApiSetupDialog(
                                                     } else if (!cfPassed) {
                                                         status = "登录页若出现 CF 验证，请完成后再点「已通过CF验证」。"
                                                     }
-                                                }
-                                                u.contains("/settings/account") -> {
-                                                    status = "正在读取账户设置中的 API Key…"
-                                                    extractApiKey(view)
-                                                }
-                                                (u == "https://wallhaven.cc/" || u == "https://wallhaven.cc" ||
-                                                    u.endsWith("wallhaven.cc/") || u.contains("wallhaven.cc/?") ||
-                                                    u.contains("/user/")) && loginFilled && discoveredKey == null -> {
-                                                    status = "登录成功，打开账户设置…"
-                                                    view.postDelayed({ view.loadUrl(WALLHAVEN_ACCOUNT) }, 800)
                                                 }
                                             }
                                         }
