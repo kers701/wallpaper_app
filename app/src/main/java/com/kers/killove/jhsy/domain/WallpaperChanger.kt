@@ -489,8 +489,11 @@ class WallpaperChanger(
         applyRetentionPolicy(settings)
         OverviewCacheStore.update(context, target, file)
         if (touchScheduleClock) {
-            settingsRepo.setLastChangeAt(System.currentTimeMillis())
-            ProcessBridgePrefs.setLastChangeAt(context, System.currentTimeMillis())
+            val now = System.currentTimeMillis()
+            settingsRepo.setLastChangeAt(now)
+            ProcessBridgePrefs.setLastChangeAt(context, now)
+            // 壁纸设置完成 = 新周期：清空上一周期跃迁/湮灭/虚妄翻译缓存
+            com.kers.killove.jhsy.util.KeywordZhCacheStore.beginNewCycle(context, now)
         }
         if (countChange) settingsRepo.incrementChangeCount()
         if (size > 0L) {
@@ -600,8 +603,11 @@ class WallpaperChanger(
         if (item.source != "local") applyFileRetention(dir, settings.cacheRetention)
         OverviewCacheStore.update(context, target, finalFile)
         if (touchScheduleClock) {
-            settingsRepo.setLastChangeAt(System.currentTimeMillis())
-            ProcessBridgePrefs.setLastChangeAt(context, System.currentTimeMillis())
+            val now = System.currentTimeMillis()
+            settingsRepo.setLastChangeAt(now)
+            ProcessBridgePrefs.setLastChangeAt(context, now)
+            // 壁纸设置完成 = 新周期：清空上一周期跃迁/湮灭/虚妄翻译缓存
+            com.kers.killove.jhsy.util.KeywordZhCacheStore.beginNewCycle(context, now)
         }
         if (countChange) settingsRepo.incrementChangeCount()
         if (fileSize > 0L) {
@@ -829,8 +835,11 @@ class WallpaperChanger(
         }
         OverviewCacheStore.update(context, target, useFile)
         if (touchScheduleClock) {
-            settingsRepo.setLastChangeAt(System.currentTimeMillis())
-            ProcessBridgePrefs.setLastChangeAt(context, System.currentTimeMillis())
+            val now = System.currentTimeMillis()
+            settingsRepo.setLastChangeAt(now)
+            ProcessBridgePrefs.setLastChangeAt(context, now)
+            // 壁纸设置完成 = 新周期：清空上一周期跃迁/湮灭/虚妄翻译缓存
+            com.kers.killove.jhsy.util.KeywordZhCacheStore.beginNewCycle(context, now)
         }
         if (countChange) settingsRepo.incrementChangeCount()
         if (fileSize > 0L) {

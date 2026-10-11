@@ -1,6 +1,6 @@
-再次修复底部按钮裁切（不推送）
+翻译缓存周期改为壁纸更换周期（不推送）
 
-- Dialog decorFitsSystemWindows + WindowCompat 强制适配系统栏
-- 固定底部 padding 48dp（Dialog 常拿不到 insets）
-- statusBars/navigationBars/ime padding
-- 按钮 minHeight 52dp
+- 不再按湮灭纪元
+- 周期：壁纸设置完成 → 下次壁纸设置完成
+- 设置完成时 beginNewCycle 清空上周期缓存
+- 同周期内点开面板只译缺失词，其余用缓存

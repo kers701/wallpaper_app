@@ -192,6 +192,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun refreshJumpTranslation(s: AppSettings) {
         val ctx = getApplication<Application>()
+        // 周期 = 壁纸设置完成时间戳（到下一次设置完成为止）
+        val cycleId = maxOf(
+            s.lastChangeAt,
+            ProcessBridgePrefs.effectiveLastChangeAt(ctx)
+        ).let { if (it > 0L) it else 0L }
         val anniWords = withContext(Dispatchers.IO) {
             AnnihilationStore.lastRoundBlocked(ctx)
         }
@@ -204,21 +209,44 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _illusionZh.value = emptyMap()
             return
         }
-        if (s.jumpKeywords.isEmpty()) {
-            _jumpKeywordsZh.value = emptyMap()
-        } else {
-            _jumpKeywordsZh.value = translator.translateList(s.jumpKeywords, s)
+        // 同周期复用缓存；壁纸换完进入新周期则清空上周期翻译
+        val cache = withContext(Dispatchers.IO) {
+            val snap = com.kers.killove.jhsy.util.KeywordZhCacheStore.load(ctx)
+            if (cycleId > 0L && snap.cycleId != cycleId) {
+                com.kers.killove.jhsy.util.KeywordZhCacheStore.beginNewCycle(ctx, cycleId)
+                mutableMapOf()
+            } else {
+                snap.map.toMutableMap()
+            }
         }
-        if (anniWords.isEmpty()) {
-            _annihilationZh.value = emptyMap()
-        } else {
-            _annihilationZh.value = translator.translateList(anniWords, s)
+        val jumpWords = s.jumpKeywords.map { it.trim() }.filter { it.isNotEmpty() }
+        val need = (jumpWords + anniWords + illuWords)
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && !cache.containsKey(it) }
+            .distinct()
+        if (need.isNotEmpty()) {
+            val got = translator.translateList(need, s)
+            for ((k, v) in got) {
+                val kk = k.trim()
+                val vv = v.trim()
+                if (kk.isNotEmpty() && vv.isNotEmpty()) cache[kk] = vv
+            }
+            withContext(Dispatchers.IO) {
+                val id = if (cycleId > 0L) cycleId else (
+                    com.kers.killove.jhsy.util.KeywordZhCacheStore.load(ctx).cycleId.takeIf { it > 0L }
+                        ?: System.currentTimeMillis()
+                )
+                com.kers.killove.jhsy.util.KeywordZhCacheStore.save(ctx, id, cache)
+            }
         }
-        if (illuWords.isEmpty()) {
-            _illusionZh.value = emptyMap()
-        } else {
-            _illusionZh.value = translator.translateList(illuWords, s)
-        }
+        fun pick(words: List<String>): Map<String, String> =
+            words.mapNotNull { w ->
+                val z = cache[w]
+                if (z.isNullOrBlank()) null else w to z
+            }.toMap()
+        _jumpKeywordsZh.value = if (jumpWords.isEmpty()) emptyMap() else pick(jumpWords)
+        _annihilationZh.value = if (anniWords.isEmpty()) emptyMap() else pick(anniWords)
+        _illusionZh.value = if (illuWords.isEmpty()) emptyMap() else pick(illuWords)
     }
 
     val recent = dao.recent(120)
