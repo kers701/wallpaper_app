@@ -1,6 +1,4 @@
-缩短登录成功提示与跳转延迟（不推送）
+修复注册助手底部按钮显示不全（不推送）
 
-- 离开 /login 时在 onPageStarted / 跳转回调里立即提示「登录成功」
-- 立刻打开账户设置，去掉 800ms postDelayed
-- 不再等首页整页 onPageFinished（可卡十几秒）
-- 账户页 onPageFinished 立即抽 Key
+- safeDrawing / ime 边衬，避开系统导航栏与手势条
+- 底部按钮加高 min 48dp，左右留白，避免被裁切

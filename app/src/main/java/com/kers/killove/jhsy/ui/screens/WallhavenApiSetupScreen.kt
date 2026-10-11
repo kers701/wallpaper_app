@@ -15,6 +15,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
@@ -121,7 +128,9 @@ fun WallhavenApiSetupDialog(
             Column(
                 Modifier
                     .fillMaxSize()
-                    .padding(16.dp),
+                    .windowInsetsPadding(WindowInsets.safeDrawing)
+                    .imePadding()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text("获取 Wallhaven API Key", style = MaterialTheme.typography.titleLarge)
@@ -171,12 +180,18 @@ fun WallhavenApiSetupDialog(
                         )
                     }
                     Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 52.dp)
+                            .padding(top = 4.dp, bottom = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
-                            Text("取消")
-                        }
+                        OutlinedButton(
+                            onClick = onDismiss,
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 48.dp)
+                        ) { Text("取消") }
                         Button(
                             enabled = username.length in 3..12
                                 && email.contains("@")
@@ -187,7 +202,9 @@ fun WallhavenApiSetupDialog(
                                 started = true
                                 status = "已清空 wallhaven.cc Cookie/站点数据，正在打开注册页…"
                             },
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 48.dp)
                         ) { Text("开始注册") }
                     }
                 } else {
@@ -370,10 +387,18 @@ fun WallhavenApiSetupDialog(
                         update = { webView = it }
                     )
                     Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 52.dp)
+                            .padding(top = 4.dp, bottom = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
+                        OutlinedButton(
+                            onClick = onDismiss,
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 48.dp)
+                        ) {
                             Text("关闭")
                         }
                         if (!cfPassed) {
