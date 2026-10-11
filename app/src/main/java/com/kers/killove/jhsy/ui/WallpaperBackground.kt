@@ -36,9 +36,8 @@ import java.net.URL
 
 /**
  * 软件背景：
- * 1. 填了本地路径 → 读本地图
- * 2. 填了 API 链接 → 打开时自动拉取
- * 3. 都为空 → 尝试系统壁纸，失败则莫奈渐变取色
+ * 背景模式决定唯一数据源：Auto 为本地→API→系统壁纸→莫奈回退，
+ * Api 仅使用 API，Local 仅使用本地路径，Monet 仅使用莫奈渐变。
  */
 /** 供卡片磨砂：当前软件背景图（已加载），高斯模式卡片背后叠一层模糊图 */
 val LocalBackdropBitmap = staticCompositionLocalOf<androidx.compose.ui.graphics.ImageBitmap?> { null }
@@ -56,30 +55,29 @@ fun WallpaperBackground(
     LaunchedEffect(settings.bgApiUrl, settings.bgLocalPath, settings.bgMode) {
         bitmap = null
         useMonet = false
-        val local = settings.bgLocalPath.trim()
-        val api = settings.bgApiUrl.trim()
-
         val loaded = withContext(Dispatchers.IO) {
-            // 1. 本地路径
-            if (local.isNotEmpty()) {
-                val f = File(local)
-                if (f.exists() && f.isFile) {
-                    runCatching {
-                        BitmapFactory.decodeFile(f.absolutePath)?.asImageBitmap()
-                    }.getOrNull()?.let { return@withContext it to false }
-                }
+            fun loadLocal(): androidx.compose.ui.graphics.ImageBitmap? {
+                val path = settings.bgLocalPath.trim()
+                if (path.isEmpty()) return null
+                val f = File(path)
+                if (!f.exists() || !f.isFile) return null
+                return runCatching {
+                    BitmapFactory.decodeFile(f.absolutePath)?.asImageBitmap()
+                }.getOrNull()
             }
-            // 2. API
-            if (api.isNotEmpty()) {
-                runCatching {
+
+            fun loadApi(): androidx.compose.ui.graphics.ImageBitmap? {
+                val api = settings.bgApiUrl.trim()
+                if (api.isEmpty()) return null
+                return runCatching {
                     val imageUrl = WallhavenApi().fetchBackgroundImageUrl(api)
                     URL(imageUrl).openStream().use { stream ->
                         BitmapFactory.decodeStream(stream)?.asImageBitmap()
                     }
-                }.getOrNull()?.let { return@withContext it to false }
+                }.getOrNull()
             }
-            // 3. 系统壁纸
-            if (settings.bgMode != BgMode.Monet) {
+
+            fun loadSystem(): androidx.compose.ui.graphics.ImageBitmap? {
                 runCatching {
                     val wm = WallpaperManager.getInstance(context)
                     val drawable: Drawable? = try {
@@ -97,12 +95,20 @@ fun WallpaperBackground(
                                 height = (drawable.intrinsicHeight.takeIf { it > 0 } ?: 1920)
                             )
                         }
-                        return@withContext bmp.asImageBitmap() to false
+                        return bmp.asImageBitmap()
                     }
+                }.getOrNull()
+            }
+
+            when (settings.bgMode) {
+                BgMode.Local -> loadLocal()?.let { it to false } ?: (null to true)
+                BgMode.Api -> loadApi()?.let { it to false } ?: (null to true)
+                BgMode.Monet -> null to true
+                BgMode.Auto -> {
+                    val image = loadLocal() ?: loadApi() ?: loadSystem()
+                    image to (image == null)
                 }
             }
-            // 4. 莫奈
-            null to true
         }
         bitmap = loaded.first
         useMonet = loaded.second || loaded.first == null

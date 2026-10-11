@@ -223,14 +223,14 @@ fun CloudSyncScreen(vm: MainViewModel, onBack: () -> Unit) {
         CloudSyncScopeRow("翻译密钥", syncTrans, textColor) { syncTrans = it }
         CloudSyncScopeRow("界面美化", syncUi, textColor) { syncUi = it }
 
-        Button(
+        ThemeButton(
             onClick = { vm.saveSettings(currentSettings()) },
             modifier = Modifier.fillMaxWidth(),
             enabled = !busy
         ) { Text("保存云同步配置") }
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(
+            ThemeButton(
                 onClick = {
                     vm.saveSettings(currentSettings())
                     vm.gitSyncUpload()

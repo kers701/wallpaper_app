@@ -242,7 +242,7 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
             color = textColor
         )
 
-        Button(onClick = { openEditor(null) }, modifier = Modifier.fillMaxWidth()) {
+        ThemeButton(onClick = { openEditor(null) }, modifier = Modifier.fillMaxWidth()) {
             Text("添加命运先机配置")
         }
 
@@ -335,7 +335,7 @@ fun DestinyScheduleScreen(vm: MainViewModel, onBack: () -> Unit) {
             }
         }
 
-        Button(
+        ThemeButton(
             onClick = {
                 vm.saveDestinyRules(rules)
                 status = "已保存全部命运先机配置"

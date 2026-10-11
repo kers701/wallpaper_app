@@ -1303,7 +1303,7 @@ fun SettingsScreen(
             onToggle = { toggleSection("bg") }
         ) {
         Text(
-            "优先本地路径 → API 链接 → 系统壁纸；都为空则使用莫奈取色",
+            "自动：本地 → API → 系统壁纸 → 莫奈；API：仅 API；本地：仅本地路径；莫奈：仅渐变取色",
             style = MaterialTheme.typography.bodySmall
         )
         EnumDropdown("背景模式", BgMode.entries, bgMode) { bgMode = it }
@@ -1509,7 +1509,7 @@ fun SettingsScreen(
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword)
             )
-            Button(
+            ThemeButton(
                 onClick = {
                     vm.unlock(pinInput)
                     pinInput = ""
@@ -1553,7 +1553,7 @@ fun SettingsScreen(
                     modifier = Modifier.weight(1f)
                 ) { Text(if (settings.pinEnabled) "修改 PIN" else "启用 PIN") }
                 if (settings.pinEnabled) {
-                    TextButton(
+                    ThemeOutlinedButton(
                         onClick = { vm.setPin("", enable = false) },
                         modifier = Modifier.weight(1f)
                     ) { Text("关闭 PIN") }
