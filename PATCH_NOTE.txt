@@ -1,5 +1,6 @@
-API Key 提取后有效性检测，通过才写入（不推送）
+注册前清空 wallhaven.cc Cookie 与站点数据（不推送）
 
-- WallhavenApi.validateApiKey：请求 /api/v1/settings
-- 提取后自动检测；仅有效时可点「确认保存」
-- addWallhavenApiKey 再次校验，无效绝不落盘
+- 覆盖 https://wallhaven.cc/ 、/login 、/join
+- 过期域名 Cookie + removeAllCookies + WebStorage.deleteAllData
+- WebView clearCache / clearFormData / clearHistory
+- 点「开始注册」与创建 WebView 时各执行一次

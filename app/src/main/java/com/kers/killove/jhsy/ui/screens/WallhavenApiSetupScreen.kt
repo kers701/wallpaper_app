@@ -1,7 +1,9 @@
 package com.kers.killove.jhsy.ui.screens
 
 import android.annotation.SuppressLint
+import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
+import android.webkit.WebStorage
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -163,7 +165,7 @@ fun WallhavenApiSetupDialog(
                             modifier = Modifier.fillMaxWidth()
                         )
                         Text(
-                            "流程：打开注册页 → 完成 Cloudflare 验证 → 点「已通过CF验证」→ 自动填表 → 提交注册 → 登录取 Key。\n" +
+                            "流程：清空 wallhaven.cc Cookie/站点数据 → 打开注册页 → 完成 CF 验证 →「已通过CF验证」→ 填表 → 提交注册 → 登录取 Key。\n" +
                                 "不会强制刷新或反复提交。验证码/CF 请在网页中手动完成。",
                             style = MaterialTheme.typography.bodySmall
                         )
@@ -181,8 +183,9 @@ fun WallhavenApiSetupDialog(
                                 && password.isNotEmpty()
                                 && confirmPassword == password,
                             onClick = {
+                                clearWallhavenSiteData(null)
                                 started = true
-                                status = "正在打开注册页…"
+                                status = "已清空 wallhaven.cc Cookie/站点数据，正在打开注册页…"
                             },
                             modifier = Modifier.weight(1f)
                         ) { Text("开始注册") }
@@ -196,8 +199,11 @@ fun WallhavenApiSetupDialog(
                             WebView(context).apply {
                                 settings.javaScriptEnabled = true
                                 settings.domStorageEnabled = true
+                                settings.databaseEnabled = true
                                 settings.allowFileAccess = false
                                 settings.allowContentAccess = false
+                                // 每次注册流程开始：清空本站 Cookie 与本地网站数据
+                                clearWallhavenSiteData(this)
                                 webViewClient = object : WebViewClient() {
                                     override fun shouldOverrideUrlLoading(
                                         view: WebView,
@@ -464,6 +470,46 @@ fun WallhavenApiSetupDialog(
                 ) { Text(if (keyValid == false) "关闭" else "不保存") }
             }
         )
+    }
+}
+
+
+
+/** 清空 wallhaven.cc（含 /、/login、/join）的 Cookie 与 WebView 站点数据 */
+private fun clearWallhavenSiteData(web: WebView?) {
+    val cm = CookieManager.getInstance()
+    cm.setAcceptCookie(true)
+    val hosts = listOf(
+        "https://wallhaven.cc/",
+        "https://wallhaven.cc/login",
+        "https://wallhaven.cc/join",
+        "https://www.wallhaven.cc/",
+        "https://www.wallhaven.cc/login",
+        "https://www.wallhaven.cc/join"
+    )
+    for (url in hosts) {
+        val raw = cm.getCookie(url) ?: continue
+        for (part in raw.split(";")) {
+            val name = part.substringBefore("=").trim()
+            if (name.isEmpty()) continue
+            // 过期掉各路径下的同名 Cookie
+            cm.setCookie(url, "$name=; Max-Age=0; Path=/; Domain=wallhaven.cc")
+            cm.setCookie(url, "$name=; Max-Age=0; Path=/; Domain=.wallhaven.cc")
+            cm.setCookie(url, "$name=; Max-Age=0; Path=/")
+        }
+    }
+    // 再整表清掉 WebView Cookie，避免残留会话
+    cm.removeAllCookies(null)
+    cm.removeSessionCookies(null)
+    cm.flush()
+    try {
+        WebStorage.getInstance().deleteAllData()
+    } catch (_: Exception) {
+    }
+    web?.apply {
+        clearCache(true)
+        clearFormData()
+        clearHistory()
     }
 }
 
