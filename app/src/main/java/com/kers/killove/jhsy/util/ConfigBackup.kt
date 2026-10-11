@@ -93,6 +93,8 @@ object ConfigBackup {
         o.put("jumpKeywords", JSONArray(settings.jumpKeywords))
         o.put("jumpKeywordIndex", settings.jumpKeywordIndex)
         o.put("naturalLawEnabled", settings.naturalLawEnabled)
+        o.put("naturalLawRetainedKeywords", JSONArray(settings.naturalLawRetainedKeywords))
+        o.put("naturalLawRecommendedKeywords", JSONArray(settings.naturalLawRecommendedKeywords))
         o.put("annihilationModeEnabled", settings.annihilationModeEnabled)
         o.put("annihilationEpoch", settings.annihilationEpoch)
         o.put("blacklistPackages", JSONArray(settings.blacklistPackages))
@@ -239,6 +241,8 @@ object ConfigBackup {
             jumpKeywords = strList("jumpKeywords") ?: base.jumpKeywords,
             jumpKeywordIndex = o.optInt("jumpKeywordIndex", base.jumpKeywordIndex).coerceAtLeast(0),
             naturalLawEnabled = o.optBoolean("naturalLawEnabled", base.naturalLawEnabled),
+            naturalLawRetainedKeywords = strList("naturalLawRetainedKeywords") ?: base.naturalLawRetainedKeywords,
+            naturalLawRecommendedKeywords = strList("naturalLawRecommendedKeywords") ?: base.naturalLawRecommendedKeywords,
             blacklistPackages = strList("blacklistPackages") ?: base.blacklistPackages,
 
             networkFallbackEnabled = o.optBoolean("networkFallbackEnabled", base.networkFallbackEnabled),
@@ -356,6 +360,7 @@ object ConfigBackup {
             copyKeys(
                 listOf(
                     "jumpModeEnabled", "jumpKeywords", "jumpKeywordIndex", "naturalLawEnabled",
+                    "naturalLawRetainedKeywords", "naturalLawRecommendedKeywords",
                     "annihilationModeEnabled", "annihilationEpoch", "illusionModeEnabled"
                 )
             )

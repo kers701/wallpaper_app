@@ -83,6 +83,8 @@ class SettingsRepository(private val context: Context) {
         val JUMP_KEYWORDS = stringPreferencesKey("jump_keywords")
         val JUMP_KEYWORD_INDEX = intPreferencesKey("jump_keyword_index")
         val NATURAL_LAW = booleanPreferencesKey("natural_law_enabled")
+        val NATURAL_LAW_RETAINED = stringPreferencesKey("natural_law_retained_keywords")
+        val NATURAL_LAW_RECOMMENDED = stringPreferencesKey("natural_law_recommended_keywords")
         val ANNIHILATION_MODE = booleanPreferencesKey("annihilation_mode")
         val ANNIHILATION_EPOCH = intPreferencesKey("annihilation_epoch")
         val ILLUSION_MODE = booleanPreferencesKey("illusion_mode")
@@ -245,6 +247,8 @@ class SettingsRepository(private val context: Context) {
             jumpKeywords = splitLines(p[Keys.JUMP_KEYWORDS] ?: ""),
             jumpKeywordIndex = p[Keys.JUMP_KEYWORD_INDEX] ?: 0,
             naturalLawEnabled = p[Keys.NATURAL_LAW] ?: false,
+            naturalLawRetainedKeywords = splitLines(p[Keys.NATURAL_LAW_RETAINED] ?: ""),
+            naturalLawRecommendedKeywords = splitLines(p[Keys.NATURAL_LAW_RECOMMENDED] ?: ""),
             annihilationModeEnabled = p[Keys.ANNIHILATION_MODE] ?: false,
             annihilationEpoch = (p[Keys.ANNIHILATION_EPOCH] ?: 1).coerceAtLeast(1),
             illusionModeEnabled = p[Keys.ILLUSION_MODE] ?: false,
@@ -422,6 +426,8 @@ class SettingsRepository(private val context: Context) {
             p[Keys.JUMP_KEYWORDS] = settings.jumpKeywords.joinToString("\n")
             p[Keys.JUMP_KEYWORD_INDEX] = settings.jumpKeywordIndex
             p[Keys.NATURAL_LAW] = settings.naturalLawEnabled
+            p[Keys.NATURAL_LAW_RETAINED] = settings.naturalLawRetainedKeywords.joinToString("\n")
+            p[Keys.NATURAL_LAW_RECOMMENDED] = settings.naturalLawRecommendedKeywords.joinToString("\n")
             p[Keys.ANNIHILATION_MODE] = settings.annihilationModeEnabled
             p[Keys.ANNIHILATION_EPOCH] = settings.annihilationEpoch.coerceAtLeast(1)
             p[Keys.ILLUSION_MODE] = settings.illusionModeEnabled
@@ -511,6 +517,13 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setNaturalLawEnabled(enabled: Boolean) {
         context.dataStore.edit { it[Keys.NATURAL_LAW] = enabled }
+    }
+
+    suspend fun setNaturalLawParts(retained: List<String>, recommended: List<String>) {
+        context.dataStore.edit {
+            it[Keys.NATURAL_LAW_RETAINED] = retained.joinToString("\n")
+            it[Keys.NATURAL_LAW_RECOMMENDED] = recommended.joinToString("\n")
+        }
     }
 
     suspend fun setApiKeyIndex(index: Int) {

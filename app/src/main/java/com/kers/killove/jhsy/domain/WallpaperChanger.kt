@@ -906,7 +906,9 @@ class WallpaperChanger(
             }
         }
         if (settings.naturalLawEnabled) {
-            forJump = applyNaturalLaw(forJump, settings)
+            val naturalResult = applyNaturalLaw(forJump, settings)
+            forJump = naturalResult.combined
+            settingsRepo.setNaturalLawParts(naturalResult.retained, naturalResult.recommended)
         }
         if (forJump.isNotEmpty()) {
             settingsRepo.setJumpKeywords(forJump)
@@ -918,13 +920,19 @@ class WallpaperChanger(
      * 自然法则：让 AI 根据本次提取的跃迁词推荐同等数量的一半，
      * 再随机替换原词中的一半。请求失败或推荐不足时保留原始列表。
      */
+    private data class NaturalLawResult(
+        val combined: List<String>,
+        val retained: List<String>,
+        val recommended: List<String>
+    )
+
     private suspend fun applyNaturalLaw(
         original: List<String>,
         settings: AppSettings
-    ): List<String> {
+    ): NaturalLawResult {
         val replaceCount = original.size / 2
         if (replaceCount <= 0 || settings.translateAiApiKey.isBlank() || settings.translateAiModel.isBlank()) {
-            return original
+            return NaturalLawResult(original, original, emptyList())
         }
         val source = original.joinToString("\n") { "- $it" }
         val content = AiOneShot.chat(
@@ -938,7 +946,7 @@ class WallpaperChanger(
             """.trimIndent(),
             systemContent = "You recommend concise English image-search keywords. Output only one keyword or phrase per line.",
             temperature = 0.7
-        ) ?: return original
+        ) ?: return NaturalLawResult(original, original, emptyList())
         val existing = original.map { it.trim().lowercase() }.toSet()
         val recommended = content
             .split(Regex("[\\r\\n,，;；]+"))
@@ -949,14 +957,16 @@ class WallpaperChanger(
             .filter { it.lowercase() !in existing }
             .distinctBy { it.lowercase() }
             .take(replaceCount)
-        if (recommended.isEmpty()) return original
+        if (recommended.isEmpty()) return NaturalLawResult(original, original, emptyList())
         val count = minOf(recommended.size, replaceCount)
         val result = original.toMutableList()
-        original.indices.shuffled().take(count).forEachIndexed { i, index ->
+        val replacementIndices = original.indices.shuffled().take(count)
+        replacementIndices.forEachIndexed { i, index ->
             result[index] = recommended[i]
         }
         RunLog.i(context, "natural law replaced=$count original=${original.size}")
-        return result
+        val retained = original.filterIndexed { index, _ -> index !in replacementIndices }
+        return NaturalLawResult(result, retained, recommended.take(count))
     }
 
     private fun filterJumpTags(tags: List<String>, usedKeyword: String?): List<String> {

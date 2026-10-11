@@ -281,7 +281,12 @@ fun OverviewScreen(vm: MainViewModel) {
                     when {
                         !settings.jumpModeEnabled -> "跃迁模式：关闭"
                         settings.jumpKeywords.isEmpty() -> "跃迁模式：开启 · 列表为空"
-                        else -> "跃迁模式：开启 · 共 ${settings.jumpKeywords.size} 个" +
+                        else -> (if (settings.naturalLawEnabled) {
+                            val retained = settings.naturalLawRetainedKeywords.ifEmpty {
+                                if (settings.naturalLawRecommendedKeywords.isEmpty()) settings.jumpKeywords else emptyList()
+                            }
+                            "跃迁模式：开启 · 跃迁 ${retained.size} 个 · 自然 ${settings.naturalLawRecommendedKeywords.size} 个"
+                        } else "跃迁模式：开启 · 共 ${settings.jumpKeywords.size} 个") +
                             if (jumpExpanded) " · 点击收起" else " · 点击展开"
                     },
                     style = MaterialTheme.typography.bodySmall,
@@ -304,11 +309,24 @@ fun OverviewScreen(vm: MainViewModel) {
                     )
                     if (jumpExpanded) {
                         Spacer(Modifier.height(6.dp))
-                        val shown = list.joinToString("、") { w ->
-                            val zh = jumpZh[w]
-                            if (zh.isNullOrBlank()) w else "$w($zh)"
+                        if (settings.naturalLawEnabled) {
+                            val retained = settings.naturalLawRetainedKeywords.ifEmpty {
+                                if (settings.naturalLawRecommendedKeywords.isEmpty()) list else emptyList()
+                            }
+                            val recommended = settings.naturalLawRecommendedKeywords
+                            fun shown(words: List<String>) = words.joinToString("、") { w ->
+                                val zh = jumpZh[w]
+                                if (zh.isNullOrBlank()) w else "$w($zh)"
+                            }
+                            Text("跃迁：${shown(retained)}", color = textColor, style = MaterialTheme.typography.bodySmall)
+                            Text("自然：${shown(recommended)}", color = textColor, style = MaterialTheme.typography.bodySmall)
+                        } else {
+                            val shown = list.joinToString("、") { w ->
+                                val zh = jumpZh[w]
+                                if (zh.isNullOrBlank()) w else "$w($zh)"
+                            }
+                            Text(shown, color = textColor, style = MaterialTheme.typography.bodySmall)
                         }
-                        Text(shown, color = textColor, style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }

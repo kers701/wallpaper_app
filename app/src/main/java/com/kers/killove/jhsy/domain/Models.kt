@@ -405,6 +405,10 @@ data class AppSettings(
     val jumpKeywordIndex: Int = 0,
     /** 自然法则：AI 推荐词随机替换一半跃迁标签 */
     val naturalLawEnabled: Boolean = false,
+    /** 自然法则最近一轮保留的原跃迁词 */
+    val naturalLawRetainedKeywords: List<String> = emptyList(),
+    /** 自然法则最近一轮 AI 推荐并替换进来的词 */
+    val naturalLawRecommendedKeywords: List<String> = emptyList(),
     /** 湮灭模式（仅跃迁开启时有效）：用过的词写入缓存，跃迁提取时排除 */
     val annihilationModeEnabled: Boolean = false,
     /** 当前湮灭纪元（从 1 起；全部命中清空或强制清空时 +1） */
