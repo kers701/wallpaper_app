@@ -86,6 +86,14 @@ fun OverviewScreen(vm: MainViewModel) {
     var previewRefreshTick by remember { mutableIntStateOf(0) }
     var jumpExpanded by remember { mutableStateOf(false) }
     val jumpZh by vm.jumpKeywordsZh.collectAsState()
+    val liveJump by vm.liveJumpKeywords.collectAsState()
+    val liveJumpIdx by vm.liveJumpIndex.collectAsState()
+    val liveNatRet by vm.liveNaturalRetained.collectAsState()
+    val liveNatRec by vm.liveNaturalRecommended.collectAsState()
+    val jumpList = if (liveJump.isNotEmpty()) liveJump else settings.jumpKeywords
+    val jumpIdx = if (liveJump.isNotEmpty()) liveJumpIdx else settings.jumpKeywordIndex
+    val natRet = if (liveNatRet.isNotEmpty()) liveNatRet else settings.naturalLawRetainedKeywords
+    val natRec = if (liveNatRec.isNotEmpty()) liveNatRec else settings.naturalLawRecommendedKeywords
     val illuZh by vm.illusionZh.collectAsState()
     val anniZh by vm.annihilationZh.collectAsState()
 
@@ -277,8 +285,8 @@ fun OverviewScreen(vm: MainViewModel) {
                 buildString {
                     append("关键词：")
                     if (!settings.useKeywords) append("未启用")
-                    else if (settings.jumpModeEnabled && settings.jumpKeywords.isNotEmpty())
-                        append("跃迁 ${settings.jumpKeywords.size} 个")
+                    else if (settings.jumpModeEnabled && jumpList.isNotEmpty())
+                        append("跃迁 ${jumpList.size} 个")
                     else if (settings.keywords.isNotEmpty())
                         append("${settings.keywords.size} 个")
                     else append("空")
@@ -308,25 +316,23 @@ fun OverviewScreen(vm: MainViewModel) {
                 Text(
                     when {
                         !settings.jumpModeEnabled -> "跃迁模式：关闭"
-                        settings.jumpKeywords.isEmpty() -> "跃迁模式：开启 · 列表为空"
+                        jumpList.isEmpty() -> "跃迁模式：开启 · 列表为空"
                         else -> (if (settings.naturalLawEnabled) {
-                            val retained = settings.naturalLawRetainedKeywords.ifEmpty {
-                                if (settings.naturalLawRecommendedKeywords.isEmpty()) settings.jumpKeywords else emptyList()
+                            val retained = natRet.ifEmpty {
+                                if (natRec.isEmpty()) jumpList else emptyList()
                             }
-                            "跃迁模式：开启 · 跃迁 ${retained.size} 个 · 自然 ${settings.naturalLawRecommendedKeywords.size} 个"
-                        } else "跃迁模式：开启 · 共 ${settings.jumpKeywords.size} 个") +
+                            "跃迁模式：开启 · 跃迁 ${retained.size} 个 · 自然 ${natRec.size} 个"
+                        } else "跃迁模式：开启 · 共 ${jumpList.size} 个") +
                             if (jumpExpanded) " · 点击收起" else " · 点击展开"
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = textColor.copy(alpha = 0.85f)
                 )
-                if (settings.jumpKeywords.isNotEmpty()) {
-                    val list = settings.jumpKeywords
-                    val idx = settings.jumpKeywordIndex
+                if (jumpList.isNotEmpty()) {
+                    val list = jumpList
+                    val idx = jumpIdx
                     val isolate = settings.isolateHomeLock && settings.target == com.kers.killove.jhsy.domain.WallpaperTarget.Both
-                    val pastLifeState = remember(settings.lastChangeAt, settings.jumpKeywordIndex, settings.pastLifeEnabled) {
-                        PastLifeStore.read(context)
-                    }
+                    val pastLifeState by vm.pastLifeState.collectAsState()
                     JumpKeywordsTimeline(
                         list = list,
                         index = idx,
@@ -336,12 +342,11 @@ fun OverviewScreen(vm: MainViewModel) {
                         pastLife = pastLifeState
                     )
                     if (jumpExpanded) {
-                        Spacer(Modifier.height(6.dp))
                         if (settings.naturalLawEnabled) {
-                            val retained = settings.naturalLawRetainedKeywords.ifEmpty {
-                                if (settings.naturalLawRecommendedKeywords.isEmpty()) list else emptyList()
+                            val retained = natRet.ifEmpty {
+                                if (natRec.isEmpty()) list else emptyList()
                             }
-                            val recommended = settings.naturalLawRecommendedKeywords
+                            val recommended = natRec
                             fun shown(words: List<String>) = words.joinToString("、") { w ->
                                 val zh = jumpZh[w]
                                 if (zh.isNullOrBlank()) w else "$w($zh)"

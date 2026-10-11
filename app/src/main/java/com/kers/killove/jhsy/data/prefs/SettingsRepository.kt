@@ -28,6 +28,7 @@ import com.kers.killove.jhsy.domain.ProxySelectMode
 import com.kers.killove.jhsy.data.remote.ProxyHttp
 import com.kers.killove.jhsy.util.ProcessBridgePrefs
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "wallpaperc_settings")
@@ -505,6 +506,16 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setJumpKeywordIndex(index: Int) {
         context.dataStore.edit { it[Keys.JUMP_KEYWORD_INDEX] = index }
+        try {
+            val p = context.dataStore.data.first()
+            val list = splitLines(p[Keys.JUMP_KEYWORDS] ?: "")
+            val retained = splitLines(p[Keys.NATURAL_LAW_RETAINED] ?: "")
+            val recommended = splitLines(p[Keys.NATURAL_LAW_RECOMMENDED] ?: "")
+            ProcessBridgePrefs.writeJumpKeywords(
+                context, list, index = index, retained = retained, recommended = recommended
+            )
+        } catch (_: Exception) {
+        }
     }
 
     suspend fun setAnnihilationEpoch(epoch: Int) {
@@ -516,6 +527,20 @@ class SettingsRepository(private val context: Context) {
             it[Keys.JUMP_KEYWORDS] = list.joinToString("\n")
             it[Keys.JUMP_KEYWORD_INDEX] = 0
         }
+        // :svc 写入后主进程 DataStore 不实时刷新，文件桥接供 UI 立即更新
+        val retained = try {
+            context.dataStore.data.first().let { p ->
+                splitLines(p[Keys.NATURAL_LAW_RETAINED] ?: "")
+            }
+        } catch (_: Exception) { emptyList() }
+        val recommended = try {
+            context.dataStore.data.first().let { p ->
+                splitLines(p[Keys.NATURAL_LAW_RECOMMENDED] ?: "")
+            }
+        } catch (_: Exception) { emptyList() }
+        ProcessBridgePrefs.writeJumpKeywords(
+            context, list, index = 0, retained = retained, recommended = recommended
+        )
     }
 
     suspend fun setNaturalLawEnabled(enabled: Boolean) {
@@ -526,6 +551,15 @@ class SettingsRepository(private val context: Context) {
         context.dataStore.edit {
             it[Keys.NATURAL_LAW_RETAINED] = retained.joinToString("\n")
             it[Keys.NATURAL_LAW_RECOMMENDED] = recommended.joinToString("\n")
+        }
+        try {
+            val p = context.dataStore.data.first()
+            val list = splitLines(p[Keys.JUMP_KEYWORDS] ?: "")
+            val idx = p[Keys.JUMP_KEYWORD_INDEX] ?: 0
+            ProcessBridgePrefs.writeJumpKeywords(
+                context, list, index = idx, retained = retained, recommended = recommended
+            )
+        } catch (_: Exception) {
         }
     }
 

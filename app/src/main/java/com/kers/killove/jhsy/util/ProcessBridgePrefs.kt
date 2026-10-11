@@ -434,6 +434,71 @@ fun writeDestiny(context: Context, enabled: Boolean, rulesJson: String) {
         return next
     }
 
+
+    // —— 跃迁关键词列表跨进程：:svc 写文件，主进程读文件刷新 UI（DataStore 多进程不实时）——
+    data class JumpKeywordsSnap(
+        val updatedAt: Long = 0L,
+        val keywords: List<String> = emptyList(),
+        val index: Int = 0,
+        val retained: List<String> = emptyList(),
+        val recommended: List<String> = emptyList()
+    )
+
+    private fun jumpKeywordsFile(context: Context): java.io.File =
+        java.io.File(context.applicationContext.filesDir, "jhsy_jump_keywords.json")
+
+    fun writeJumpKeywords(
+        context: Context,
+        keywords: List<String>,
+        index: Int = 0,
+        retained: List<String> = emptyList(),
+        recommended: List<String> = emptyList(),
+        updatedAt: Long = System.currentTimeMillis()
+    ) {
+        try {
+            val o = org.json.JSONObject()
+            o.put("updatedAt", updatedAt)
+            o.put("index", index.coerceAtLeast(0))
+            o.put("keywords", org.json.JSONArray(keywords.map { it.trim() }.filter { it.isNotEmpty() }))
+            o.put("retained", org.json.JSONArray(retained.map { it.trim() }.filter { it.isNotEmpty() }))
+            o.put("recommended", org.json.JSONArray(recommended.map { it.trim() }.filter { it.isNotEmpty() }))
+            val f = jumpKeywordsFile(context)
+            val tmp = java.io.File(f.parentFile, "jhsy_jump_keywords.json.tmp")
+            tmp.writeText(o.toString(), Charsets.UTF_8)
+            if (!tmp.renameTo(f)) {
+                f.writeText(o.toString(), Charsets.UTF_8)
+                tmp.delete()
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    fun readJumpKeywords(context: Context): JumpKeywordsSnap {
+        return try {
+            val f = jumpKeywordsFile(context)
+            if (!f.isFile || f.length() == 0L) return JumpKeywordsSnap()
+            val o = org.json.JSONObject(f.readText(Charsets.UTF_8))
+            fun arr(key: String): List<String> {
+                val a = o.optJSONArray(key) ?: return emptyList()
+                return buildList {
+                    for (i in 0 until a.length()) {
+                        val s = a.optString(i, "").trim()
+                        if (s.isNotEmpty()) add(s)
+                    }
+                }
+            }
+            JumpKeywordsSnap(
+                updatedAt = o.optLong("updatedAt", 0L),
+                keywords = arr("keywords"),
+                index = o.optInt("index", 0).coerceAtLeast(0),
+                retained = arr("retained"),
+                recommended = arr("recommended")
+            )
+        } catch (_: Exception) {
+            JumpKeywordsSnap()
+        }
+    }
+
     fun purityModeTitle(mode: String): String = when (mode) {
         MODE_HEALTH -> "MiroFlweat·健康模式"
         MODE_HEARTBEAT -> "MiroFlweat·心跳模式"

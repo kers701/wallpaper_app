@@ -106,6 +106,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val app = getApplication<Application>()
             while (true) {
                 runCatching { pullChangeClock(app) }
+                runCatching { pullJumpKeywordsBridge(app) }
+                runCatching { pullPastLifeLight(app) }
                 kotlinx.coroutines.delay(2_000)
             }
         }
@@ -117,6 +119,37 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val ds = settings.value.lastChangeAt
         if (b > 0L && b > ds + 500L) {
             settingsRepo.setLastChangeAt(b)
+        }
+    }
+
+    /** 主进程拉取 :svc 写入的跃迁列表文件，使板块先于/同步于来世更新 */
+    private suspend fun pullJumpKeywordsBridge(app: Application) {
+        val snap = withContext(Dispatchers.IO) {
+            ProcessBridgePrefs.readJumpKeywords(app)
+        }
+        if (snap.updatedAt <= 0L) return
+        if (snap.updatedAt <= lastJumpBridgeAt && _liveJumpKeywords.value == snap.keywords) return
+        lastJumpBridgeAt = snap.updatedAt
+        if (snap.keywords.isNotEmpty()) {
+            _liveJumpKeywords.value = snap.keywords
+            _liveJumpIndex.value = snap.index
+            _liveNaturalRetained.value = snap.retained
+            _liveNaturalRecommended.value = snap.recommended
+            // 触发翻译缓存刷新（仅缺失词）
+            val s = settings.value.copy(
+                jumpKeywords = snap.keywords,
+                jumpKeywordIndex = snap.index,
+                naturalLawRetainedKeywords = snap.retained.ifEmpty { settings.value.naturalLawRetainedKeywords },
+                naturalLawRecommendedKeywords = snap.recommended.ifEmpty { settings.value.naturalLawRecommendedKeywords }
+            )
+            refreshJumpTranslation(s)
+        }
+    }
+
+    private suspend fun pullPastLifeLight(app: Application) {
+        val st = withContext(Dispatchers.IO) { PastLifeStore.read(app) }
+        if (st != _pastLife.value) {
+            _pastLife.value = st
         }
     }
 
@@ -300,6 +333,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _jumpKeywordsZh = MutableStateFlow<Map<String, String>>(emptyMap())
     val jumpKeywordsZh: StateFlow<Map<String, String>> = _jumpKeywordsZh.asStateFlow()
+
+    /** 跨进程桥接的跃迁列表（优先于 DataStore 内存缓存，保证换图后 UI 立刻更新） */
+    private val _liveJumpKeywords = MutableStateFlow<List<String>>(emptyList())
+    val liveJumpKeywords: StateFlow<List<String>> = _liveJumpKeywords.asStateFlow()
+    private val _liveJumpIndex = MutableStateFlow(0)
+    val liveJumpIndex: StateFlow<Int> = _liveJumpIndex.asStateFlow()
+    private val _liveNaturalRetained = MutableStateFlow<List<String>>(emptyList())
+    val liveNaturalRetained: StateFlow<List<String>> = _liveNaturalRetained.asStateFlow()
+    private val _liveNaturalRecommended = MutableStateFlow<List<String>>(emptyList())
+    val liveNaturalRecommended: StateFlow<List<String>> = _liveNaturalRecommended.asStateFlow()
+    private var lastJumpBridgeAt = 0L
 
     /** 上一轮被湮灭关键词的中文（展示用） */
     private val _annihilationZh = MutableStateFlow<Map<String, String>>(emptyMap())
