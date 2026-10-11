@@ -24,6 +24,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -37,10 +38,12 @@ fun WallhavenApiSetupDialog(
     onDismiss: () -> Unit,
     onSaveKey: (String) -> Unit
 ) {
+    var username by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var confirmPassword by remember { mutableStateOf("") }
     var started by remember { mutableStateOf(false) }
-    var status by remember { mutableStateOf("请输入 Wallhaven 账号邮箱和密码") }
+    var status by remember { mutableStateOf("请填写用户名、邮箱、密码与确认密码") }
     var discoveredKey by remember { mutableStateOf<String?>(null) }
     var registrationSubmitted by remember { mutableStateOf(false) }
     var webView by remember { mutableStateOf<WebView?>(null) }
@@ -57,6 +60,13 @@ fun WallhavenApiSetupDialog(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (!started) {
                     OutlinedTextField(
+                        value = username,
+                        onValueChange = { if (it.length <= 12) username = it },
+                        label = { Text("用户名（3-12字符）") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
                         value = email,
                         onValueChange = { email = it },
                         label = { Text("邮箱") },
@@ -68,10 +78,19 @@ fun WallhavenApiSetupDialog(
                         onValueChange = { password = it },
                         label = { Text("密码") },
                         singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = confirmPassword,
+                        onValueChange = { confirmPassword = it },
+                        label = { Text("确认密码") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
                         modifier = Modifier.fillMaxWidth()
                     )
                     Text(
-                        "仅用于当前注册流程，不会保存邮箱密码。注册页若出现验证码或其他验证，助手会暂停等待你处理。",
+                        "需填写用户名（3-12字符）、邮箱、密码、确认密码。仅用于当前注册流程，不会保存。注册页若出现验证码或其他验证，助手会暂停等待你处理。",
                         style = MaterialTheme.typography.bodySmall
                     )
                 } else {
@@ -93,7 +112,7 @@ fun WallhavenApiSetupDialog(
                                     override fun onPageFinished(view: WebView, url: String) {
                                         super.onPageFinished(view, url)
                                         if (url.contains("/join")) {
-                                            fillRegistration(view, email, password)
+                                            fillRegistration(view, username, email, password, confirmPassword)
                                         } else if (url.contains("/settings/account")) {
                                             status = "正在读取账户设置中的 API Key…"
                                             extractApiKey(view)
@@ -124,7 +143,10 @@ fun WallhavenApiSetupDialog(
         confirmButton = {
             if (!started) {
                 Button(
-                    enabled = email.contains("@") && password.isNotEmpty(),
+                    enabled = username.length in 3..12
+                        && email.contains("@")
+                        && password.isNotEmpty()
+                        && confirmPassword == password,
                     onClick = {
                         started = true
                         status = "正在打开注册页并填写表单…"
@@ -177,19 +199,35 @@ fun WallhavenApiSetupDialog(
 }
 
 @SuppressLint("SetJavaScriptEnabled")
-private fun fillRegistration(web: WebView, email: String, password: String) {
+private fun fillRegistration(
+    web: WebView,
+    username: String,
+    email: String,
+    password: String,
+    confirmPassword: String
+) {
+    val usernameJson = JSONObject.quote(username)
     val emailJson = JSONObject.quote(email)
     val passwordJson = JSONObject.quote(password)
+    val confirmJson = JSONObject.quote(confirmPassword)
     web.evaluateJavascript(
         """
         (function() {
           if (window.WallhavenAutofilled) return;
           window.WallhavenAutofilled = true;
+          const username = $usernameJson;
           const email = $emailJson;
           const password = $passwordJson;
+          const confirmPassword = $confirmJson;
           const inputs = Array.from(document.querySelectorAll('input'));
+          const usernameInput = inputs.find(x => {
+            const meta = (x.name + ' ' + x.id + ' ' + x.placeholder + ' ' + (x.getAttribute('autocomplete') || '')).toLowerCase();
+            return x.type === 'text' && /user|username|nick|name/.test(meta) && !/email|mail|pass/.test(meta);
+          }) || inputs.find(x => x.type === 'text' && !/email|mail|pass|captcha|code/.test((x.name + ' ' + x.id + ' ' + x.placeholder).toLowerCase()));
           const emailInput = inputs.find(x => x.type === 'email' || /email|mail/i.test(x.name + ' ' + x.id + ' ' + x.placeholder));
-          const passwordInput = inputs.find(x => x.type === 'password' && /confirm|repeat|again|verify/i.test(x.name + ' ' + x.id + ' ' + x.placeholder) === false);
+          const passwordInputs = inputs.filter(x => x.type === 'password');
+          const passwordInput = passwordInputs.find(x => /confirm|repeat|again|verify/i.test(x.name + ' ' + x.id + ' ' + x.placeholder) === false) || passwordInputs[0];
+          const confirmInput = passwordInputs.find(x => /confirm|repeat|again|verify/i.test(x.name + ' ' + x.id + ' ' + x.placeholder)) || passwordInputs[1];
           function put(input, value) {
             if (!input) return;
             const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
@@ -197,20 +235,22 @@ private fun fillRegistration(web: WebView, email: String, password: String) {
             input.dispatchEvent(new Event('input', {bubbles:true}));
             input.dispatchEvent(new Event('change', {bubbles:true}));
           }
+          put(usernameInput, username);
           put(emailInput, email);
           put(passwordInput, password);
+          put(confirmInput, confirmPassword);
           const body = document.body.innerText.toLowerCase();
-          if (body.includes('already exists') || body.includes('already registered') || body.includes('email is already')) {
+          if (body.includes('already exists') || body.includes('already registered') || body.includes('email is already') || body.includes('username is already')) {
             window.WallhavenBridge.status('账号已存在：请改用登录流程，或在账户设置中直接获取 API Key。');
             return;
           }
-          if (body.includes('invalid email') || body.includes('invalid password')) {
-            window.WallhavenBridge.status('注册失败：邮箱或密码格式不符合网站要求。');
+          if (body.includes('invalid email') || body.includes('invalid password') || body.includes('invalid username')) {
+            window.WallhavenBridge.status('注册失败：用户名/邮箱/密码格式不符合网站要求。');
             return;
           }
           const hasVerification = !!document.querySelector('img[src*="captcha"], input[name*="captcha" i], input[id*="captcha" i]') || body.includes('captcha') || body.includes('verification');
           if (hasVerification) {
-            window.WallhavenBridge.status('邮箱和密码已填写，请在网页中完成验证码/额外验证，再点击 Register；完成后点击“注册完成，获取 API Key”。');
+            window.WallhavenBridge.status('用户名、邮箱、密码已填写，请在网页中完成验证码/额外验证，再点击 Register；完成后点击“提交注册（验证码完成后）”。');
             window.WallhavenSubmit = function() {
               const submit = inputs.find(x => x.type === 'submit') || document.querySelector('button[type="submit"]');
               if (submit) submit.click();
@@ -226,6 +266,7 @@ private fun fillRegistration(web: WebView, email: String, password: String) {
         null
     )
 }
+
 
 private fun extractApiKey(web: WebView) {
     web.evaluateJavascript(
