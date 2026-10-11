@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.rememberCoroutineScope
@@ -18,10 +20,12 @@ import kotlinx.coroutines.launch
 import com.kers.killove.jhsy.ui.LocalUiTextColor
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -49,6 +53,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.consume
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -71,6 +80,7 @@ import com.kers.killove.jhsy.util.BatteryHelper
 import com.kers.killove.jhsy.util.SuperServiceController
 import androidx.compose.ui.platform.LocalContext
 import android.widget.Toast
+import android.graphics.Color as AndroidColor
 import com.kers.killove.jhsy.util.ProcessBridgePrefs
 import com.kers.killove.jhsy.ui.MainViewModel
 
@@ -196,7 +206,18 @@ fun SettingsScreen(
     var transRegion by remember(settings.translateRegion) { mutableStateOf(settings.translateRegion) }
     var scrim by remember(settings.uiScrimAlpha) { mutableFloatStateOf(settings.uiScrimAlpha) }
     var cardA by remember(settings.uiCardAlpha) { mutableFloatStateOf(settings.uiCardAlpha) }
-    var textColorOpt by remember(settings.uiTextColor) { mutableStateOf(settings.uiTextColor) }
+    var textColorHsv by remember(settings.uiTextColorHex, settings.uiTextColor) {
+        mutableStateOf(hsvFromHex(settings.uiTextColorHex.ifBlank { "#%08X".format(settings.uiTextColor.argb) }))
+    }
+    var controlTextColorHsv by remember(settings.uiControlTextColorHex, settings.uiTextColorHex) {
+        mutableStateOf(
+            hsvFromHex(
+                settings.uiControlTextColorHex.ifBlank {
+                    settings.uiTextColorHex.ifBlank { "#%08X".format(settings.uiTextColor.argb) }
+                }
+            )
+        )
+    }
     var minW by remember(settings.minWidth) { mutableStateOf(settings.minWidth.toString()) }
     var minH by remember(settings.minHeight) { mutableStateOf(settings.minHeight.toString()) }
 
@@ -354,7 +375,9 @@ fun SettingsScreen(
                                             translateRegion = transRegion.trim().ifBlank { "global" },
                                             uiScrimAlpha = scrim,
                                             uiCardAlpha = cardA,
-                                            uiTextColor = textColorOpt,
+                                            uiTextColor = settings.uiTextColor,
+                                            uiTextColorHex = hsvToHex(textColorHsv),
+                                            uiControlTextColorHex = hsvToHex(controlTextColorHsv),
                                             cardStyle = cardStyleOpt,
                                             minWidth = minW.toIntOrNull() ?: settings.minWidth,
                                             minHeight = minH.toIntOrNull() ?: settings.minHeight,
@@ -1290,9 +1313,20 @@ fun SettingsScreen(
         ThemeSlider(value = scrim, onValueChange = { scrim = it }, valueRange = 0.15f..0.85f)
         Text("卡片透明度：${"%.0f".format(cardA * 100)}%（越高越实）", style = MaterialTheme.typography.bodySmall)
         ThemeSlider(value = cardA, onValueChange = { cardA = it }, valueRange = 0.05f..0.65f)
-        EnumDropdown("文字颜色", UiTextColor.entries, textColorOpt) { textColorOpt = it }
+        HsvColorPicker(
+            title = "普通文字颜色",
+            value = textColorHsv,
+            onValueChange = { textColorHsv = it },
+            hint = "作用于页面标题、说明、状态和其他普通文字"
+        )
+        HsvColorPicker(
+            title = "控件文字颜色",
+            value = controlTextColorHsv,
+            onValueChange = { controlTextColorHsv = it },
+            hint = "仅作用于按钮与开关；不影响其他普通文字"
+        )
         EnumDropdown("板块美化（全局）", CardStyle.entries, cardStyleOpt) { cardStyleOpt = it }
-        Text("液态玻璃 / 高斯模糊 / 雾化 / 无 — 所有页面板块同步", style = MaterialTheme.typography.bodySmall)
+        Text("颜色可连续调节，不限于预设；保存后全局生效", style = MaterialTheme.typography.bodySmall)
 
         }
 
@@ -1844,6 +1878,86 @@ private fun <T> EnumDropdown(
 
 
 
+}
+
+private data class HsvColorValue(
+    val hue: Float,
+    val saturation: Float,
+    val value: Float
+)
+
+private fun hsvFromHex(raw: String): HsvColorValue {
+    val hsv = FloatArray(3)
+    val color = runCatching { AndroidColor.parseColor(raw) }.getOrDefault(AndroidColor.WHITE)
+    AndroidColor.colorToHSV(color, hsv)
+    return HsvColorValue(hsv[0], hsv[1], hsv[2])
+}
+
+private fun hsvToHex(value: HsvColorValue): String {
+    val color = AndroidColor.HSVToColor(
+        floatArrayOf(
+            value.hue.coerceIn(0f, 360f),
+            value.saturation.coerceIn(0f, 1f),
+            value.value.coerceIn(0f, 1f)
+        )
+    )
+    return "#%08X".format(color)
+}
+
+@Composable
+private fun HsvColorPicker(
+    title: String,
+    value: HsvColorValue,
+    onValueChange: (HsvColorValue) -> Unit,
+    hint: String
+) {
+    val hueColor = Color(AndroidColor.HSVToColor(floatArrayOf(value.hue, 1f, 1f)))
+    val selectedColor = Color(AndroidColor.HSVToColor(floatArrayOf(value.hue, value.saturation, value.value)))
+
+    Text(title, style = MaterialTheme.typography.titleSmall)
+    Text(hint, style = MaterialTheme.typography.bodySmall)
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Box(Modifier.size(42.dp).background(selectedColor))
+        Text(hsvToHex(value), style = MaterialTheme.typography.bodySmall)
+    }
+    Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(170.dp)
+            .pointerInput(value.hue) {
+                fun update(position: Offset) {
+                    onValueChange(
+                        value.copy(
+                            saturation = (position.x / size.width).coerceIn(0f, 1f),
+                            value = (1f - position.y / size.height).coerceIn(0f, 1f)
+                        )
+                    )
+                }
+                detectDragGestures(
+                    onDragStart = ::update,
+                    onDrag = { change, _ -> change.consume(); update(change.position) }
+                )
+            }
+    ) {
+        drawRect(Brush.horizontalGradient(listOf(Color.White, hueColor)))
+        drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color.Black)))
+        drawCircle(
+            color = Color.White,
+            radius = 9.dp.toPx(),
+            center = Offset(size.width * value.saturation, size.height * (1f - value.value))
+        )
+        drawCircle(
+            color = Color.Black,
+            radius = 7.dp.toPx(),
+            center = Offset(size.width * value.saturation, size.height * (1f - value.value))
+        )
+    }
+    Slider(
+        value = value.hue,
+        onValueChange = { onValueChange(value.copy(hue = it)) },
+        valueRange = 0f..360f,
+        modifier = Modifier.fillMaxWidth()
+    )
 }
 
 @Composable

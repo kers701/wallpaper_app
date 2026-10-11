@@ -801,7 +801,7 @@ fun ThemeSwitch(
     modifier: Modifier = Modifier,
     enabled: Boolean = true
 ) {
-    val textColor = LocalUiTextColor.current
+    val textColor = com.kers.killove.jhsy.ui.LocalUiControlTextColor.current
     Switch(
         checked = checked,
         onCheckedChange = onCheckedChange,
@@ -980,7 +980,7 @@ fun ThemeOutlinedButton(
     enabled: Boolean = true,
     content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit
 ) {
-    val textColor = LocalUiTextColor.current
+    val textColor = com.kers.killove.jhsy.ui.LocalUiControlTextColor.current
     val alpha = LocalCardAlpha.current
     val style = LocalCardStyle.current
     val borderAlpha = when (style) {
@@ -1014,7 +1014,7 @@ fun ThemeButton(
     enabled: Boolean = true,
     content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit
 ) {
-    val textColor = LocalUiTextColor.current
+    val textColor = com.kers.killove.jhsy.ui.LocalUiControlTextColor.current
     val alpha = LocalCardAlpha.current
     androidx.compose.material3.Button(
         onClick = onClick,

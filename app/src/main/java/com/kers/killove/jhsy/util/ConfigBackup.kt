@@ -79,6 +79,8 @@ object ConfigBackup {
         o.put("uiScrimAlpha", settings.uiScrimAlpha.toDouble())
         o.put("uiCardAlpha", settings.uiCardAlpha.toDouble())
         o.put("uiTextColor", settings.uiTextColor.name)
+        o.put("uiTextColorHex", settings.uiTextColorHex)
+        o.put("uiControlTextColorHex", settings.uiControlTextColorHex)
         o.put("cardStyle", settings.cardStyle.name)
 
         // —— 密钥与关键词 ——
@@ -221,6 +223,8 @@ object ConfigBackup {
             uiScrimAlpha = o.optDouble("uiScrimAlpha", base.uiScrimAlpha.toDouble()).toFloat().coerceIn(0.15f, 0.85f),
             uiCardAlpha = o.optDouble("uiCardAlpha", base.uiCardAlpha.toDouble()).toFloat().coerceIn(0f, 0.7f),
             uiTextColor = runCatching { UiTextColor.valueOf(o.optString("uiTextColor", base.uiTextColor.name)) }.getOrDefault(base.uiTextColor),
+            uiTextColorHex = o.optString("uiTextColorHex", base.uiTextColorHex),
+            uiControlTextColorHex = o.optString("uiControlTextColorHex", base.uiControlTextColorHex),
             cardStyle = runCatching { CardStyle.valueOf(o.optString("cardStyle", base.cardStyle.name)) }.getOrDefault(base.cardStyle),
 
             apiKeys = strList("apiKeys")?.ifEmpty { base.apiKeys } ?: base.apiKeys,
@@ -385,7 +389,7 @@ object ConfigBackup {
             copyKeys(listOf("translateProvider", "translateApiKey", "translateSecret", "translateRegion"))
         }
         if (settings.gitSyncUi) {
-            copyKeys(listOf("uiScrimAlpha", "uiCardAlpha", "uiTextColor", "cardStyle", "overviewMinimalMode"))
+            copyKeys(listOf("uiScrimAlpha", "uiCardAlpha", "uiTextColor", "uiTextColorHex", "uiControlTextColorHex", "cardStyle", "overviewMinimalMode"))
         }
         return out.toString(2)
     }

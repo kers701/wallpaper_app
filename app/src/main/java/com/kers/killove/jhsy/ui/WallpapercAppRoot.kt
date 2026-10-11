@@ -53,6 +53,7 @@ import com.kers.killove.jhsy.ui.screens.PermissionOnboardingScreen
 import com.kers.killove.jhsy.ui.screens.SettingsScreen
 
 val LocalUiTextColor = compositionLocalOf { Color.White }
+val LocalUiControlTextColor = compositionLocalOf { Color.White }
 val LocalCardAlpha = compositionLocalOf { 0.28f }
 val LocalCardStyle = compositionLocalOf { CardStyle.None }
 
@@ -67,7 +68,20 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
     val backStack by nav.currentBackStackEntryAsState()
     val route = backStack?.destination?.route ?: "overview"
     val settings by vm.settings.collectAsState()
-    val textColor = Color(settings.uiTextColor.argb)
+    val textColor = runCatching {
+        if (settings.uiTextColorHex.isNotBlank()) {
+            Color(android.graphics.Color.parseColor(settings.uiTextColorHex))
+        } else {
+            Color(settings.uiTextColor.argb)
+        }
+    }.getOrElse { Color(settings.uiTextColor.argb) }
+    val controlTextColor = runCatching {
+        if (settings.uiControlTextColorHex.isNotBlank()) {
+            Color(android.graphics.Color.parseColor(settings.uiControlTextColorHex))
+        } else {
+            textColor
+        }
+    }.getOrElse { textColor }
     val cardAlpha = settings.uiCardAlpha
     val cardStyle = settings.cardStyle
     val minimal = settings.overviewMinimalMode
@@ -234,6 +248,7 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
 
     CompositionLocalProvider(
         LocalUiTextColor provides textColor,
+        LocalUiControlTextColor provides controlTextColor,
         LocalCardAlpha provides cardAlpha,
         LocalCardStyle provides cardStyle
     ) {

@@ -384,6 +384,10 @@ data class AppSettings(
     /** 卡片半透明程度 0～0.7（越高越不透明） */
     val uiCardAlpha: Float = 0.28f,
     val uiTextColor: UiTextColor = UiTextColor.White,
+    /** 普通文字自定义颜色，ARGB 十六进制；空值时兼容 uiTextColor 预设 */
+    val uiTextColorHex: String = "",
+    /** 按钮与开关文字/控件色，ARGB 十六进制；空值时跟随普通文字 */
+    val uiControlTextColorHex: String = "",
     /** 板块美化：液态玻璃 / 高斯模糊 / 雾化 / 无 */
     val cardStyle: CardStyle = CardStyle.None,
 

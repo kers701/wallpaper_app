@@ -70,6 +70,8 @@ class SettingsRepository(private val context: Context) {
         val UI_SCRIM = floatPreferencesKey("ui_scrim_alpha")
         val UI_CARD = floatPreferencesKey("ui_card_alpha")
         val UI_TEXT = stringPreferencesKey("ui_text_color")
+        val UI_TEXT_HEX = stringPreferencesKey("ui_text_color_hex")
+        val UI_CONTROL_TEXT_HEX = stringPreferencesKey("ui_control_text_color_hex")
         val CARD_STYLE = stringPreferencesKey("card_style")
         val API_KEYS = stringPreferencesKey("api_keys")
         val API_KEY_INDEX = intPreferencesKey("api_key_index")
@@ -229,6 +231,8 @@ class SettingsRepository(private val context: Context) {
             uiScrimAlpha = (p[Keys.UI_SCRIM] ?: 0.52f).coerceIn(0.15f, 0.85f),
             uiCardAlpha = (p[Keys.UI_CARD] ?: 0.28f).coerceIn(0f, 0.7f),
             uiTextColor = UiTextColor.fromCode(p[Keys.UI_TEXT] ?: "white"),
+            uiTextColorHex = p[Keys.UI_TEXT_HEX] ?: "",
+            uiControlTextColorHex = p[Keys.UI_CONTROL_TEXT_HEX] ?: "",
             cardStyle = CardStyle.fromCode(p[Keys.CARD_STYLE] ?: "none"),
             apiKeys = splitLines(keysRaw),
             apiKeyIndex = p[Keys.API_KEY_INDEX] ?: 0,
@@ -403,6 +407,8 @@ class SettingsRepository(private val context: Context) {
             p[Keys.UI_SCRIM] = settings.uiScrimAlpha.coerceIn(0.15f, 0.85f)
             p[Keys.UI_CARD] = settings.uiCardAlpha.coerceIn(0f, 0.7f)
             p[Keys.UI_TEXT] = settings.uiTextColor.code
+            p[Keys.UI_TEXT_HEX] = settings.uiTextColorHex
+            p[Keys.UI_CONTROL_TEXT_HEX] = settings.uiControlTextColorHex
             p[Keys.CARD_STYLE] = settings.cardStyle.code
             p[Keys.API_KEYS] = settings.apiKeys.joinToString("\n")
             p[Keys.API_KEY_INDEX] = settings.apiKeyIndex
