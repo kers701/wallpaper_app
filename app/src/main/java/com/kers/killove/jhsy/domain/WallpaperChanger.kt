@@ -195,7 +195,8 @@ class WallpaperChanger(
                 settings, WallpaperTarget.Home, emptySet(), forceKeyword = kwHome,
                 skipPrefetchUse = liveDownloadOnly, countChange = false,
                 touchScheduleClock = !liveDownloadOnly,
-                advanceKeyword = false
+                advanceKeyword = false,
+                skipJumpFilter = true
             )
             if (home is ChangeResult.Failure) return home
             val homeId = (home as ChangeResult.Success).item.id
@@ -203,8 +204,25 @@ class WallpaperChanger(
                 settings, WallpaperTarget.Lock, setOf(homeId), forceKeyword = kwLock,
                 skipPrefetchUse = liveDownloadOnly, countChange = false,
                 touchScheduleClock = !liveDownloadOnly,
-                advanceKeyword = false
+                advanceKeyword = false,
+                skipJumpFilter = true
             )
+            // 桌面+锁屏都设完后：合并标签，再跑跃迁→虚妄→湮灭→自然法则，生成最终列表后再推进索引/记来世
+            if (settings.jumpModeEnabled) {
+                val mergedTags = (lastPastLifeTagsHome + lastPastLifeTagsLock)
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() }
+                    .distinct()
+                val usedForClean = listOfNotNull(kwHome, kwLock)
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() }
+                    .joinToString(" ")
+                    .ifBlank { null }
+                val chainId = (lock as? ChangeResult.Success)?.item?.id
+                    ?: (home as? ChangeResult.Success)?.item?.id
+                    ?: "isolate"
+                applyJumpFilterChain(settings, chainId, mergedTags, usedForClean)
+            }
             advanceKeywordIndex(settings, steps = 2)
             val combined = combineIsolate(home, lock)
             if (combined is ChangeResult.Success) {
@@ -272,7 +290,9 @@ class WallpaperChanger(
         skipPrefetchUse: Boolean = false,
         countChange: Boolean = true,
         /** false=手动立即换：不写 lastChangeAt，不参与定时 */
-        touchScheduleClock: Boolean = true
+        touchScheduleClock: Boolean = true,
+        /** true=本轮不跑跃迁链（隔离模式由外层合并标签后再跑一次） */
+        skipJumpFilter: Boolean = false
     ): ChangeResult {
         // 手动立即更换：强制当场下载，不消费预下载槽
         if (!skipPrefetchUse) {
@@ -579,9 +599,8 @@ class WallpaperChanger(
             settingsRepo.setLastCategory(category)
         }
 
-        // 跃迁/虚妄/湮灭：现场下载与预下载共用
+        // 跃迁/虚妄/湮灭：现场下载与预下载共用（隔离模式可外层合并后再跑）
         if (fromWallhaven && item.source == "wallhaven") {
-            applyJumpFilterChain(settings, item.id, item.tags, usedKeyword)
             if (item.tags.isNotEmpty()) {
                 lastPastLifeTags = item.tags
                 when (target) {
@@ -592,6 +611,9 @@ class WallpaperChanger(
                         lastPastLifeTagsLock = item.tags
                     }
                 }
+            }
+            if (!skipJumpFilter) {
+                applyJumpFilterChain(settings, item.id, item.tags, usedKeyword)
             }
         }
 
@@ -1037,11 +1059,12 @@ class WallpaperChanger(
         val nextFromSteps = if (startList.isNotEmpty()) {
             startList[(startBase + stepsAdvanced).mod(startList.size)]
         } else null
+        // 必须在跃迁/自然法则写完 jumpKeywords 并推进索引之后再读
         val fresh = try { settingsRepo.settingsFlow.first() } catch (_: Exception) { cycleSettings }
-        val nextKw = if (fresh.jumpModeEnabled && fresh.jumpKeywords.isNotEmpty()) {
-            pickKeyword(fresh, 0)
-        } else {
-            nextFromSteps ?: pickKeyword(fresh, 0)
+        val nextKw = when {
+            fresh.jumpModeEnabled && fresh.jumpKeywords.isNotEmpty() ->
+                pickKeywordFromJump(fresh, 0)
+            else -> nextFromSteps ?: pickKeyword(fresh, 0)
         }
         PastLifeStore.onCycleComplete(
             context, kw, nextKw, cycleAt, tags,
@@ -1069,16 +1092,17 @@ class WallpaperChanger(
         val startBase = cycleSettings.activeKeywordIndex()
         fun at(offset: Int): String? =
             if (startList.isEmpty()) null else startList[(startBase + offset).mod(startList.size)]
+        // 跃迁列表已由外层 applyJumpFilterChain 生成，索引已 +2；下次用词必须来自最终 jumpKeywords
         val fresh = try { settingsRepo.settingsFlow.first() } catch (_: Exception) { cycleSettings }
-        val homeNext = if (fresh.jumpModeEnabled && fresh.jumpKeywords.isNotEmpty()) {
-            pickKeyword(fresh, 0)
-        } else {
-            at(2)
+        val homeNext = when {
+            fresh.jumpModeEnabled && fresh.jumpKeywords.isNotEmpty() ->
+                pickKeywordFromJump(fresh, 0)
+            else -> at(2)
         }
-        val lockNext = if (fresh.jumpModeEnabled && fresh.jumpKeywords.isNotEmpty()) {
-            pickKeyword(fresh, 1)
-        } else {
-            at(3)
+        val lockNext = when {
+            fresh.jumpModeEnabled && fresh.jumpKeywords.isNotEmpty() ->
+                pickKeywordFromJump(fresh, 1)
+            else -> at(3)
         }
         val deep = fresh.pastLifeDeepExplore || cycleSettings.pastLifeDeepExplore
         val split = cycleSettings.pastLifeIsolateSplit && cycleSettings.isolateHomeLock
@@ -1138,6 +1162,14 @@ class WallpaperChanger(
         val list = settings.activeKeywords()
         if (list.isEmpty()) return null
         val base = settings.activeKeywordIndex()
+        return list[(base + offset).mod(list.size)]
+    }
+
+    /** 仅从最终跃迁列表选词（不回落到本地关键词），用于来世/下次展示 */
+    private fun pickKeywordFromJump(settings: AppSettings, offset: Int): String? {
+        val list = settings.jumpKeywords.map { it.trim() }.filter { it.isNotEmpty() }
+        if (list.isEmpty()) return null
+        val base = settings.jumpKeywordIndex
         return list[(base + offset).mod(list.size)]
     }
 

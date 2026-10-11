@@ -931,13 +931,15 @@ fun JumpKeywordsTimeline(
         val homeNext: String
         val lockNext: String
         if (useStore) {
-            homeNext = homeT!!.nextKw.ifBlank {
-                // 回退索引推算
-                if (n > 0) list[index.mod(n)] else ""
+            fun validNext(stored: String, fallback: String): String {
+                val s = stored.trim()
+                if (s.isNotEmpty() && (n == 0 || list.any { it.equals(s, ignoreCase = true) })) return s
+                return fallback
             }
-            lockNext = lockT?.nextKw.orEmpty().ifBlank {
-                if (n > 0) list[(index + 1).mod(n)] else ""
-            }
+            val fbHome = if (n > 0) list[index.mod(n)] else ""
+            val fbLock = if (n > 0) list[(index + 1).mod(n)] else ""
+            homeNext = validNext(homeT!!.nextKw, fbHome)
+            lockNext = validNext(lockT?.nextKw.orEmpty(), fbLock)
         } else if (n > 0) {
             val idx = index.mod(n)
             homeNext = list[idx]
