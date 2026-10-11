@@ -170,6 +170,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val app = getApplication<Application>()
             pullChangeClock(app)
+            withContext(Dispatchers.IO) {
+                runCatching { changer.applyRetentionPolicy(settings.value) }
+            }
             refreshServiceStatus()
             refreshCacheSize()
             promoteWeeklyHotKeywords()
@@ -380,6 +383,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             )
             val normalized = clearGreenIfNoAvoidPoints(gated)
             settingsRepo.save(normalized)
+            // 保存后立即按「缓存与记录」同步清理记录与 wallpapers 缓存
+            withContext(Dispatchers.IO) {
+                runCatching { changer.applyRetentionPolicy(normalized) }
+            }
             if (wasSuper && !nowSuper) {
                 withContext(Dispatchers.IO) {
                     SuperProxyController.stop(getApplication())

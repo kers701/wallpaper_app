@@ -1380,25 +1380,69 @@ class WallpaperChanger(
     }
 
     /**
-     * 按设置的保留策略清理更换记录与图片缓存（同步规则）。
-     * 关闭：随用随清（记录只留最近 1～2 条，缓存文件只留最新少量）。
-     * 其它：删除早于 maxAge 的记录与文件。
+     * 按「设置 → 基础 → 缓存与记录」同步清理更换记录与 wallpapers 缓存。
+     * - 关闭：记录与文件均只保留最近 2 条
+     * - 六小时/一天/三天/七天：删除早于时长的记录；缓存只保留仍被记录引用的文件
+     *   （避免仅按 lastModified 漏删、或记录与文件时间轴对不上）
      */
-    private suspend fun applyRetentionPolicy(settings: AppSettings) {
+    suspend fun applyRetentionPolicy(settings: AppSettings) {
         val policy = settings.cacheRetention
         val now = System.currentTimeMillis()
         if (policy == CacheRetention.Off) {
-            // 随用随清：保留极少量供概览/当前展示
             dao.trimToKeep(2)
         } else {
             val cutoff = now - policy.maxAgeMs
             dao.deleteOlderThan(cutoff)
         }
-        val dir = File(context.filesDir, "wallpapers")
-        if (dir.isDirectory) applyFileRetention(dir, policy)
+        syncWallpaperFilesToRecords(policy, now)
     }
 
+    /**
+     * 缓存目录与更换记录对齐：
+     * 1) 删除早于保留时长的文件（按 lastModified）
+     * 2) 删除已无对应更换记录的孤儿文件
+     * 关闭策略：只保留最近 2 个文件（优先记录中的路径，否则按 mtime）
+     */
+    private suspend fun syncWallpaperFilesToRecords(policy: CacheRetention, now: Long) {
+        val dir = File(context.filesDir, "wallpapers")
+        if (!dir.isDirectory) return
+        val files = dir.listFiles()?.filter { it.isFile } ?: return
+        if (files.isEmpty()) return
+
+        if (policy == CacheRetention.Off) {
+            val keepFromRecords = dao.recentList(2)
+                .map { File(it.path).name }
+                .filter { it.isNotBlank() }
+                .toHashSet()
+            if (keepFromRecords.isNotEmpty()) {
+                files.forEach { f -> if (f.name !in keepFromRecords) f.delete() }
+            } else {
+                files.sortedByDescending { it.lastModified() }.drop(2).forEach { it.delete() }
+            }
+            return
+        }
+
+        val cutoff = now - policy.maxAgeMs
+        val kept = dao.recentList(1000)
+        val keepPaths = kept.map { it.path }.filter { it.isNotBlank() }.toHashSet()
+        val keepNames = kept.map { File(it.path).name }.filter { it.isNotBlank() }.toHashSet()
+
+        files.forEach { f ->
+            val tooOld = f.lastModified() < cutoff
+            val referenced =
+                (f.absolutePath in keepPaths) ||
+                    (f.canonicalPath in keepPaths) ||
+                    (f.name in keepNames)
+            // 超时 或 无记录引用 → 删除，保证与更换记录一致
+            if (tooOld || !referenced) {
+                runCatching { f.delete() }
+            }
+        }
+    }
+
+    /** @deprecated 内部改走 syncWallpaperFilesToRecords；保留空实现避免旧调用编译失败 */
     private fun applyFileRetention(dir: File, policy: CacheRetention) {
+        // 由 applyRetentionPolicy 统一处理；此处仅作按 mtime 的兜底清理
         val files = dir.listFiles()?.filter { it.isFile } ?: return
         if (policy == CacheRetention.Off) {
             files.sortedByDescending { it.lastModified() }.drop(2).forEach { it.delete() }
