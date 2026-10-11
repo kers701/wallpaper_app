@@ -96,6 +96,7 @@ fun SettingsScreen(
 ) {
     var cacheConfirm by remember { mutableStateOf<String?>(null) }
     var showPinDialog by remember { mutableStateOf(false) }
+    var showWallhavenApiSetup by remember { mutableStateOf(false) }
     var pinTempInput by remember { mutableStateOf("") }
     var settingsSearch by remember { mutableStateOf("") }
     var showSettingsSearch by remember { mutableStateOf(false) }
@@ -727,6 +728,10 @@ fun SettingsScreen(
                 maxLines = 8
             )
             Text("失败时会自动轮换到下一个密钥", style = MaterialTheme.typography.bodySmall)
+            ThemeOutlinedButton(
+                onClick = { showWallhavenApiSetup = true },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("自动注册并获取 Wallhaven API Key") }
         } else {
             LockedField("Wallhaven API Keys", onRequestUnlock = { showPinDialog = true })
         }
@@ -1794,6 +1799,13 @@ fun SettingsScreen(
                 showAccelDialog = false
                 accelOn = false
             }
+        )
+    }
+
+    if (showWallhavenApiSetup) {
+        WallhavenApiSetupDialog(
+            onDismiss = { showWallhavenApiSetup = false },
+            onSaveKey = { vm.addWallhavenApiKey(it) }
         )
     }
 

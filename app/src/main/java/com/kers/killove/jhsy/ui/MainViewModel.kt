@@ -1017,6 +1017,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun addWallhavenApiKey(key: String) {
+        val clean = key.trim()
+        if (clean.isBlank()) return
+        viewModelScope.launch {
+            val keys = (settings.value.apiKeys + clean).map { it.trim() }.filter { it.isNotBlank() }.distinct()
+            settingsRepo.save(settings.value.copy(apiKeys = keys))
+            setStatus("Wallhaven API Key 已保存到本地配置", popup = true)
+        }
+    }
+
 
     fun gitSyncUpload() {
         viewModelScope.launch {
