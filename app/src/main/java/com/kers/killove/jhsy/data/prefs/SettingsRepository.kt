@@ -421,6 +421,7 @@ class SettingsRepository(private val context: Context) {
             p[Keys.JUMP_MODE] = settings.jumpModeEnabled
             p[Keys.JUMP_KEYWORDS] = settings.jumpKeywords.joinToString("\n")
             p[Keys.JUMP_KEYWORD_INDEX] = settings.jumpKeywordIndex
+            p[Keys.NATURAL_LAW] = settings.naturalLawEnabled
             p[Keys.ANNIHILATION_MODE] = settings.annihilationModeEnabled
             p[Keys.ANNIHILATION_EPOCH] = settings.annihilationEpoch.coerceAtLeast(1)
             p[Keys.ILLUSION_MODE] = settings.illusionModeEnabled
