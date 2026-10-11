@@ -1,17 +1,16 @@
-# wallpaper_app 无极调色盘与控件文字颜色隔离补丁
+# wallpaper_app 调色盘构建错误修复补丁
 
-本补丁基于远程 `origin/main` 最新基线生成，未推送远程仓库。
+本补丁基于远程 `origin/main` 最新基线，包含无极调色盘与控件文字颜色隔离功能，以及针对工作流 `assembleRelease` 日志的编译错误修复；未推送远程仓库。
 
-## 功能
+## 已修复的工作流错误
 
-- 新增「普通文字颜色」：仅用于页面标题、说明、状态和其他普通文字。
-- 新增「控件文字颜色」：仅用于按钮文字、按钮边框、开关滑块/轨道等控件，不改变普通文字。
-- 两个颜色均改为连续 HSV 调色盘：二维区域选择饱和度/明度，滑条连续选择色相，支持任意颜色而非预设枚举。
-- 颜色以 ARGB 十六进制保存，接入 DataStore、配置备份与云同步字段。
-- 旧版本只有预设颜色时自动迁移为对应自定义颜色。
+1. `WallpaperBackground.kt:73`：将背景 API 加载函数改为挂起函数，允许调用 `fetchBackgroundImageUrl`。
+2. `WallpaperBackground.kt:101`：补全系统壁纸加载函数返回值。
+3. `SettingsScreen.kt:60`：移除当前 Compose 版本不存在的 `consume` 扩展调用。
+4. `SettingsScreen.kt:1926`：补充 `height` 布局导入。
 
 ## 验证
 
-已执行 `git diff --check`，确认预设颜色选择器已移除、两套颜色字段已贯通主题和控件组件，并通过 ZIP 完整性测试。
+已执行 `git diff --check`，并逐项核对日志中的 4 个报错位置已修复。请在具备 Android SDK 的工作流环境重新执行 `./gradlew assembleRelease --stacktrace --no-daemon`。
 
 补丁内文件保留从仓库根目录开始的完整相对路径。

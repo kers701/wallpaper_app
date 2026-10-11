@@ -19,6 +19,7 @@ import androidx.compose.ui.layout.positionInParent
 import kotlinx.coroutines.launch
 import com.kers.killove.jhsy.ui.LocalUiTextColor
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
@@ -57,7 +58,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.consume
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -1935,7 +1935,7 @@ private fun HsvColorPicker(
                 }
                 detectDragGestures(
                     onDragStart = ::update,
-                    onDrag = { change, _ -> change.consume(); update(change.position) }
+                    onDrag = { change, _ -> update(change.position) }
                 )
             }
     ) {

@@ -66,7 +66,7 @@ fun WallpaperBackground(
                 }.getOrNull()
             }
 
-            fun loadApi(): androidx.compose.ui.graphics.ImageBitmap? {
+            suspend fun loadApi(): androidx.compose.ui.graphics.ImageBitmap? {
                 val api = settings.bgApiUrl.trim()
                 if (api.isEmpty()) return null
                 return runCatching {
@@ -78,7 +78,7 @@ fun WallpaperBackground(
             }
 
             fun loadSystem(): androidx.compose.ui.graphics.ImageBitmap? {
-                runCatching {
+                return runCatching {
                     val wm = WallpaperManager.getInstance(context)
                     val drawable: Drawable? = try {
                         wm.drawable
@@ -87,7 +87,9 @@ fun WallpaperBackground(
                     } catch (_: Exception) {
                         null
                     }
-                    if (drawable != null) {
+                    if (drawable == null) {
+                        null
+                    } else {
                         val bmp = when (drawable) {
                             is BitmapDrawable -> drawable.bitmap
                             else -> drawable.toBitmap(
@@ -95,7 +97,7 @@ fun WallpaperBackground(
                                 height = (drawable.intrinsicHeight.takeIf { it > 0 } ?: 1920)
                             )
                         }
-                        return bmp.asImageBitmap()
+                        bmp.asImageBitmap()
                     }
                 }.getOrNull()
             }
