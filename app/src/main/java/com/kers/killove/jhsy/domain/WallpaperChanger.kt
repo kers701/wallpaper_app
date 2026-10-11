@@ -191,6 +191,10 @@ class WallpaperChanger(
                     RunLog.i(context, "annihilation force clear at 777 (isolate pick)")
                 }
             }
+            // 本轮重新收集标签，避免沿用上轮导致跃迁列表不更新
+            lastPastLifeTags = emptyList()
+            lastPastLifeTagsHome = emptyList()
+            lastPastLifeTagsLock = emptyList()
             val home = changeForTarget(
                 settings, WallpaperTarget.Home, emptySet(), forceKeyword = kwHome,
                 skipPrefetchUse = liveDownloadOnly, countChange = false,
@@ -207,20 +211,33 @@ class WallpaperChanger(
                 advanceKeyword = false,
                 skipJumpFilter = true
             )
-            // 桌面+锁屏都设完后：合并标签，再跑跃迁→虚妄→湮灭→自然法则，生成最终列表后再推进索引/记来世
+            // 桌面+锁屏都设完后：合并本轮标签，再跑跃迁→虚妄→湮灭→自然法则
             if (settings.jumpModeEnabled) {
-                val mergedTags = (lastPastLifeTagsHome + lastPastLifeTagsLock)
+                var mergedTags = (lastPastLifeTagsHome + lastPastLifeTagsLock)
                     .map { it.trim() }
                     .filter { it.isNotEmpty() }
                     .distinct()
+                val lockId = (lock as? ChangeResult.Success)?.item?.id
+                // 本轮未带上 tags 时按 id 补拉，避免列表卡死在上轮
+                if (mergedTags.isEmpty()) {
+                    val apiKey = settings.nextApiKey()
+                    val homeTags = if (homeId.isNotBlank()) {
+                        runCatching { api.fetchWallpaperTags(homeId, apiKey) }.getOrDefault(emptyList())
+                    } else emptyList()
+                    val lockTags = if (!lockId.isNullOrBlank()) {
+                        runCatching { api.fetchWallpaperTags(lockId, apiKey) }.getOrDefault(emptyList())
+                    } else emptyList()
+                    lastPastLifeTagsHome = homeTags
+                    lastPastLifeTagsLock = lockTags
+                    lastPastLifeTags = (homeTags + lockTags).distinct()
+                    mergedTags = lastPastLifeTags
+                }
                 val usedForClean = listOfNotNull(kwHome, kwLock)
                     .map { it.trim() }
                     .filter { it.isNotEmpty() }
                     .joinToString(" ")
                     .ifBlank { null }
-                val chainId = (lock as? ChangeResult.Success)?.item?.id
-                    ?: (home as? ChangeResult.Success)?.item?.id
-                    ?: "isolate"
+                val chainId = lockId ?: homeId.ifBlank { "isolate" }
                 applyJumpFilterChain(settings, chainId, mergedTags, usedForClean)
             }
             advanceKeywordIndex(settings, steps = 2)
@@ -602,19 +619,25 @@ class WallpaperChanger(
 
         // 跃迁/虚妄/湮灭：现场下载与预下载共用（隔离模式可外层合并后再跑）
         if (fromWallhaven && item.source == "wallhaven") {
-            if (item.tags.isNotEmpty()) {
-                lastPastLifeTags = item.tags
+            var tags = item.tags
+            if (tags.isEmpty() && settings.jumpModeEnabled) {
+                tags = runCatching {
+                    api.fetchWallpaperTags(item.id, settings.nextApiKey())
+                }.getOrDefault(emptyList())
+            }
+            if (tags.isNotEmpty()) {
+                lastPastLifeTags = tags
                 when (target) {
-                    WallpaperTarget.Home -> lastPastLifeTagsHome = item.tags
-                    WallpaperTarget.Lock -> lastPastLifeTagsLock = item.tags
+                    WallpaperTarget.Home -> lastPastLifeTagsHome = tags
+                    WallpaperTarget.Lock -> lastPastLifeTagsLock = tags
                     else -> {
-                        lastPastLifeTagsHome = item.tags
-                        lastPastLifeTagsLock = item.tags
+                        lastPastLifeTagsHome = tags
+                        lastPastLifeTagsLock = tags
                     }
                 }
             }
             if (!skipJumpFilter) {
-                applyJumpFilterChain(settings, item.id, item.tags, usedKeyword)
+                applyJumpFilterChain(settings, item.id, tags, usedKeyword)
             }
         }
 
@@ -888,8 +911,25 @@ class WallpaperChanger(
                     settingsRepo.setAnnihilationEpoch(settings.annihilationEpoch + 1)
                 }
             }
+            var tags = emptyList<String>()
+            if (settings.jumpModeEnabled) {
+                tags = runCatching {
+                    api.fetchWallpaperTags(slot.id, settings.nextApiKey())
+                }.getOrDefault(emptyList())
+                if (tags.isNotEmpty()) {
+                    lastPastLifeTags = tags
+                    when (target) {
+                        WallpaperTarget.Home -> lastPastLifeTagsHome = tags
+                        WallpaperTarget.Lock -> lastPastLifeTagsLock = tags
+                        else -> {
+                            lastPastLifeTagsHome = tags
+                            lastPastLifeTagsLock = tags
+                        }
+                    }
+                }
+            }
             if (!skipJumpFilter) {
-                applyJumpFilterChain(settings, slot.id, emptyList(), slot.keyword.ifBlank { null })
+                applyJumpFilterChain(settings, slot.id, tags, slot.keyword.ifBlank { null })
             }
         }
         return ChangeResult.Success(
@@ -946,8 +986,14 @@ class WallpaperChanger(
         }
         if (forJump.isNotEmpty()) {
             settingsRepo.setJumpKeywords(forJump)
+            RunLog.i(context, "jump list updated size=${forJump.size} id=$wallpaperId sample=${forJump.take(5)}")
+        } else {
+            // forJump 为空：不覆盖旧跃迁列表，但记日志便于排查
+            RunLog.i(
+                context,
+                "jump list NOT updated (empty after filter) tags=${tags.size} cleaned=${cleaned.size} id=$wallpaperId"
+            )
         }
-        // forJump 为空：不覆盖旧跃迁列表
     }
 
     /**

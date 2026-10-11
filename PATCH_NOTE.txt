@@ -1,6 +1,7 @@
-真正修复 skipJumpFilter 编译错误（不推送）
+修复跃迁列表不更新（不推送）
 
-根因：skipJumpFilter 写在 downloadAndSet 函数体内，但参数只加在了 changeForTarget。
-现已：
-- downloadAndSet 增加 skipJumpFilter 参数
-- changeForTarget 内三处调用向下传递
+根因：隔离模式 skipJumpFilter 时未写入本轮 tags，外层合并仍用上轮标签 → 列表不变。
+- 隔离开始清空 lastPastLifeTags*
+- 跳过跃迁链时仍拉取并缓存本轮 tags
+- 合并为空时按桌面/锁屏 id 补拉 tags
+- 写列表成功/跳过均打日志
