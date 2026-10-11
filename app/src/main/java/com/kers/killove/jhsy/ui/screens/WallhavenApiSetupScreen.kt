@@ -56,6 +56,9 @@ fun WallhavenApiSetupDialog(
     var discoveredKey by remember { mutableStateOf<String?>(null) }
     var registrationSubmitted by remember { mutableStateOf(false) }
     var loginFilled by remember { mutableStateOf(false) }
+    /** 用户确认已通过 Cloudflare 人机验证后才允许自动填表/提交 */
+    var cfPassed by remember { mutableStateOf(false) }
+    var formFilled by remember { mutableStateOf(false) }
     var webView by remember { mutableStateOf<WebView?>(null) }
     val context = LocalContext.current
 
@@ -119,8 +122,8 @@ fun WallhavenApiSetupDialog(
                             modifier = Modifier.fillMaxWidth()
                         )
                         Text(
-                            "流程：打开注册页填表 → 提交注册 → 自动登录 → 读取 API Key。\n" +
-                                "仅用于当前流程，不会保存账号密码。若出现验证码请在网页中手动完成。",
+                            "流程：打开注册页 → 完成 Cloudflare 验证 → 点「已通过CF验证」→ 自动填表 → 提交注册 → 登录取 Key。\n" +
+                                "不会强制刷新或反复提交。验证码/CF 请在网页中手动完成。",
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
@@ -163,29 +166,67 @@ fun WallhavenApiSetupDialog(
                                     override fun onPageFinished(view: WebView, url: String) {
                                         super.onPageFinished(view, url)
                                         val u = url.lowercase()
-                                        when {
-                                            u.contains("/join") -> {
-                                                status = "正在填写注册表单并提交…"
-                                                fillRegistration(view, username, email, password, confirmPassword)
-                                            }
-                                            u.contains("/login") || u.contains("/auth/login") -> {
-                                                if (!loginFilled) {
-                                                    status = "注册完成，正在自动登录…"
-                                                    fillLogin(view, username, password)
-                                                    loginFilled = true
-                                                    registrationSubmitted = true
+                                        // 检测 Cloudflare 挑战页：不填表、不刷新、不提交
+                                        view.evaluateJavascript(
+                                            """
+                                            (function(){
+                                              const t = (document.body && document.body.innerText || '').toLowerCase();
+                                              const title = (document.title || '').toLowerCase();
+                                              if (t.includes('cloudflare') || t.includes('checking your browser') ||
+                                                  t.includes('正在进行安全验证') || t.includes('just a moment') ||
+                                                  t.includes('attention required') || title.includes('just a moment') ||
+                                                  title.includes('attention required') ||
+                                                  !!document.querySelector('#challenge-form, #cf-challenge-running, .cf-browser-verification, iframe[src*="challenges.cloudflare"]')) {
+                                                return 'cf';
+                                              }
+                                              return 'ok';
+                                            })();
+                                            """.trimIndent()
+                                        ) { cfResult ->
+                                            val isCf = cfResult != null && cfResult.contains("cf")
+                                            if (isCf) {
+                                                // 卡在 CF：重置填表许可，等用户手动过完再点按钮
+                                                if (cfPassed) {
+                                                    // 用户曾点过通过，但页面又回到 CF，不自动重试
                                                 }
+                                                status = "正在进行 Cloudflare 安全验证，请在网页中完成，完成后点「已通过CF验证」。不要反复刷新。"
+                                                return@evaluateJavascript
                                             }
-                                            u.contains("/settings/account") -> {
-                                                status = "正在读取账户设置中的 API Key…"
-                                                extractApiKey(view)
-                                            }
-                                            // 登录成功后常跳首页，自动进账户设置
-                                            (u == "https://wallhaven.cc/" || u == "https://wallhaven.cc" ||
-                                                u.endsWith("wallhaven.cc/") || u.contains("wallhaven.cc/?") ||
-                                                u.contains("/user/")) && loginFilled && discoveredKey == null -> {
-                                                status = "登录成功，打开账户设置…"
-                                                view.postDelayed({ view.loadUrl(WALLHAVEN_ACCOUNT) }, 600)
+                                            when {
+                                                u.contains("/join") -> {
+                                                    if (cfPassed && !formFilled) {
+                                                        status = "CF 已通过，正在填写注册表单（不会自动反复提交）…"
+                                                        fillRegistration(
+                                                            view, username, email, password, confirmPassword,
+                                                            autoSubmit = false
+                                                        )
+                                                        formFilled = true
+                                                    } else if (!cfPassed) {
+                                                        status = "请先在网页完成 Cloudflare 验证，再点「已通过CF验证」。"
+                                                    } else {
+                                                        status = "注册表单已填写。确认无误后点「提交注册」。"
+                                                    }
+                                                }
+                                                u.contains("/login") || u.contains("/auth/login") -> {
+                                                    if (cfPassed && !loginFilled) {
+                                                        status = "登录页已就绪，正在填写账号密码…"
+                                                        fillLogin(view, username, password, autoSubmit = false)
+                                                        loginFilled = true
+                                                        registrationSubmitted = true
+                                                    } else if (!cfPassed) {
+                                                        status = "登录页若出现 CF 验证，请完成后再点「已通过CF验证」。"
+                                                    }
+                                                }
+                                                u.contains("/settings/account") -> {
+                                                    status = "正在读取账户设置中的 API Key…"
+                                                    extractApiKey(view)
+                                                }
+                                                (u == "https://wallhaven.cc/" || u == "https://wallhaven.cc" ||
+                                                    u.endsWith("wallhaven.cc/") || u.contains("wallhaven.cc/?") ||
+                                                    u.contains("/user/")) && loginFilled && discoveredKey == null -> {
+                                                    status = "登录成功，打开账户设置…"
+                                                    view.postDelayed({ view.loadUrl(WALLHAVEN_ACCOUNT) }, 800)
+                                                }
                                             }
                                         }
                                     }
@@ -217,31 +258,76 @@ fun WallhavenApiSetupDialog(
                         OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
                             Text("关闭")
                         }
-                        Button(
-                            onClick = {
-                                when {
-                                    !registrationSubmitted && !loginFilled -> {
-                                        webView?.evaluateJavascript(
-                                            "window.WallhavenSubmit && window.WallhavenSubmit();",
-                                            null
-                                        )
-                                        registrationSubmitted = true
-                                        status = "已提交注册；完成后网站会跳转登录，将自动填写并登录。"
+                        if (!cfPassed) {
+                            Button(
+                                onClick = {
+                                    cfPassed = true
+                                    formFilled = false
+                                    status = "已确认 CF 通过，正在检查页面并填表…"
+                                    webView?.evaluateJavascript(
+                                        "(function(){ return location.href; })();",
+                                        null
+                                    )
+                                    // 主动触发一次填表：用当前 URL 逻辑
+                                    webView?.let { w ->
+                                        val url = w.url.orEmpty().lowercase()
+                                        if (url.contains("/join")) {
+                                            fillRegistration(w, username, email, password, confirmPassword, autoSubmit = false)
+                                            formFilled = true
+                                            status = "注册表单已填写。确认后点「提交注册」。"
+                                        } else if (url.contains("/login")) {
+                                            if (!loginFilled) {
+                                                fillLogin(w, username, password, autoSubmit = false)
+                                                loginFilled = true
+                                            }
+                                            status = "登录表单已填写。可点页面 Login 或「提交登录」。"
+                                        } else {
+                                            status = "当前不在注册/登录页。若仍是 CF 页请再等验证完成后再点一次。"
+                                            cfPassed = false
+                                        }
                                     }
-                                    discoveredKey == null -> {
-                                        webView?.loadUrl(WALLHAVEN_ACCOUNT)
-                                        status = "正在打开账户设置并提取 API Key…"
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) { Text("已通过CF验证") }
+                        } else {
+                            Button(
+                                onClick = {
+                                    when {
+                                        !registrationSubmitted && !loginFilled -> {
+                                            webView?.evaluateJavascript(
+                                                "window.WallhavenSubmit && window.WallhavenSubmit();",
+                                                null
+                                            )
+                                            registrationSubmitted = true
+                                            // 注册后会跳登录，登录页可能再过 CF
+                                            cfPassed = false
+                                            formFilled = false
+                                            status = "已提交注册。若跳到登录页且出现 CF，请再次完成验证后点「已通过CF验证」。"
+                                        }
+                                        loginFilled && discoveredKey == null &&
+                                            (webView?.url.orEmpty().contains("login", ignoreCase = true) == true) -> {
+                                            webView?.evaluateJavascript(
+                                                "window.WallhavenLoginSubmit && window.WallhavenLoginSubmit();",
+                                                null
+                                            )
+                                            status = "已点击登录…"
+                                        }
+                                        discoveredKey == null -> {
+                                            webView?.loadUrl(WALLHAVEN_ACCOUNT)
+                                            status = "正在打开账户设置并提取 API Key…"
+                                        }
                                     }
-                                }
-                            },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(
-                                when {
-                                    !registrationSubmitted && !loginFilled -> "提交注册"
-                                    else -> "获取 API Key"
-                                }
-                            )
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(
+                                    when {
+                                        !registrationSubmitted && !loginFilled -> "提交注册"
+                                        loginFilled && webView?.url.orEmpty().contains("login", true) == true -> "提交登录"
+                                        else -> "获取 API Key"
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -281,7 +367,8 @@ private fun fillRegistration(
     username: String,
     email: String,
     password: String,
-    confirmPassword: String
+    confirmPassword: String,
+    autoSubmit: Boolean = false
 ) {
     val usernameJson = JSONObject.quote(username)
     val emailJson = JSONObject.quote(email)
@@ -290,19 +377,28 @@ private fun fillRegistration(
     web.evaluateJavascript(
         """
         (function() {
-          if (window.WallhavenAutofilledReg) return;
-          window.WallhavenAutofilledReg = true;
+          window.__WH_AUTO_SUBMIT = $autoSubmit;
           const username = $usernameJson;
           const email = $emailJson;
           const password = $passwordJson;
           const confirmPassword = $confirmJson;
           const inputs = Array.from(document.querySelectorAll('input'));
+          if (inputs.length === 0) {
+            window.WallhavenBridge.status('页面尚无表单（可能仍在 CF 验证），请完成后再点「已通过CF验证」。');
+            return;
+          }
+          if (window.WallhavenAutofilledReg) return;
           const usernameInput = inputs.find(x => {
             const meta = (x.name + ' ' + x.id + ' ' + x.placeholder + ' ' + (x.getAttribute('autocomplete') || '')).toLowerCase();
             return x.type === 'text' && /user|username|nick|name/.test(meta) && !/email|mail|pass/.test(meta);
           }) || inputs.find(x => x.type === 'text' && !/email|mail|pass|captcha|code/.test((x.name + ' ' + x.id + ' ' + x.placeholder).toLowerCase()));
           const emailInput = inputs.find(x => x.type === 'email' || /email|mail/i.test(x.name + ' ' + x.id + ' ' + x.placeholder));
           const passwordInputs = inputs.filter(x => x.type === 'password');
+          if (!emailInput && passwordInputs.length === 0) {
+            window.WallhavenBridge.status('未识别到注册表单，若仍在 CF 页请完成验证后再点「已通过CF验证」。');
+            return;
+          }
+          window.WallhavenAutofilledReg = true;
           const passwordInput = passwordInputs.find(x => /confirm|repeat|again|verify/i.test(x.name + ' ' + x.id + ' ' + x.placeholder) === false) || passwordInputs[0];
           const confirmInput = passwordInputs.find(x => /confirm|repeat|again|verify/i.test(x.name + ' ' + x.id + ' ' + x.placeholder)) || passwordInputs[1];
           function put(input, value) {
@@ -337,11 +433,15 @@ private fun fillRegistration(
           const hasVerification = !!document.querySelector('img[src*="captcha"], iframe[src*="captcha"], iframe[src*="turnstile"], iframe[src*="recaptcha"], input[name*="captcha" i], input[id*="captcha" i]')
             || body.includes('captcha') || body.includes('verification') || body.includes('turnstile');
           if (hasVerification) {
-            window.WallhavenBridge.status('表单已填好，请完成验证码后点「提交注册」。');
+            window.WallhavenBridge.status('表单已填好，请完成页面验证码后点「提交注册」。');
             return;
           }
-          window.WallhavenBridge.status('注册表单已填写，正在自动提交…');
-          setTimeout(function() { window.WallhavenSubmit(); }, 500);
+          if (window.__WH_AUTO_SUBMIT) {
+            window.WallhavenBridge.status('注册表单已填写，正在提交…');
+            setTimeout(function() { window.WallhavenSubmit(); }, 500);
+          } else {
+            window.WallhavenBridge.status('注册表单已填写。请确认后点下方「提交注册」（不会反复提交）。');
+          }
         })();
         """.trimIndent(),
         null
@@ -349,12 +449,13 @@ private fun fillRegistration(
 }
 
 @SuppressLint("SetJavaScriptEnabled")
-private fun fillLogin(web: WebView, username: String, password: String) {
+private fun fillLogin(web: WebView, username: String, password: String, autoSubmit: Boolean = false) {
     val usernameJson = JSONObject.quote(username)
     val passwordJson = JSONObject.quote(password)
     web.evaluateJavascript(
         """
         (function() {
+          window.__WH_AUTO_LOGIN = $autoSubmit;
           if (window.WallhavenAutofilledLogin) return;
           window.WallhavenAutofilledLogin = true;
           const username = $usernameJson;
@@ -374,12 +475,17 @@ private fun fillLogin(web: WebView, username: String, password: String) {
           }
           put(userInput, username);
           put(passInput, password);
-          window.WallhavenBridge.status('登录表单已填写（用户名+密码），正在点击登录…');
-          setTimeout(function() {
+          window.WallhavenLoginSubmit = function() {
             const submit = inputs.find(x => x.type === 'submit') || document.querySelector('button[type="submit"]') || document.querySelector('button.btn');
-            if (submit) submit.click();
+            if (submit) { submit.click(); window.WallhavenBridge.status('已点击登录…'); }
             else window.WallhavenBridge.status('未找到登录按钮，请手动点击 Login。');
-          }, 400);
+          };
+          if (window.__WH_AUTO_LOGIN) {
+            window.WallhavenBridge.status('登录表单已填写，正在点击登录…');
+            setTimeout(function() { window.WallhavenLoginSubmit(); }, 400);
+          } else {
+            window.WallhavenBridge.status('登录表单已填写。请点下方「提交登录」或页面 Login。');
+          }
         })();
         """.trimIndent(),
         null

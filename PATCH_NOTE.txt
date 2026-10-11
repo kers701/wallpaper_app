@@ -1,6 +1,6 @@
-简化 Wallhaven 注册助手（不推送）
+Wallhaven 注册：CF 验证由用户确认后再填表（不推送）
 
-- 不用强退/清 Cookie/点 logout
-- 直接打开 https://wallhaven.cc/join 注册
-- 注册后跳转 https://wallhaven.cc/login 自动填用户名+密码登录
-- 再进账户设置提取 API Key
+- 进入 /join 或 /login 若检测到 Cloudflare，只提示、不填表、不刷新、不反复提交
+- 底部增加「已通过CF验证」按钮，用户自行过完 CF 后再点
+- 通过后只填一次表，需用户再点「提交注册 / 提交登录」
+- 有验证码时同样不自动狂点
