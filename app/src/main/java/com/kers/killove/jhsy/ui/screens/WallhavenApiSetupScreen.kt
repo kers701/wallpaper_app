@@ -335,7 +335,7 @@ fun WallhavenApiSetupDialog(
                                         urlNow.contains("/login") ||
                                             (loginFilled && discoveredKey == null && urlNow.contains("login")) -> {
                                             webView?.let { w ->
-                                                fillLogin(w, username, password, autoSubmit = true)
+                                                fillLogin(w, username, password, autoSubmit = true, forceRefill = true)
                                             }
                                             status = "正在提交登录…"
                                         }
@@ -535,42 +535,125 @@ private fun fillRegistration(
 }
 
 @SuppressLint("SetJavaScriptEnabled")
-private fun fillLogin(web: WebView, username: String, password: String, autoSubmit: Boolean = false) {
+private fun fillLogin(
+    web: WebView,
+    username: String,
+    password: String,
+    autoSubmit: Boolean = false,
+    forceRefill: Boolean = false
+) {
     val usernameJson = JSONObject.quote(username)
     val passwordJson = JSONObject.quote(password)
     web.evaluateJavascript(
         """
         (function() {
           window.__WH_AUTO_LOGIN = $autoSubmit;
-          if (window.WallhavenAutofilledLogin) return;
-          window.WallhavenAutofilledLogin = true;
+          const forceRefill = $forceRefill;
           const username = $usernameJson;
           const password = $passwordJson;
-          const inputs = Array.from(document.querySelectorAll('input'));
-          const userInput = inputs.find(x => {
-            const meta = (x.name + ' ' + x.id + ' ' + x.placeholder + ' ' + (x.getAttribute('autocomplete') || '')).toLowerCase();
-            return x.type !== 'password' && (/user|username|login|email|mail|name/.test(meta) || x.type === 'text' || x.type === 'email');
-          }) || inputs.find(x => x.type === 'text' || x.type === 'email');
+          if (!/\/login/i.test(location.pathname + location.href) && !document.querySelector('input[type="password"]')) {
+            window.WallhavenBridge.status('当前不是登录页。');
+            return;
+          }
+          const forms = Array.from(document.querySelectorAll('form'));
+          // 优先含密码框的 form（真正的登录表单）
+          const form = forms.find(f => f.querySelector('input[type="password"]')) || forms[0] || null;
+          const scope = form || document;
+          const inputs = Array.from(scope.querySelectorAll('input'));
+          if (!inputs.length) {
+            window.WallhavenBridge.status('登录页尚无表单，若在 CF 验证请完成后再试。');
+            return;
+          }
           const passInput = inputs.find(x => x.type === 'password');
+          // 用户名：密码框前面的 text/email，或 name 含 user
+          let userInput = inputs.find(x => {
+            const meta = ((x.name||'') + ' ' + (x.id||'') + ' ' + (x.placeholder||'') + ' ' + (x.getAttribute('autocomplete')||'')).toLowerCase();
+            return x.type !== 'password' && x.type !== 'hidden' && /user|username|login|email|mail|name|account/.test(meta);
+          });
+          if (!userInput && passInput) {
+            // 同 form 内 password 之前最后一个可见文本框
+            const all = Array.from((passInput.form || scope).querySelectorAll('input'));
+            const idx = all.indexOf(passInput);
+            for (let i = idx - 1; i >= 0; i--) {
+              const x = all[i];
+              if (x.type === 'hidden' || x.type === 'password' || x.type === 'checkbox' || x.type === 'submit') continue;
+              userInput = x;
+              break;
+            }
+          }
+          if (!userInput) {
+            userInput = inputs.find(x => x.type === 'text' || x.type === 'email' || x.type === '');
+          }
           function put(input, value) {
             if (!input) return;
-            const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+            try { input.focus(); } catch (e) {}
+            const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
             setter.call(input, value);
-            input.dispatchEvent(new Event('input', {bubbles:true}));
-            input.dispatchEvent(new Event('change', {bubbles:true}));
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            input.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+            try { input.blur(); } catch (e) {}
           }
-          put(userInput, username);
-          put(passInput, password);
-          window.WallhavenLoginSubmit = function() {
-            const submit = inputs.find(x => x.type === 'submit') || document.querySelector('button[type="submit"]') || document.querySelector('button.btn');
-            if (submit) { submit.click(); window.WallhavenBridge.status('已点击登录…'); }
-            else window.WallhavenBridge.status('未找到登录按钮，请手动点击 Login。');
-          };
-          if (window.__WH_AUTO_LOGIN) {
-            window.WallhavenBridge.status('登录表单已填写，正在点击登录…');
-            setTimeout(function() { window.WallhavenLoginSubmit(); }, 400);
+          if (!forceRefill && window.WallhavenAutofilledLogin && userInput && (userInput.value || '').trim() && passInput && (passInput.value || '').trim()) {
+            // 已填过且两边都有值，仍重新绑定提交函数
           } else {
-            window.WallhavenBridge.status('登录表单已填写。请点下方「提交登录」或页面 Login。');
+            put(userInput, username);
+            put(passInput, password);
+            // 再写一次用户名，防止被后续脚本清掉
+            setTimeout(function() { put(userInput, username); put(passInput, password); }, 50);
+            window.WallhavenAutofilledLogin = true;
+          }
+          function inTopNav(el) {
+            if (!el || !el.closest) return false;
+            return !!el.closest('header, nav, .navbar, .topbar, #header, .header, .site-header, .main-nav');
+          }
+          function findLoginSubmit() {
+            let list = [];
+            if (form) list = Array.from(form.querySelectorAll('button, input[type="submit"]'));
+            if (!list.length && passInput && passInput.form) {
+              list = Array.from(passInput.form.querySelectorAll('button, input[type="submit"]'));
+            }
+            if (!list.length) {
+              list = Array.from(document.querySelectorAll('button, input[type="submit"]'));
+            }
+            list = list.filter(b => !inTopNav(b));
+            // 优先表单内 → Login / Login
+            let btn = list.find(b => /login|登录|sign\s*in/i.test((b.textContent || b.value || '')) && b.type === 'submit');
+            if (!btn) btn = list.find(b => /login|登录|sign\s*in/i.test((b.textContent || b.value || '')));
+            if (!btn) btn = list.find(b => b.type === 'submit');
+            if (!btn && form) btn = form.querySelector('button[type="submit"], input[type="submit"]');
+            return btn || null;
+          }
+          window.WallhavenLoginSubmit = function() {
+            put(userInput, username);
+            put(passInput, password);
+            const btn = findLoginSubmit();
+            if (btn) {
+              try { btn.scrollIntoView({ block: 'center' }); } catch (e) {}
+              btn.focus();
+              btn.click();
+              window.WallhavenBridge.status('已点击表单内 Login，等待进入账户…');
+              return;
+            }
+            const f = (passInput && passInput.form) || form;
+            if (f) {
+              if (typeof f.requestSubmit === 'function') f.requestSubmit();
+              else f.submit();
+              window.WallhavenBridge.status('已提交登录表单…');
+              return;
+            }
+            window.WallhavenBridge.status('未找到表单内 Login 按钮，请手动点击 → Login。');
+          };
+          const uOk = userInput && (userInput.value || '').trim();
+          const pOk = passInput && (passInput.value || '').trim();
+          if (!uOk) {
+            window.WallhavenBridge.status('用户名未填上，请再点一次「已通过CF验证」或「提交登录」。');
+          }
+          if (window.__WH_AUTO_LOGIN) {
+            window.WallhavenBridge.status('正在点击表单内 Login…');
+            setTimeout(function() { window.WallhavenLoginSubmit(); }, 300);
+          } else if (uOk && pOk) {
+            window.WallhavenBridge.status('登录表单已填写（用户名+密码）。请点「提交登录」。');
           }
         })();
         """.trimIndent(),
