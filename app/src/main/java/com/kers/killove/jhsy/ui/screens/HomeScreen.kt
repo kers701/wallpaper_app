@@ -918,77 +918,61 @@ fun JumpKeywordsTimeline(
     textColor: androidx.compose.ui.graphics.Color,
     pastLife: PastLifeStore.State? = null
 ) {
-    // 优先用前世今生记录的真实用词（上次=前尘、本次=今生、下次=来世），与更换记录一致。
-    // 仅当尚无前世今生记录时，才用跃迁列表索引推算。
+    // 仅显示下次用词（桌面/锁屏隔离时分栏各显下次）
     if (isolate) {
         val split = pastLife?.takeIf { it.splitMode }
         val homeT = split?.home
         val lockT = split?.lock
-        val useStore = homeT != null && (homeT.currKw.isNotBlank() || (lockT?.currKw?.isNotBlank() == true))
+        val useStore = homeT != null && (
+            homeT.nextKw.isNotBlank() || homeT.currKw.isNotBlank() ||
+                (lockT?.nextKw?.isNotBlank() == true) || (lockT?.currKw?.isNotBlank() == true)
+        )
         val n = list.size
-        val homePrev: String
-        val homeCurr: String
         val homeNext: String
-        val lockPrev: String
-        val lockCurr: String
         val lockNext: String
         if (useStore) {
-            homePrev = homeT!!.prevKw
-            homeCurr = homeT.currKw
-            homeNext = homeT.nextKw
-            lockPrev = lockT?.prevKw.orEmpty()
-            lockCurr = lockT?.currKw.orEmpty()
-            lockNext = lockT?.nextKw.orEmpty()
+            homeNext = homeT!!.nextKw.ifBlank {
+                // 回退索引推算
+                if (n > 0) list[index.mod(n)] else ""
+            }
+            lockNext = lockT?.nextKw.orEmpty().ifBlank {
+                if (n > 0) list[(index + 1).mod(n)] else ""
+            }
         } else if (n > 0) {
             val idx = index.mod(n)
-            homePrev = list[(idx - 4).mod(n)]
-            homeCurr = list[(idx - 2).mod(n)]
             homeNext = list[idx]
-            lockPrev = list[(idx - 3).mod(n)]
-            lockCurr = list[(idx - 1).mod(n)]
             lockNext = list[(idx + 1).mod(n)]
         } else {
-            homePrev = ""; homeCurr = ""; homeNext = ""
-            lockPrev = ""; lockCurr = ""; lockNext = ""
+            homeNext = ""
+            lockNext = ""
         }
+        if (homeNext.isBlank() && lockNext.isBlank()) return
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text("桌面", style = MaterialTheme.typography.titleSmall, color = textColor)
-                JumpWordLine("上次", homePrev, zhMap, textColor)
-                JumpWordLine("本次", homeCurr, zhMap, textColor)
-                JumpWordLine("下次", homeNext, zhMap, textColor)
+                JumpWordLine("下次用词", homeNext, zhMap, textColor)
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text("锁屏", style = MaterialTheme.typography.titleSmall, color = textColor)
-                JumpWordLine("上次", lockPrev, zhMap, textColor)
-                JumpWordLine("本次", lockCurr, zhMap, textColor)
-                JumpWordLine("下次", lockNext, zhMap, textColor)
+                JumpWordLine("下次用词", lockNext, zhMap, textColor)
             }
         }
         return
     }
 
-    val fromStore = pastLife?.takeIf { it.currKw.isNotBlank() }
-    val prev: String
-    val curr: String
-    val next: String
-    if (fromStore != null) {
-        prev = fromStore.prevKw
-        curr = fromStore.currKw
-        next = fromStore.nextKw
-    } else if (list.isNotEmpty()) {
-        val t = jumpTimelineWords(list, index, stepsPerCycle = 1)
-        prev = t.first; curr = t.second; next = t.third
-    } else {
-        return
+    val fromStore = pastLife?.takeIf {
+        it.nextKw.isNotBlank() || it.currKw.isNotBlank()
     }
-    if (prev.isBlank() && curr.isBlank() && next.isBlank()) return
+    val next: String = when {
+        fromStore != null && fromStore.nextKw.isNotBlank() -> fromStore.nextKw
+        list.isNotEmpty() -> jumpTimelineWords(list, index, stepsPerCycle = 1).third
+        else -> return
+    }
+    if (next.isBlank()) return
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        JumpWordLine("上次用词", prev, zhMap, textColor)
-        JumpWordLine("本次用词", curr, zhMap, textColor)
         JumpWordLine("下次用词", next, zhMap, textColor)
     }
 }
