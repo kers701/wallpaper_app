@@ -236,6 +236,7 @@ fun SettingsScreen(
     }
     var useKeywords by remember(settings.useKeywords) { mutableStateOf(settings.useKeywords) }
     var jumpMode by remember(settings.jumpModeEnabled) { mutableStateOf(settings.jumpModeEnabled) }
+    var naturalLaw by remember(settings.naturalLawEnabled) { mutableStateOf(settings.naturalLawEnabled) }
     var annihilMode by remember(settings.annihilationModeEnabled) { mutableStateOf(settings.annihilationModeEnabled) }
     var illusionMode by remember(settings.illusionModeEnabled) { mutableStateOf(settings.illusionModeEnabled) }
 
@@ -388,6 +389,9 @@ fun SettingsScreen(
                                             keywordsRemoteUrl = kwUrl,
                                             useKeywords = useKeywords,
                                             jumpModeEnabled = jumpMode,
+                                            naturalLawEnabled = naturalLaw && jumpMode && transAiMode &&
+                                                (if (keysVisible) transAiKey else settings.translateAiApiKey).trim().isNotBlank() &&
+                                                transAiModel.trim().isNotBlank(),
                                             annihilationModeEnabled = annihilMode && jumpMode,
                                             illusionModeEnabled = illusionMode && annihilMode && jumpMode,
                                             annihilationEpoch = settings.annihilationEpoch,
@@ -735,6 +739,7 @@ fun SettingsScreen(
         RowSwitch("跃迁模式（用上次成功标签覆盖跃迁列表）", jumpMode) {
             jumpMode = it
             if (!it) {
+                naturalLaw = false
                 annihilMode = false
                 illusionMode = false
                 pastLife = false
@@ -745,6 +750,18 @@ fun SettingsScreen(
             "Wallhaven 成功后会用该壁纸标签覆盖跃迁列表；开启且列表非空时优先用跃迁词搜索",
             style = MaterialTheme.typography.bodySmall
         )
+        if (jumpMode && transAiMode &&
+            (if (keysVisible) transAiKey else settings.translateAiApiKey).trim().isNotBlank() &&
+            transAiModel.trim().isNotBlank()
+        ) {
+            RowSwitch("自然法则（AI 推荐词替换一半跃迁词）", naturalLaw) {
+                naturalLaw = it
+            }
+            Text(
+                "提取跃迁标签后交给 AI 推荐约一半关键词，并随机替换原列表中的一半；AI 失败时保留原标签",
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
         if (jumpMode) {
             RowSwitch("湮灭模式（选中即整词入缓存；全命中则新纪元）", annihilMode) {
                 annihilMode = it

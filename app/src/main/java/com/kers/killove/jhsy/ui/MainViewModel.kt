@@ -339,10 +339,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val wasSuper = settings.value.superProxyEnabled && settings.value.proxyEnabled
             val nowSuper = final.superProxyEnabled && final.proxyEnabled
             val pastOn = final.pastLifeEnabled && final.jumpModeEnabled
+            val naturalLawOn = final.naturalLawEnabled &&
+                final.jumpModeEnabled &&
+                final.translateAiMode &&
+                final.translateAiApiKey.isNotBlank() &&
+                final.translateAiModel.isNotBlank()
             val gated = final.copy(
                 pastLifeEnabled = pastOn,
                 pastLifeDeepExplore = pastOn && final.pastLifeDeepExplore,
-                pastLifeIsolateSplit = pastOn && final.isolateHomeLock && final.pastLifeIsolateSplit
+                pastLifeIsolateSplit = pastOn && final.isolateHomeLock && final.pastLifeIsolateSplit,
+                naturalLawEnabled = naturalLawOn
             )
             val normalized = clearGreenIfNoAvoidPoints(gated)
             settingsRepo.save(normalized)

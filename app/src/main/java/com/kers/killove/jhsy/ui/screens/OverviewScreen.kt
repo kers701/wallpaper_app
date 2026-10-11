@@ -272,7 +272,11 @@ fun OverviewScreen(vm: MainViewModel) {
                     .fillMaxWidth()
                     .clickable { jumpExpanded = !jumpExpanded }
             ) {
-                Text("跃迁关键词", style = MaterialTheme.typography.titleMedium, color = textColor)
+                Text(
+                    if (settings.naturalLawEnabled) "跃迁关键词•自然法则" else "跃迁关键词",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = textColor
+                )
                 Text(
                     when {
                         !settings.jumpModeEnabled -> "跃迁模式：关闭"

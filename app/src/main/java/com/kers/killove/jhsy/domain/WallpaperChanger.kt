@@ -24,6 +24,7 @@ import com.kers.killove.jhsy.util.PastLifeStore
 import com.kers.killove.jhsy.util.RunLog
 import com.kers.killove.jhsy.util.LocationHelper
 import com.kers.killove.jhsy.util.DestinyHelper
+import com.kers.killove.jhsy.util.AiOneShot
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -904,10 +905,58 @@ class WallpaperChanger(
                 RunLog.i(context, "annihilation epoch -> ${settings.annihilationEpoch + 1} (all hit) id=$wallpaperId")
             }
         }
+        if (settings.naturalLawEnabled) {
+            forJump = applyNaturalLaw(forJump, settings)
+        }
         if (forJump.isNotEmpty()) {
             settingsRepo.setJumpKeywords(forJump)
         }
         // forJump 为空：不覆盖旧跃迁列表
+    }
+
+    /**
+     * 自然法则：让 AI 根据本次提取的跃迁词推荐同等数量的一半，
+     * 再随机替换原词中的一半。请求失败或推荐不足时保留原始列表。
+     */
+    private suspend fun applyNaturalLaw(
+        original: List<String>,
+        settings: AppSettings
+    ): List<String> {
+        val replaceCount = original.size / 2
+        if (replaceCount <= 0 || settings.translateAiApiKey.isBlank() || settings.translateAiModel.isBlank()) {
+            return original
+        }
+        val source = original.joinToString("\n") { "- $it" }
+        val content = AiOneShot.chat(
+            settings = settings,
+            userContent = """
+                下面是一组用于壁纸搜索的英文关键词：
+                $source
+
+                请根据这些词组的整体语义，推荐恰好 $replaceCount 个新的、适合壁纸搜索的英文关键词或短语。
+                要求：每行只输出一个关键词；不要编号、解释、句号或 Markdown；不要重复输入列表中的词。
+            """.trimIndent(),
+            systemContent = "You recommend concise English image-search keywords. Output only one keyword or phrase per line.",
+            temperature = 0.7
+        ) ?: return original
+        val existing = original.map { it.trim().lowercase() }.toSet()
+        val recommended = content
+            .split(Regex("[\\r\\n,，;；]+"))
+            .map { it.trim() }
+            .map { it.replace(Regex("^[-*•]\\s*|^\\d+\\s*[.)、:：]\\s*"), "") }
+            .map { it.trim().trim('`', '"', '\'').trimEnd('.', '。', ';', '；') }
+            .filter { it.isNotBlank() && it.length <= 80 }
+            .filter { it.lowercase() !in existing }
+            .distinctBy { it.lowercase() }
+            .take(replaceCount)
+        if (recommended.isEmpty()) return original
+        val count = minOf(recommended.size, replaceCount)
+        val result = original.toMutableList()
+        original.indices.shuffled().take(count).forEachIndexed { i, index ->
+            result[index] = recommended[i]
+        }
+        RunLog.i(context, "natural law replaced=$count original=${original.size}")
+        return result
     }
 
     private fun filterJumpTags(tags: List<String>, usedKeyword: String?): List<String> {

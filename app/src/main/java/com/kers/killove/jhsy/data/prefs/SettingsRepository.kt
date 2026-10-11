@@ -82,6 +82,7 @@ class SettingsRepository(private val context: Context) {
         val JUMP_MODE = booleanPreferencesKey("jump_mode")
         val JUMP_KEYWORDS = stringPreferencesKey("jump_keywords")
         val JUMP_KEYWORD_INDEX = intPreferencesKey("jump_keyword_index")
+        val NATURAL_LAW = booleanPreferencesKey("natural_law_enabled")
         val ANNIHILATION_MODE = booleanPreferencesKey("annihilation_mode")
         val ANNIHILATION_EPOCH = intPreferencesKey("annihilation_epoch")
         val ILLUSION_MODE = booleanPreferencesKey("illusion_mode")
@@ -243,6 +244,7 @@ class SettingsRepository(private val context: Context) {
             jumpModeEnabled = p[Keys.JUMP_MODE] ?: false,
             jumpKeywords = splitLines(p[Keys.JUMP_KEYWORDS] ?: ""),
             jumpKeywordIndex = p[Keys.JUMP_KEYWORD_INDEX] ?: 0,
+            naturalLawEnabled = p[Keys.NATURAL_LAW] ?: false,
             annihilationModeEnabled = p[Keys.ANNIHILATION_MODE] ?: false,
             annihilationEpoch = (p[Keys.ANNIHILATION_EPOCH] ?: 1).coerceAtLeast(1),
             illusionModeEnabled = p[Keys.ILLUSION_MODE] ?: false,
@@ -504,6 +506,10 @@ class SettingsRepository(private val context: Context) {
             it[Keys.JUMP_KEYWORDS] = list.joinToString("\n")
             it[Keys.JUMP_KEYWORD_INDEX] = 0
         }
+    }
+
+    suspend fun setNaturalLawEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.NATURAL_LAW] = enabled }
     }
 
     suspend fun setApiKeyIndex(index: Int) {
