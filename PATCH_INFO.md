@@ -1,16 +1,17 @@
-# wallpaper_app 调色盘构建错误修复补丁
+# wallpaper_app 调色盘弹窗防误触补丁
 
-本补丁基于远程 `origin/main` 最新基线，包含无极调色盘与控件文字颜色隔离功能，以及针对工作流 `assembleRelease` 日志的编译错误修复；未推送远程仓库。
+本补丁基于当前 `wallpaper_app` 工作区改动生成，未推送远程仓库。
 
-## 已修复的工作流错误
+## 变更
 
-1. `WallpaperBackground.kt:73`：将背景 API 加载函数改为挂起函数，允许调用 `fetchBackgroundImageUrl`。
-2. `WallpaperBackground.kt:101`：补全系统壁纸加载函数返回值。
-3. `SettingsScreen.kt:60`：移除当前 Compose 版本不存在的 `consume` 扩展调用。
-4. `SettingsScreen.kt:1926`：补充 `height` 布局导入。
+- 页面外观中不再直接显示可拖动的二维调色盘和色相滑条。
+- 普通文字颜色、控件文字颜色各显示颜色预览、十六进制值和「选择颜色」按钮。
+- 点击「选择颜色」后，在独立弹窗中打开对应调色盘。
+- 弹窗内可拖动选择饱和度/明度、调节色相，并通过「完成」关闭保存当前页面状态。
+- 点击「取消」或弹窗外部关闭时退出选择页面；页面外观区域不会因滑动页面而误改颜色。
 
 ## 验证
 
-已执行 `git diff --check`，并逐项核对日志中的 4 个报错位置已修复。请在具备 Android SDK 的工作流环境重新执行 `./gradlew assembleRelease --stacktrace --no-daemon`。
+已执行 `git diff --check`、入口与弹窗状态引用检查，并通过 ZIP 完整性测试。
 
 补丁内文件保留从仓库根目录开始的完整相对路径。

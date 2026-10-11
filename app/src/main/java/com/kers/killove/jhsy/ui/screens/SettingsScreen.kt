@@ -218,6 +218,7 @@ fun SettingsScreen(
             )
         )
     }
+    var colorPickerTarget by remember { mutableStateOf<String?>(null) }
     var minW by remember(settings.minWidth) { mutableStateOf(settings.minWidth.toString()) }
     var minH by remember(settings.minHeight) { mutableStateOf(settings.minHeight.toString()) }
 
@@ -1313,17 +1314,17 @@ fun SettingsScreen(
         ThemeSlider(value = scrim, onValueChange = { scrim = it }, valueRange = 0.15f..0.85f)
         Text("卡片透明度：${"%.0f".format(cardA * 100)}%（越高越实）", style = MaterialTheme.typography.bodySmall)
         ThemeSlider(value = cardA, onValueChange = { cardA = it }, valueRange = 0.05f..0.65f)
-        HsvColorPicker(
+        ColorPickerEntry(
             title = "普通文字颜色",
             value = textColorHsv,
-            onValueChange = { textColorHsv = it },
-            hint = "作用于页面标题、说明、状态和其他普通文字"
+            hint = "作用于页面标题、说明、状态和其他普通文字",
+            onClick = { colorPickerTarget = "text" }
         )
-        HsvColorPicker(
+        ColorPickerEntry(
             title = "控件文字颜色",
             value = controlTextColorHsv,
-            onValueChange = { controlTextColorHsv = it },
-            hint = "仅作用于按钮与开关；不影响其他普通文字"
+            hint = "仅作用于按钮与开关；不影响其他普通文字",
+            onClick = { colorPickerTarget = "control" }
         )
         EnumDropdown("板块美化（全局）", CardStyle.entries, cardStyleOpt) { cardStyleOpt = it }
         Text("颜色可连续调节，不限于预设；保存后全局生效", style = MaterialTheme.typography.bodySmall)
@@ -1676,6 +1677,39 @@ fun SettingsScreen(
         )
     }
 
+    colorPickerTarget?.let { target ->
+        val isControl = target == "control"
+        val title = if (isControl) "控件文字颜色" else "普通文字颜色"
+        val value = if (isControl) controlTextColorHsv else textColorHsv
+        AlertDialog(
+            onDismissRequest = { colorPickerTarget = null },
+            title = { Text("选择$title") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        if (isControl) "仅作用于按钮与开关，不影响其他普通文字"
+                        else "作用于页面标题、说明、状态和其他普通文字",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    HsvColorPicker(
+                        title = title,
+                        value = value,
+                        onValueChange = {
+                            if (isControl) controlTextColorHsv = it else textColorHsv = it
+                        },
+                        hint = "拖动色彩区域选择饱和度/明度，下方滑条选择色相"
+                    )
+                }
+            },
+            confirmButton = {
+                ThemeButton(onClick = { colorPickerTarget = null }) { Text("完成") }
+            },
+            dismissButton = {
+                ThemeOutlinedButton(onClick = { colorPickerTarget = null }) { Text("取消") }
+            }
+        )
+    }
+
     if (showSettingsSearch) {
         AlertDialog(
             onDismissRequest = { showSettingsSearch = false },
@@ -1902,6 +1936,29 @@ private fun hsvToHex(value: HsvColorValue): String {
         )
     )
     return "#%08X".format(color)
+}
+
+@Composable
+private fun ColorPickerEntry(
+    title: String,
+    value: HsvColorValue,
+    hint: String,
+    onClick: () -> Unit
+) {
+    val selectedColor = Color(AndroidColor.HSVToColor(floatArrayOf(value.hue, value.saturation, value.value)))
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Box(Modifier.size(34.dp).background(selectedColor))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleSmall)
+            Text(hint, style = MaterialTheme.typography.bodySmall)
+            Text(hsvToHex(value), style = MaterialTheme.typography.bodySmall)
+        }
+        ThemeOutlinedButton(onClick = onClick) { Text("选择颜色") }
+    }
 }
 
 @Composable
