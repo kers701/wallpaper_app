@@ -460,18 +460,35 @@ private fun fillRegistration(
           if (err && (err.innerText || '').trim().length > 0 && window.__WH_AUTO_SUBMIT) {
             window.WallhavenBridge.status('注册未通过：' + (err.innerText || '').trim().slice(0, 120));
           }
+          function inTopNav(el) {
+            if (!el || !el.closest) return false;
+            return !!el.closest('header, nav, .navbar, .topbar, #header, .header, .site-header, .main-nav');
+          }
           function findRegisterSubmit() {
-            const form = document.querySelector('form');
-            const scope = form ? Array.from(form.querySelectorAll('button, input[type="submit"]')) : [];
-            const all = scope.length ? scope : Array.from(document.querySelectorAll('button, input[type="submit"]'));
-            // 不要匹配导航里的 Join/Register 链接式按钮以外的「跳转注册」
-            let btn = all.find(b => /register|sign\s*up|create\s*account|注册/i.test((b.textContent || b.value || '').trim()));
-            if (!btn) btn = all.find(b => b.type === 'submit');
-            if (!btn) btn = document.querySelector('form button[type="submit"], form input[type="submit"]');
+            // 账号字段所在表单内的按钮，避开顶部导航 Register
+            const form = (passwordInput && passwordInput.form)
+              || (emailInput && emailInput.form)
+              || (usernameInput && usernameInput.form)
+              || document.querySelector('form');
+            let list = [];
+            if (form) {
+              list = Array.from(form.querySelectorAll('button, input[type="submit"], a.button'));
+            }
+            if (!list.length) {
+              const ver = document.querySelector('input[placeholder*="erif" i], input[name*="captcha" i], input[id*="captcha" i], input[name*="code" i]');
+              const box = ver && (ver.closest('form') || ver.closest('div'));
+              if (box) list = Array.from(box.querySelectorAll('button, input[type="submit"]'));
+            }
+            list = list.filter(b => !inTopNav(b));
+            // 优先：带对号的 Register
+            let btn = list.find(b => /[\u2713\u2714\u221A]/.test(b.textContent || '') && /register|注册/i.test(b.textContent || ''));
+            if (!btn) btn = list.find(b => b.type === 'submit' && /register|sign\s*up|注册/i.test((b.textContent || b.value || '')));
+            if (!btn) btn = list.find(b => /register|sign\s*up|create\s*account|注册/i.test((b.textContent || b.value || '').trim()));
+            if (!btn) btn = list.find(b => b.type === 'submit');
+            if (!btn && form) btn = form.querySelector('button[type="submit"], input[type="submit"]');
             return btn || null;
           }
           window.WallhavenSubmit = function() {
-            // 提交前再写一次字段，防止被页面脚本清空
             put(usernameInput, username);
             put(emailInput, email);
             put(passwordInput, password);
@@ -479,32 +496,37 @@ private fun fillRegistration(
             const form = (emailInput && emailInput.form) || (passwordInput && passwordInput.form) || document.querySelector('form');
             const submit = findRegisterSubmit();
             if (submit) {
+              try { submit.scrollIntoView({ block: 'center' }); } catch (e) {}
+              submit.focus();
               submit.click();
-              window.WallhavenBridge.status('已点击注册提交，等待跳转登录页…');
+              window.WallhavenBridge.status('已点击表单内 Register，等待跳转登录页…');
               return;
             }
             if (form) {
-              if (typeof form.requestSubmit === 'function') {
-                form.requestSubmit();
-              } else {
-                form.submit();
-              }
+              if (typeof form.requestSubmit === 'function') form.requestSubmit();
+              else form.submit();
               window.WallhavenBridge.status('已提交注册表单，等待跳转登录页…');
               return;
             }
-            window.WallhavenBridge.status('未找到注册提交按钮，请在页面手动点击 Register。');
+            window.WallhavenBridge.status('未找到表单内 Register，请手动点击带对号的 Register。');
           };
-          const hasVerification = !!document.querySelector('img[src*="captcha"], iframe[src*="captcha"], iframe[src*="turnstile"], iframe[src*="recaptcha"], input[name*="captcha" i], input[id*="captcha" i]')
+          const captchaInput = document.querySelector('input[placeholder*="erif" i], input[name*="captcha" i], input[id*="captcha" i], input[name*="code" i], input[placeholder*="Verification" i]');
+          const hasVerification = !!captchaInput
+            || !!document.querySelector('img[src*="captcha"], iframe[src*="captcha"], iframe[src*="turnstile"], iframe[src*="recaptcha"]')
             || body.includes('captcha') || body.includes('verification') || body.includes('turnstile');
           if (hasVerification && !window.__WH_AUTO_SUBMIT) {
-            window.WallhavenBridge.status('表单已填好，请完成页面验证码后点「提交注册」。');
+            window.WallhavenBridge.status('表单已填好。请先填写验证码 Verification，再点「提交注册」（会点表单里带对号的 Register）。');
             return;
           }
           if (window.__WH_AUTO_SUBMIT) {
-            window.WallhavenBridge.status('注册表单已填写，正在提交…');
+            if (captchaInput && !(captchaInput.value || '').trim()) {
+              window.WallhavenBridge.status('请先在网页填写验证码 Verification，再点「提交注册」。');
+              return;
+            }
+            window.WallhavenBridge.status('正在点击表单内 Register…');
             setTimeout(function() { window.WallhavenSubmit(); }, 300);
           } else {
-            window.WallhavenBridge.status('注册表单已填写。请确认后点下方「提交注册」。');
+            window.WallhavenBridge.status('注册表单已填写。填好验证码后点「提交注册」。');
           }
         })();
         """.trimIndent(),
