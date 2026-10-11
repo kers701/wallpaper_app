@@ -1,7 +1,6 @@
 package com.kers.killove.jhsy.ui.screens
 
 import android.annotation.SuppressLint
-import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
@@ -41,7 +40,6 @@ import org.json.JSONObject
 
 private const val WALLHAVEN_JOIN = "https://wallhaven.cc/join"
 private const val WALLHAVEN_LOGIN = "https://wallhaven.cc/login"
-private const val WALLHAVEN_LOGOUT = "https://wallhaven.cc/auth/logout"
 private const val WALLHAVEN_ACCOUNT = "https://wallhaven.cc/settings/account"
 
 @Composable
@@ -121,7 +119,7 @@ fun WallhavenApiSetupDialog(
                             modifier = Modifier.fillMaxWidth()
                         )
                         Text(
-                            "流程：清空登录态 → 注册 → 自动登录 → 打开账户设置读取 API Key。\n" +
+                            "流程：打开注册页填表 → 提交注册 → 自动登录 → 读取 API Key。\n" +
                                 "仅用于当前流程，不会保存账号密码。若出现验证码请在网页中手动完成。",
                             style = MaterialTheme.typography.bodySmall
                         )
@@ -140,7 +138,7 @@ fun WallhavenApiSetupDialog(
                                 && confirmPassword == password,
                             onClick = {
                                 started = true
-                                status = "正在清除登录态并打开注册页…"
+                                status = "正在打开注册页…"
                             },
                             modifier = Modifier.weight(1f)
                         ) { Text("开始注册") }
@@ -156,9 +154,6 @@ fun WallhavenApiSetupDialog(
                                 settings.domStorageEnabled = true
                                 settings.allowFileAccess = false
                                 settings.allowContentAccess = false
-                                // 开始前清 Cookie，避免已登录账号进不去注册页
-                                CookieManager.getInstance().removeAllCookies(null)
-                                CookieManager.getInstance().flush()
                                 webViewClient = object : WebViewClient() {
                                     override fun shouldOverrideUrlLoading(
                                         view: WebView,
@@ -169,30 +164,9 @@ fun WallhavenApiSetupDialog(
                                         super.onPageFinished(view, url)
                                         val u = url.lowercase()
                                         when {
-                                            u.contains("/auth/logout") || u.contains("logout") -> {
-                                                status = "已退出旧账号，打开注册页…"
-                                                view.loadUrl(WALLHAVEN_JOIN)
-                                            }
                                             u.contains("/join") -> {
-                                                // 若仍显示已登录（登出失败），再强制登出一次
-                                                view.evaluateJavascript(
-                                                    """
-                                                    (function(){
-                                                      const t = (document.body.innerText||'').toLowerCase();
-                                                      const hasLogout = !!document.querySelector('a[href*="logout"]') || t.includes('log out') || t.includes('logout');
-                                                      if (hasLogout) {
-                                                        window.location.href = '$WALLHAVEN_LOGOUT';
-                                                        return 'logged_in';
-                                                      }
-                                                      return 'ok';
-                                                    })();
-                                                    """.trimIndent()
-                                                ) { result ->
-                                                    if (result != null && result.contains("ok")) {
-                                                        status = "正在填写注册表单…"
-                                                        fillRegistration(view, username, email, password, confirmPassword)
-                                                    }
-                                                }
+                                                status = "正在填写注册表单并提交…"
+                                                fillRegistration(view, username, email, password, confirmPassword)
                                             }
                                             u.contains("/login") || u.contains("/auth/login") -> {
                                                 if (!loginFilled) {
@@ -230,8 +204,8 @@ fun WallhavenApiSetupDialog(
                                 }
                                 addJavascriptInterface(bridge, "WallhavenBridge")
                                 webView = this
-                                // 先登出再注册，保证干净会话
-                                loadUrl(WALLHAVEN_LOGOUT)
+                                // 直接进入注册页
+                                loadUrl(WALLHAVEN_JOIN)
                             }
                         },
                         update = { webView = it }
@@ -347,17 +321,27 @@ private fun fillRegistration(
             window.WallhavenBridge.status('账号已存在：请改用登录，或在账户设置中直接获取 API Key。');
             return;
           }
-          const hasVerification = !!document.querySelector('img[src*="captcha"], input[name*="captcha" i], input[id*="captcha" i]') || body.includes('captcha') || body.includes('verification');
+          function findRegisterSubmit() {
+            const byType = inputs.find(x => x.type === 'submit');
+            if (byType) return byType;
+            const btns = Array.from(document.querySelectorAll('button, input[type="submit"], a.button, a.btn'));
+            return btns.find(b => /register|sign\s*up|create|join|注册/i.test((b.textContent || b.value || '') + ' ' + (b.className || '')))
+              || document.querySelector('button[type="submit"]')
+              || btns.find(b => /btn|button|submit/i.test(b.className || ''));
+          }
           window.WallhavenSubmit = function() {
-            const submit = inputs.find(x => x.type === 'submit') || document.querySelector('button[type="submit"]');
-            if (submit) submit.click();
-            else window.WallhavenBridge.status('未找到注册提交按钮，请手动点击 Register。');
+            const submit = findRegisterSubmit();
+            if (submit) { submit.click(); window.WallhavenBridge.status('已点击注册提交…'); }
+            else window.WallhavenBridge.status('未找到注册按钮，请在页面手动点击 Register。');
           };
+          const hasVerification = !!document.querySelector('img[src*="captcha"], iframe[src*="captcha"], iframe[src*="turnstile"], iframe[src*="recaptcha"], input[name*="captcha" i], input[id*="captcha" i]')
+            || body.includes('captcha') || body.includes('verification') || body.includes('turnstile');
           if (hasVerification) {
             window.WallhavenBridge.status('表单已填好，请完成验证码后点「提交注册」。');
             return;
           }
-          window.WallhavenBridge.status('注册表单已填写，可点「提交注册」或手动点页面 Register。');
+          window.WallhavenBridge.status('注册表单已填写，正在自动提交…');
+          setTimeout(function() { window.WallhavenSubmit(); }, 500);
         })();
         """.trimIndent(),
         null

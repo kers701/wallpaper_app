@@ -1,7 +1,6 @@
-Wallhaven 注册助手流程修复（不推送）
+简化 Wallhaven 注册助手（不推送）
 
-1. 全屏 Dialog，WebView 占满可用高度，不再用局促 AlertDialog
-2. 开始前清除 Cookie，并先打开 /auth/logout；若注册页仍显示已登录则再强制登出
-3. 注册完成后跳转登录页：自动填「用户名+密码」并点击登录
-4. 登录成功后自动打开账户设置提取 API Key
-5. 提取逻辑优先 API Key 标签附近 input，偏好 32 位字母数字，避免误匹配更长 CSRF/会话串
+- 不用强退/清 Cookie/点 logout
+- 直接打开 https://wallhaven.cc/join 注册
+- 注册后跳转 https://wallhaven.cc/login 自动填用户名+密码登录
+- 再进账户设置提取 API Key
