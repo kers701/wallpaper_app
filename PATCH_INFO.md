@@ -1,35 +1,27 @@
-# wallpaper_app Wallhaven API Key 获取助手补丁
+# wallpaper_app Wallhaven API Key 获取助手修复补丁
 
-## 功能流程
+## 本版修复
 
-设置 → API 密钥 → 自动注册并获取 Wallhaven API Key：
+上一版补丁的打包脚本只收集 `git diff --name-only`，漏掉了新增的未跟踪文件 `WallhavenApiSetupScreen.kt`，导致 CI 编译时报：
 
-1. 输入邮箱和密码。
-2. 打开 `https://wallhaven.cc/join`。
-3. 自动填写邮箱和密码。
-4. 无验证码或额外验证时自动提交注册。
-5. 出现验证码/额外验证时暂停，用户在网页中完成后点击提交。
-6. 账号创建成功后点击进入 `https://wallhaven.cc/settings/account`。
-7. 自动读取 API Key。
-8. 先显示完整 Key，用户点击“确认保存”后才写入现有本地 API Key 配置。
+- `Unresolved reference 'WallhavenApiSetupDialog'`
+- `Unresolved reference 'it'`
 
-## 异常处理
+本版使用“已修改文件 + 未跟踪文件”的完整清单，已包含该新增源码文件。
 
-- 已存在账号：提示改用登录流程或直接进入账户设置。
-- 邮箱/密码格式错误：显示具体格式错误。
-- 找不到注册按钮：提示页面结构可能已变化并停止。
-- 找不到 API Key：提示登录状态、额外验证或页面结构问题。
-- 注册页脚本设置一次性标记，页面失败刷新不会无限重复提交。
-- 原始邮箱和密码不会写入 DataStore、配置备份或 Git。
+## 功能
 
-## 安全边界
-
-- 不绕过验证码、反机器人验证或邮箱验证。
-- 不批量注册账号。
-- API Key 只有在用户明确点击“确认保存”后才写入本地配置。
+- 设置页新增“自动注册并获取 Wallhaven API Key”按钮。
+- 输入邮箱和密码后打开 `https://wallhaven.cc/join`。
+- 自动填写并在无验证码时提交。
+- 遇到验证码/额外验证时暂停，由用户完成网页操作。
+- 注册成功后进入 `https://wallhaven.cc/settings/account`。
+- 读取 API Key 后先展示，用户明确点击“确认保存”才写入本地 API Key 配置。
+- 已存在账号、格式错误、找不到按钮或找不到 API Key 时提示具体原因，不无限重试。
+- 邮箱和密码不写入 DataStore、备份或 Git。
 
 ## 验证
 
 - `git diff --check` 通过。
-- Android 编译未执行成功：当前沙箱缺少 Android SDK（`SDK location not found`）。
+- 已验证压缩包包含 `app/src/main/java/com/kers/killove/jhsy/ui/screens/WallhavenApiSetupScreen.kt`。
 - 未推送远程仓库。
