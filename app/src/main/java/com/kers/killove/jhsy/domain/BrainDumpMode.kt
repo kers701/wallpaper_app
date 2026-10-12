@@ -8,7 +8,8 @@ import org.json.JSONObject
  */
 object BrainDumpMode {
 
-    const val FALLBACK_API = """
+    // 不可用 const：trimIndent() 非编译期常量
+    val FALLBACK_API: String = """
 https://t.alcy.cc/mp
 https://api.lolicon.app/setu/v2?aspectRatio=gt2.0lt2.2&r18=2
 https://api.r10086.com/樱道随机图片api接口.php?图片系列=Fate

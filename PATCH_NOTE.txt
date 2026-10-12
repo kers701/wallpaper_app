@@ -1,5 +1,4 @@
-概览「抛弃大脑模式」（不推送）
+修复 BrainDumpMode const 编译错误（不推送）
 
-开启：备份被劫持字段后强制写入指定值
-关闭：从备份还原
-保存设置时若仍开启，强制保持劫持值
+错误: Const 'val' initializer should be a constant value
+FALLBACK_API 改为普通 val（trimIndent 非编译期常量）
