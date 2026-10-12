@@ -56,7 +56,8 @@ class KeywordTranslator(
                 settings = settings,
                 userContent = userMsg,
                 systemContent = "Precise bilingual keyword translator. Output only numbered lines. No history.",
-                temperature = 0.2
+                temperature = 0.2,
+                feature = com.kers.killove.jhsy.domain.AiFeature.TRANSLATE
             ) ?: continue
             out.putAll(parseNumberedTranslations(batch, content))
         }
@@ -95,7 +96,7 @@ class KeywordTranslator(
      */
     suspend fun translateListToEn(words: List<String>, settings: AppSettings): Map<String, String> {
         if (words.isEmpty()) return emptyMap()
-        if (settings.translateAiMode && settings.translateAiApiKey.isNotBlank() && settings.translateAiModel.isNotBlank()) {
+        if (settings.translateAiMode && com.kers.killove.jhsy.domain.AiRouter.hasAnyConfigured(settings)) {
             return try {
                 translateViaAi(words, settings, toEnglish = true)
             } catch (_: Exception) {
@@ -210,8 +211,7 @@ class KeywordTranslator(
     suspend fun translateList(words: List<String>, settings: AppSettings): Map<String, String> {
         if (words.isEmpty()) return emptyMap()
         if (settings.translateAiMode &&
-            settings.translateAiApiKey.isNotBlank() &&
-            settings.translateAiModel.isNotBlank()
+            com.kers.killove.jhsy.domain.AiRouter.hasAnyConfigured(settings)
         ) {
             return try {
                 translateViaAi(words, settings, toEnglish = false)

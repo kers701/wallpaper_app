@@ -94,7 +94,9 @@ fun SettingsScreen(
     onOpenLocationAvoid: () -> Unit = {},
     onOpenProxyNodes: () -> Unit = {},
     onOpenDestiny: () -> Unit = {},
-    onOpenCloudSync: () -> Unit = {}
+    onOpenCloudSync: () -> Unit = {},
+    onOpenAiProviders: () -> Unit = {},
+    onOpenAiModels: () -> Unit = {}
 ) {
     var cacheConfirm by remember { mutableStateOf<String?>(null) }
     var showPinDialog by remember { mutableStateOf(false) }
@@ -803,9 +805,7 @@ fun SettingsScreen(
             color = if (dumpHijack) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
         )
         run {
-            val draftAiOk = aiOn &&
-                (if (keysVisible) transAiKey else settings.translateAiApiKey).trim().isNotBlank() &&
-                transAiModel.trim().isNotBlank()
+            val draftAiOk = aiOn && com.kers.killove.jhsy.domain.AiRouter.hasAnyConfigured(settings.copy(aiEnabled = true))
             if (jumpMode && draftAiOk) {
                 RowSwitch("自然法则（AI 推荐词替换一半跃迁词）", naturalLaw) {
                     naturalLaw = it
@@ -1519,8 +1519,13 @@ fun SettingsScreen(
             onToggle = { toggleSection("pastlife") }
         ) {
             val jumpOk = settings.jumpModeEnabled || jumpMode
-            val draftKey = (if (keysVisible) transAiKey else settings.translateAiApiKey).trim()
-            val modelOk = draftKey.isNotBlank() && transAiModel.trim().isNotBlank()
+            val modelOk = com.kers.killove.jhsy.domain.AiRouter.hasAnyConfigured(
+                settings.copy(
+                    aiEnabled = true,
+                    translateAiApiKey = if (keysVisible) transAiKey.trim() else settings.translateAiApiKey,
+                    translateAiModel = transAiModel.trim()
+                )
+            )
             val aiOk = aiOn && modelOk
             val canPast = jumpOk && aiOk
             Text(
@@ -1606,48 +1611,39 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.bodySmall
             )
             Text(
-                "配置 OpenAI 兼容接口（Key / Base URL / 模型），各 AI 功能共用。",
+                "支持多个提供商配置；拉取后的模型进入「模型组」，可按优先级与生效项目调度，失败自动回退。",
                 style = MaterialTheme.typography.bodySmall
             )
             if (keysVisible) {
-                OutlinedTextField(
-                    value = transAiKey,
-                    onValueChange = { transAiKey = it },
-                    label = { Text("AI API Key") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-                OutlinedTextField(
-                    value = transAiBase,
-                    onValueChange = { transAiBase = it },
-                    label = { Text("AI Base URL（如 https://api.openai.com/v1）") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-                OutlinedTextField(
-                    value = transAiModel,
-                    onValueChange = { transAiModel = it },
-                    label = { Text("模型名（如 gpt-4o-mini）") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
+                val pCount = try {
+                    org.json.JSONArray(settings.aiProvidersJson.ifBlank { "[]" }).length()
+                } catch (_: Exception) { 0 }
+                val mCount = try {
+                    org.json.JSONArray(settings.aiModelsJson.ifBlank { "[]" }).length()
+                } catch (_: Exception) { 0 }
+                Text(
+                    "提供商 $pCount 条 · 模型组 $mCount 条" +
+                        if (settings.translateAiApiKey.isNotBlank() && pCount == 0) " · 仍兼容旧单配置" else "",
+                    style = MaterialTheme.typography.bodySmall
                 )
                 ThemeOutlinedButton(
+                    onClick = onOpenAiProviders,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("AI 提供商配置…") }
+                ThemeOutlinedButton(
+                    onClick = onOpenAiModels,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("模型组…") }
+                ThemeOutlinedButton(
                     onClick = {
-                        vm.saveSettings(
-                            settings.copy(
-                                aiEnabled = aiOn,
-                                translateAiApiKey = transAiKey.trim(),
-                                translateAiBaseUrl = transAiBase.trim().ifBlank { "https://api.openai.com/v1" },
-                                translateAiModel = transAiModel.trim().ifBlank { "gpt-4o-mini" }
-                            )
-                        )
+                        vm.saveSettings(settings.copy(aiEnabled = aiOn))
                         vm.testAiModelAvailability()
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = transAiKey.isNotBlank() && transAiModel.isNotBlank()
-                ) { Text("检查 AI 模型可用性") }
+                    enabled = aiOn
+                ) { Text("检查 AI 可用性（按优先级）") }
             } else {
-                LockedField("AI API Key / 模型配置", onRequestUnlock = { showPinDialog = true })
+                LockedField("AI 提供商 / 模型组", onRequestUnlock = { showPinDialog = true })
             }
         }
 
@@ -1657,8 +1653,7 @@ fun SettingsScreen(
             expanded = openSection == "trans",
             onToggle = { toggleSection("trans") }
         ) {
-            val draftAiOk = (if (keysVisible) transAiKey else settings.translateAiApiKey).trim().isNotBlank() &&
-                transAiModel.trim().isNotBlank()
+            val draftAiOk = com.kers.killove.jhsy.domain.AiRouter.hasAnyConfigured(settings.copy(aiEnabled = true))
             RowSwitch(
                 title = "AI 智能翻译",
                 checked = transAiMode && draftAiOk && !dumpHijack,

@@ -52,6 +52,8 @@ import com.kers.killove.jhsy.ui.screens.OverviewScreen
 import com.kers.killove.jhsy.ui.screens.PermissionOnboardingScreen
 import com.kers.killove.jhsy.ui.screens.SettingsScreen
 import com.kers.killove.jhsy.ui.screens.ProxyNodesScreen
+import com.kers.killove.jhsy.ui.screens.AiProvidersScreen
+import com.kers.killove.jhsy.ui.screens.AiModelGroupScreen
 
 val LocalUiTextColor = compositionLocalOf { Color.White }
 val LocalUiControlTextColor = compositionLocalOf { Color.White }
@@ -277,7 +279,9 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
                                 onOpenLocationAvoid = { nav.navigate("location_avoid") },
                                 onOpenProxyNodes = { nav.navigate("proxy_nodes") },
                                 onOpenDestiny = { nav.navigate("destiny") },
-                                onOpenCloudSync = { nav.navigate("cloud_sync") }
+                                onOpenCloudSync = { nav.navigate("cloud_sync") },
+                                onOpenAiProviders = { nav.navigate("ai_providers") },
+                                onOpenAiModels = { nav.navigate("ai_models") }
                             )
                         }
                         composable("history") { HistoryScreen(vm) }
@@ -312,6 +316,16 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
                         }
                         composable("proxy_nodes") {
                             ProxyNodesScreen(vm, onBack = { nav.popBackStack() })
+                        }
+                        composable("ai_providers") {
+                            AiProvidersScreen(
+                                vm,
+                                onBack = { nav.popBackStack() },
+                                onOpenModelGroup = { nav.navigate("ai_models") }
+                            )
+                        }
+                        composable("ai_models") {
+                            AiModelGroupScreen(vm, onBack = { nav.popBackStack() })
                         }
                     }
 

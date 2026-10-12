@@ -11,8 +11,7 @@ object PastLifeAi {
         settings.pastLifeEnabled &&
             settings.jumpModeEnabled &&
             settings.aiEnabled &&
-            settings.translateAiApiKey.isNotBlank() &&
-            settings.translateAiModel.isNotBlank()
+            com.kers.killove.jhsy.domain.AiRouter.hasAnyConfigured(settings)
 
     suspend fun refresh(
         context: Context,
@@ -106,7 +105,8 @@ object PastLifeAi {
             settings = settings,
             userContent = userMsg,
             systemContent = "你是关键词关系叙述者。只输出前尘/今生/来世三行。不要引用历史对话。",
-            temperature = 0.4
+            temperature = 0.4,
+            feature = com.kers.killove.jhsy.domain.AiFeature.PAST_LIFE
         ) ?: return track
 
         val (past, present, future) = parseThree(content)

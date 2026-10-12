@@ -16,6 +16,11 @@ import com.kers.killove.jhsy.data.remote.WallhavenApi
 import com.kers.killove.jhsy.data.wallpaper.SystemWallpaperSetter
 import com.kers.killove.jhsy.domain.AppSettings
 import com.kers.killove.jhsy.domain.BrainDumpMode
+import com.kers.killove.jhsy.domain.AiConfigCodec
+import com.kers.killove.jhsy.domain.AiFeature
+import com.kers.killove.jhsy.domain.AiModelEntry
+import com.kers.killove.jhsy.domain.AiProviderConfig
+import com.kers.killove.jhsy.domain.AiRouter
 import com.kers.killove.jhsy.domain.DestinyRule
 import com.kers.killove.jhsy.util.DestinyHelper
 import com.kers.killove.jhsy.domain.ChangeResult
@@ -415,7 +420,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val wasSuper = settings.value.superProxyEnabled && settings.value.proxyEnabled
             val nowSuper = final.superProxyEnabled && final.proxyEnabled
             val pastOn = final.pastLifeEnabled && final.jumpModeEnabled
-            val modelOk = final.translateAiApiKey.isNotBlank() && final.translateAiModel.isNotBlank()
+            val modelOk = AiRouter.hasAnyConfigured(final)
             val aiReady = final.aiEnabled && modelOk
             val naturalLawOn = final.naturalLawEnabled && final.jumpModeEnabled && aiReady
             val pastOnGated = pastOn && aiReady
@@ -1235,7 +1240,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** 清空跃迁列表，下次搜索回退到本地关键词，成功后会重新写入跃迁列表 */
 
 
-    /** 检测 AI 模型是否可用：独立单次对话，发送简短 ping */
+    /** 检测 AI：按模型组优先级尝试 GENERAL 功能 */
     fun testAiModelAvailability() {
         viewModelScope.launch {
             val s = settings.value
@@ -1243,26 +1248,31 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 setStatus("请先在「AI 模型」中开启 AI", popup = true)
                 return@launch
             }
-            if (s.translateAiApiKey.isBlank() || s.translateAiModel.isBlank()) {
-                setStatus("请填写 AI API Key 与模型名", popup = true)
+            if (!AiRouter.hasAnyConfigured(s)) {
+                setStatus("请先添加 AI 提供商配置并写入模型组", popup = true)
                 return@launch
             }
             _busy.value = true
             setStatus("正在检测 AI 模型…", popup = true)
             try {
+                var working = s
                 val reply = withContext(Dispatchers.IO) {
                     AiOneShot.chat(
-                        settings = s,
+                        settings = working,
                         userContent = "Reply with exactly one word: OK",
                         systemContent = "You are a connectivity probe. Reply only: OK",
-                        temperature = 0.0
+                        temperature = 0.0,
+                        feature = AiFeature.GENERAL,
+                        onSettingsUpdate = { working = it }
                     )
                 }
+                if (working.aiModelsJson != s.aiModelsJson) {
+                    settingsRepo.save(working)
+                }
                 if (reply.isNullOrBlank()) {
-                    setStatus("AI 不可用：无响应（检查 Key / Base URL / 网络）", popup = true)
+                    setStatus("AI 不可用：全部候选模型无响应（检查 Key / URL / 模型组）", popup = true)
                 } else {
-                    val model = s.translateAiModel.ifBlank { "gpt-4o-mini" }
-                    setStatus("AI 可用 · 模型 $model · 回复：${reply.take(80)}", popup = true)
+                    setStatus("AI 可用 · 回复：${reply.take(80)}", popup = true)
                 }
             } catch (e: Exception) {
                 setStatus("AI 检测失败：${e.message}", popup = true)
@@ -1270,6 +1280,95 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 _busy.value = false
             }
         }
+    }
+
+    fun saveAiProviders(list: List<AiProviderConfig>) {
+        viewModelScope.launch {
+            val s = settings.value
+            settingsRepo.save(s.copy(aiProvidersJson = AiConfigCodec.providersToJson(list)))
+            setStatus("已保存 ${list.size} 条 AI 提供商配置", popup = true)
+        }
+    }
+
+    fun saveAiModels(list: List<AiModelEntry>) {
+        viewModelScope.launch {
+            val s = settings.value
+            settingsRepo.save(s.copy(aiModelsJson = AiConfigCodec.modelsToJson(list)))
+            setStatus("已保存模型组 ${list.size} 条", popup = true)
+        }
+    }
+
+    /** 从某提供商拉取 /models，合并进模型组 */
+    fun fetchModelsForProvider(providerId: String) {
+        viewModelScope.launch {
+            val s = settings.value
+            val providers = AiRouter.providers(s)
+            val p = providers.find { it.id == providerId }
+            if (p == null || p.apiKey.isBlank()) {
+                setStatus("提供商不存在或 Key 为空", popup = true)
+                return@launch
+            }
+            _busy.value = true
+            setStatus("正在拉取模型列表…", popup = true)
+            val result = withContext(Dispatchers.IO) {
+                AiOneShot.listModels(p.apiKey, p.baseUrl)
+            }
+            result.fold(
+                onSuccess = { names ->
+                    if (names.isEmpty()) {
+                        // 若接口无列表，用配置内手写模型名
+                        val manual = p.modelNames()
+                        if (manual.isEmpty()) {
+                            setStatus("未拉到模型，请在配置中手写模型名", popup = true)
+                        } else {
+                            mergeModelsFromNames(s, p.id, manual, source = "手写")
+                        }
+                    } else {
+                        mergeModelsFromNames(s, p.id, names, source = "拉取")
+                    }
+                },
+                onFailure = { e ->
+                    val manual = p.modelNames()
+                    if (manual.isNotEmpty()) {
+                        mergeModelsFromNames(s, p.id, manual, source = "手写(拉取失败)")
+                        setStatus("拉取失败(${e.message})，已用配置内模型名", popup = true)
+                    } else {
+                        setStatus("拉取失败：${e.message}", popup = true)
+                    }
+                }
+            )
+            _busy.value = false
+        }
+    }
+
+    private suspend fun mergeModelsFromNames(
+        s: AppSettings,
+        providerId: String,
+        names: List<String>,
+        source: String
+    ) {
+        val existing = AiRouter.models(s).toMutableList()
+        val byKey = existing.associateBy { "${it.providerId}::${it.modelName}" }.toMutableMap()
+        var added = 0
+        names.forEach { name ->
+            val k = "$providerId::$name"
+            if (!byKey.containsKey(k)) {
+                val entry = AiModelEntry(
+                    providerId = providerId,
+                    modelName = name,
+                    tag = source,
+                    priority = 50,
+                    features = AiFeature.allCodes(),
+                    enabled = true
+                )
+                byKey[k] = entry
+                existing.add(entry)
+                added++
+            }
+        }
+        // 同步手写到提供商 modelNamesText 可选：不改
+        settingsRepo.save(s.copy(aiModelsJson = AiConfigCodec.modelsToJson(existing)))
+        setStatus("$source：新增 $added · 模型组共 ${existing.size}", popup = true)
     }
 
     fun refreshPastLife(forceAi: Boolean = false) {

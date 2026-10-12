@@ -68,6 +68,8 @@ class SettingsRepository(private val context: Context) {
         val TRANS_AI_KEY = stringPreferencesKey("translate_ai_api_key")
         val TRANS_AI_BASE = stringPreferencesKey("translate_ai_base_url")
         val TRANS_AI_MODEL = stringPreferencesKey("translate_ai_model")
+        val AI_PROVIDERS = stringPreferencesKey("ai_providers_json")
+        val AI_MODELS = stringPreferencesKey("ai_models_json")
         val PAST_LIFE = booleanPreferencesKey("past_life_enabled")
         val PAST_LIFE_DEEP = booleanPreferencesKey("past_life_deep_explore")
         val PAST_LIFE_SPLIT = booleanPreferencesKey("past_life_isolate_split")
@@ -238,6 +240,8 @@ class SettingsRepository(private val context: Context) {
             translateAiApiKey = p[Keys.TRANS_AI_KEY] ?: "",
             translateAiBaseUrl = p[Keys.TRANS_AI_BASE] ?: "https://api.openai.com/v1",
             translateAiModel = p[Keys.TRANS_AI_MODEL] ?: "gpt-4o-mini",
+            aiProvidersJson = p[Keys.AI_PROVIDERS] ?: "[]",
+            aiModelsJson = p[Keys.AI_MODELS] ?: "[]",
             pastLifeEnabled = p[Keys.PAST_LIFE] ?: false,
             pastLifeDeepExplore = p[Keys.PAST_LIFE_DEEP] ?: false,
             pastLifeIsolateSplit = p[Keys.PAST_LIFE_SPLIT] ?: false,
@@ -422,6 +426,8 @@ class SettingsRepository(private val context: Context) {
             p[Keys.TRANS_AI_KEY] = settings.translateAiApiKey
             p[Keys.TRANS_AI_BASE] = settings.translateAiBaseUrl
             p[Keys.TRANS_AI_MODEL] = settings.translateAiModel
+            p[Keys.AI_PROVIDERS] = settings.aiProvidersJson
+            p[Keys.AI_MODELS] = settings.aiModelsJson
             p[Keys.PAST_LIFE] = settings.pastLifeEnabled
             p[Keys.PAST_LIFE_DEEP] = settings.pastLifeDeepExplore
             p[Keys.PAST_LIFE_SPLIT] = settings.pastLifeIsolateSplit

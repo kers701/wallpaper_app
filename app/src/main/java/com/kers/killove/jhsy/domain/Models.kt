@@ -392,6 +392,10 @@ data class AppSettings(
     /** OpenAI 兼容接口，如 https://api.openai.com/v1 或中转 */
     val translateAiBaseUrl: String = "https://api.openai.com/v1",
     val translateAiModel: String = "gpt-4o-mini",
+    /** 多 AI 提供商配置 JSON */
+    val aiProvidersJson: String = "[]",
+    /** 模型组 JSON */
+    val aiModelsJson: String = "[]",
     /** 前世今生：需跃迁模式；更换后用 AI 描述本次词与前后词关系 */
     val pastLifeEnabled: Boolean = false,
     /** 深入探索：主词+本图/上图标签为辅助词，段落 200～300 字 */
@@ -731,9 +735,9 @@ sealed class ChangeResult {
     data class Failure(val message: String) : ChangeResult()
 }
 
-/** AI 模型是否已配置（密钥+模型名） */
+/** AI 模型是否已配置（多配置模型组或旧单字段） */
 fun AppSettings.aiModelConfigured(): Boolean =
-    translateAiApiKey.isNotBlank() && translateAiModel.isNotBlank()
+    com.kers.killove.jhsy.domain.AiRouter.hasAnyConfigured(this)
 
 /** AI 功能是否可用（已启用 + 已配置模型）；不含「仅智能翻译」 */
 fun AppSettings.aiReady(): Boolean =

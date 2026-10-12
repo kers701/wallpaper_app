@@ -1011,7 +1011,7 @@ class WallpaperChanger(
         settings: AppSettings
     ): NaturalLawResult {
         val replaceCount = original.size / 2
-        if (replaceCount <= 0 || settings.translateAiApiKey.isBlank() || settings.translateAiModel.isBlank()) {
+        if (replaceCount <= 0 || !AiRouter.hasAnyConfigured(settings) || !settings.aiEnabled) {
             return NaturalLawResult(original, original, emptyList())
         }
         val source = original.joinToString("\n") { "- $it" }
@@ -1028,7 +1028,8 @@ class WallpaperChanger(
                 要求：每行只输出一个关键词；不要编号、解释、句号或 Markdown；不要重复输入列表中的词。
             """.trimIndent(),
             systemContent = "You recommend concise English image-search keywords. Output only one keyword or phrase per line.",
-            temperature = 0.7
+            temperature = 0.7,
+            feature = AiFeature.NATURAL_LAW
         ) ?: return NaturalLawResult(original, original, emptyList())
         val existing = original.map { it.trim().lowercase() }.toSet()
         val recommended = content
