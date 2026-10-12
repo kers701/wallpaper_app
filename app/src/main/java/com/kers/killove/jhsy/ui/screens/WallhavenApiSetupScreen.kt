@@ -391,19 +391,45 @@ fun WallhavenApiSetupDialog(
                                 }
                                 addJavascriptInterface(bridge, "WallhavenBridge")
                                 webView = this
+                                // 打开注册页：不依赖 isAttachedToWindow（factory 阶段常为 false，会导致白屏永不加载）
+                                fun openJoinPage(msg: String) {
+                                    status = msg
+                                    post {
+                                        val cur = url.orEmpty()
+                                        if (cur.isBlank() || cur == "about:blank" ||
+                                            !cur.contains("wallhaven.cc")
+                                        ) {
+                                            loadUrl(WALLHAVEN_JOIN)
+                                        }
+                                    }
+                                }
                                 // WebView 不会自动使用 OkHttp 的 ProxyHttp；加速模式下显式覆写
                                 // 一个内置节点，代理生效后再打开注册页，确保 CF/注册/登录链路一致。
                                 ProxyHttp.configureWebViewProxy(context) { enabled, nodeName ->
                                     if (enabled) {
-                                        status = "已启用加速代理（$nodeName），正在打开注册页…"
+                                        openJoinPage("已启用加速代理（$nodeName），正在打开注册页…")
                                     } else {
-                                        status = "正在打开注册页…"
+                                        openJoinPage("正在打开注册页…")
                                     }
-                                    if (isAttachedToWindow) loadUrl(WALLHAVEN_JOIN)
                                 }
+                                // 兜底：代理回调异常/过慢时仍保证加载（约 1.5s 后若仍空白则直连打开）
+                                postDelayed({
+                                    val cur = url.orEmpty()
+                                    if (cur.isBlank() || cur == "about:blank") {
+                                        status = "正在打开注册页（直连兜底）…"
+                                        loadUrl(WALLHAVEN_JOIN)
+                                    }
+                                }, 1500L)
                             }
                         },
-                        update = { webView = it }
+                        update = { v ->
+                            webView = v
+                            // 重组时若仍空白则补一次加载
+                            val cur = v.url.orEmpty()
+                            if (cur.isBlank() || cur == "about:blank") {
+                                v.post { v.loadUrl(WALLHAVEN_JOIN) }
+                            }
+                        }
                     )
                     Row(
                         Modifier

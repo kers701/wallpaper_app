@@ -1,6 +1,6 @@
-AI 模型从翻译中分离（不推送）
+修复自助注册白屏（不推送）
 
-- 新增设置板块「AI 模型」：Key / Base URL / 模型名 / 可用性检查
-- 前世今生、自然法则、智能翻译共用该配置
-- 「关键词翻译」仅保留「AI 智能翻译」开关；关闭时用传统翻译引擎
-- 未配置 AI 模型时智能翻译开关置灰并强制关闭
+根因：loadUrl 写在 isAttachedToWindow 判断内，AndroidView factory 时 WebView 未挂载，永不加载。
+- 用 post { loadUrl } 打开注册页
+- 1.5s 兜底若仍 about:blank 再加载
+- update 重组时空白也补加载
