@@ -15,6 +15,7 @@ import com.kers.killove.jhsy.domain.ProxyNode
 import com.kers.killove.jhsy.data.remote.WallhavenApi
 import com.kers.killove.jhsy.data.wallpaper.SystemWallpaperSetter
 import com.kers.killove.jhsy.domain.AppSettings
+import com.kers.killove.jhsy.domain.BrainDumpMode
 import com.kers.killove.jhsy.domain.DestinyRule
 import com.kers.killove.jhsy.util.DestinyHelper
 import com.kers.killove.jhsy.domain.ChangeResult
@@ -427,7 +428,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 // 智能翻译依赖 AI 模型配置
                 translateAiMode = final.translateAiMode && aiReady
             )
-            val normalized = clearGreenIfNoAvoidPoints(gated)
+            val normalized = BrainDumpMode.enforceIfActive(clearGreenIfNoAvoidPoints(gated))
             settingsRepo.save(normalized)
             // 保存后立即按「缓存与记录」同步清理记录与 wallpapers 缓存
             withContext(Dispatchers.IO) {
@@ -1082,6 +1083,33 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+
+
+    fun setBrainDumpMode(enabled: Boolean) {
+        viewModelScope.launch {
+            val cur = settings.value
+            if (cur.brainDumpMode == enabled) return@launch
+            if (enabled) {
+                val snap = BrainDumpMode.snapshotJson(cur)
+                settingsRepo.saveBrainDumpBackup(snap)
+                val next = BrainDumpMode.apply(cur)
+                settingsRepo.save(next)
+                applySchedule(next)
+                setStatus("已开启抛弃大脑模式（相关设置已接管，关闭后可还原）", popup = true)
+            } else {
+                val backup = settingsRepo.loadBrainDumpBackup()
+                val restored = if (!backup.isNullOrBlank()) {
+                    BrainDumpMode.restore(cur, backup)
+                } else {
+                    cur.copy(brainDumpMode = false)
+                }
+                settingsRepo.save(restored)
+                settingsRepo.clearBrainDumpBackup()
+                applySchedule(restored)
+                setStatus("已关闭抛弃大脑模式（已尝试还原原配置）", popup = true)
+            }
+        }
+    }
 
     fun setOverviewMinimal(enabled: Boolean) {
         viewModelScope.launch {

@@ -1,6 +1,5 @@
-修复自助注册白屏（不推送）
+概览「抛弃大脑模式」（不推送）
 
-根因：loadUrl 写在 isAttachedToWindow 判断内，AndroidView factory 时 WebView 未挂载，永不加载。
-- 用 post { loadUrl } 打开注册页
-- 1.5s 兜底若仍 about:blank 再加载
-- update 重组时空白也补加载
+开启：备份被劫持字段后强制写入指定值
+关闭：从备份还原
+保存设置时若仍开启，强制保持劫持值

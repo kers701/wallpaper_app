@@ -535,6 +535,27 @@ fun OverviewScreen(vm: MainViewModel) {
                 ThemeSwitch(checked = settings.enabled, onCheckedChange = { vm.setEnabled(it) })
             }
         }
+
+        // 抛弃大脑模式
+        OverviewCard(cardAlpha) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("抛弃大脑模式", style = MaterialTheme.typography.titleSmall, color = textColor)
+                    Text(
+                        if (settings.brainDumpMode)
+                            "已开启 · 间隔/排序/缓存/跃迁链/兜底/命运等已接管，关闭后还原"
+                        else
+                            "关闭 · 开启后临时接管多项设置，关闭可还原原配置",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = textColor.copy(alpha = 0.65f)
+                    )
+                }
+                ThemeSwitch(
+                    checked = settings.brainDumpMode,
+                    onCheckedChange = { vm.setBrainDumpMode(it) }
+                )
+            }
+        }
     }
 }
 

@@ -128,6 +128,8 @@ class SettingsRepository(private val context: Context) {
         val SUPER_PROXY_PORT = intPreferencesKey("super_proxy_port")
         val BLACKLIST = stringPreferencesKey("blacklist_packages")
         val OVERVIEW_MINIMAL = booleanPreferencesKey("overview_minimal")
+        val BRAIN_DUMP = booleanPreferencesKey("brain_dump_mode")
+        val BRAIN_DUMP_BACKUP = stringPreferencesKey("brain_dump_backup")
         val SHOW_WALLPAPER_PREVIEW = booleanPreferencesKey("show_wallpaper_preview")
         val CHANGE_COUNT = longPreferencesKey("change_count")
         val LOCAL_FB_CACHE = booleanPreferencesKey("local_fb_use_cache")
@@ -301,6 +303,7 @@ class SettingsRepository(private val context: Context) {
                     .filter { ProcessBridgePrefs.isValidPackageName(it) }
             },
             overviewMinimalMode = p[Keys.OVERVIEW_MINIMAL] ?: false,
+            brainDumpMode = p[Keys.BRAIN_DUMP] ?: false,
             showWallpaperPreview = p[Keys.SHOW_WALLPAPER_PREVIEW] ?: true,
             changeCount = p[Keys.CHANGE_COUNT] ?: 0L,
             localFallbackUseCache = p[Keys.LOCAL_FB_CACHE] ?: true,
@@ -477,6 +480,7 @@ class SettingsRepository(private val context: Context) {
             p[Keys.SUPER_PROXY_PORT] = settings.superProxyLocalPort.coerceIn(1025, 65535)
             p[Keys.BLACKLIST] = settings.blacklistPackages.joinToString("\n")
             p[Keys.OVERVIEW_MINIMAL] = settings.overviewMinimalMode
+            p[Keys.BRAIN_DUMP] = settings.brainDumpMode
             p[Keys.SHOW_WALLPAPER_PREVIEW] = settings.showWallpaperPreview
             p[Keys.CHANGE_COUNT] = settings.changeCount
             p[Keys.LOCAL_FB_CACHE] = settings.localFallbackUseCache
@@ -589,5 +593,19 @@ class SettingsRepository(private val context: Context) {
             raw.split('\n', ',', ';')
                 .map { it.trim() }
                 .filter { it.isNotEmpty() && !it.startsWith("#") }
+    }
+
+    suspend fun saveBrainDumpBackup(json: String) {
+        context.dataStore.edit { it[Keys.BRAIN_DUMP_BACKUP] = json }
+    }
+
+    suspend fun loadBrainDumpBackup(): String? {
+        val p = context.dataStore.data.first()
+        val s = p[Keys.BRAIN_DUMP_BACKUP] ?: return null
+        return s.ifBlank { null }
+    }
+
+    suspend fun clearBrainDumpBackup() {
+        context.dataStore.edit { it.remove(Keys.BRAIN_DUMP_BACKUP) }
     }
 }

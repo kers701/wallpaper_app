@@ -455,6 +455,14 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
 
+        if (settings.brainDumpMode) {
+            Text(
+                "抛弃大脑模式已开启：间隔/排序/缓存/跃迁·湮灭·虚妄/网络与本地兜底/命运先机/定位避让/软件背景 API/前世今生/关键词翻译等已被接管；在此修改后点保存仍会强制回写接管值。请在概览关闭该模式以还原。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
+
         // —— 常用：调度与来源 ——
         Box(Modifier.onGloballyPositioned { c -> sectionOffsets["basic"] = c.positionInParent().y.toInt() }) { }
         CollapsibleSection(

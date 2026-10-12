@@ -71,6 +71,7 @@ object ConfigBackup {
         o.put("powerSaveBatteryThreshold", settings.powerSaveBatteryThreshold)
         o.put("superServiceEnabled", settings.superServiceEnabled)
         o.put("dataSaverEnabled", settings.dataSaverEnabled)
+        o.put("brainDumpMode", settings.brainDumpMode)
         o.put("overviewMinimalMode", settings.overviewMinimalMode)
         o.put("showWallpaperPreview", settings.showWallpaperPreview)
 
@@ -222,6 +223,7 @@ object ConfigBackup {
             powerSaveBatteryThreshold = o.optInt("powerSaveBatteryThreshold", base.powerSaveBatteryThreshold).coerceIn(5, 50),
             superServiceEnabled = o.optBoolean("superServiceEnabled", base.superServiceEnabled),
             dataSaverEnabled = o.optBoolean("dataSaverEnabled", base.dataSaverEnabled),
+            brainDumpMode = o.optBoolean("brainDumpMode", base.brainDumpMode),
             overviewMinimalMode = o.optBoolean("overviewMinimalMode", base.overviewMinimalMode),
             showWallpaperPreview = o.optBoolean("showWallpaperPreview", base.showWallpaperPreview),
 
