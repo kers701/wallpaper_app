@@ -499,7 +499,7 @@ data class AppSettings(
     val blacklistPackages: List<String> = emptyList(),
     /** 概览页极简模式：只显示概览，隐藏其它页 */
     val overviewMinimalMode: Boolean = false,
-    /** 抛弃大脑模式：临时劫持部分设置，关闭后还原 */
+    /** 呆瓜模式：临时劫持部分设置，关闭后还原 */
     val brainDumpMode: Boolean = false,
     /** 概览页是否显示当前已应用壁纸预览 */
     val showWallpaperPreview: Boolean = true,

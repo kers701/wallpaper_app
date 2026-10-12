@@ -536,11 +536,11 @@ fun OverviewScreen(vm: MainViewModel) {
             }
         }
 
-        // 抛弃大脑模式
+        // 呆瓜模式
         OverviewCard(cardAlpha) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("抛弃大脑模式", style = MaterialTheme.typography.titleSmall, color = textColor)
+                    Text("呆瓜模式", style = MaterialTheme.typography.titleSmall, color = textColor)
                     Text(
                         if (settings.brainDumpMode)
                             "已开启 · 间隔/排序/缓存/跃迁链/兜底/命运等已接管，关闭后还原"

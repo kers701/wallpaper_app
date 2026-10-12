@@ -128,6 +128,7 @@ fun SettingsScreen(
     }
 
     val settings by vm.settings.collectAsState()
+    val dumpHijack = settings.brainDumpMode
     val superProxyStatus by vm.status.collectAsState()
     val hasRoot = remember { com.kers.killove.jhsy.util.RootKeepAlive.hasRoot() }
     val context = LocalContext.current
@@ -457,7 +458,7 @@ fun SettingsScreen(
 
         if (settings.brainDumpMode) {
             Text(
-                "抛弃大脑模式已开启：间隔/排序/缓存/跃迁·湮灭·虚妄/网络与本地兜底/命运先机/定位避让/软件背景 API/前世今生/关键词翻译等已被接管；在此修改后点保存仍会强制回写接管值。请在概览关闭该模式以还原。",
+                "呆瓜模式已开启：下列被标注「已被呆瓜模式劫持」的选项已置灰不可改；关闭概览中的呆瓜模式后还原原配置。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error
             )
@@ -470,16 +471,30 @@ fun SettingsScreen(
             expanded = openSection == "basic",
             onToggle = { toggleSection("basic") }
         ) {
-        Text("更换间隔：${interval.toInt()} 分钟")
+        Text("更换间隔：${interval.toInt()} 分钟" + if (dumpHijack) " · 已被呆瓜模式劫持" else "")
         ThemeSlider(
             value = interval,
-            onValueChange = { interval = it },
+            onValueChange = { if (!dumpHijack) interval = it },
             valueRange = 5f..60f,
-            steps = 10
+            steps = 10,
+            enabled = !dumpHijack
         )
-        Text("小于 15 分钟将自动使用前台服务", style = MaterialTheme.typography.bodySmall)
-        RowSwitch("概览页显示当前壁纸预览", showWallpaperPreview) { showWallpaperPreview = it }
-        Text("关闭后概览页不再加载或显示壁纸预览", style = MaterialTheme.typography.bodySmall)
+        Text(
+            if (dumpHijack) "已被呆瓜模式劫持（固定 15 分钟）" else "小于 15 分钟将自动使用前台服务",
+            style = MaterialTheme.typography.bodySmall,
+            color = if (dumpHijack) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+        )
+        RowSwitch(
+            title = "概览页显示当前壁纸预览",
+            checked = showWallpaperPreview,
+            enabled = !dumpHijack,
+            onChecked = { if (!dumpHijack) showWallpaperPreview = it }
+        )
+        Text(
+            if (dumpHijack) "已被呆瓜模式劫持（强制开启）" else "关闭后概览页不再加载或显示壁纸预览",
+            style = MaterialTheme.typography.bodySmall,
+            color = if (dumpHijack) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+        )
 
         // 运行模式接管：健康 / 心跳 / 绿色 时纯度只读
         val modeNow = ProcessBridgePrefs.purityMode(context)
@@ -634,9 +649,9 @@ fun SettingsScreen(
             }
         }
         EnumDropdown("类别", CategoryMode.entries, category) { category = it }
-        EnumDropdown("排序方式", SearchSorting.entries, sorting) { sorting = it }
+        EnumDropdown("排序方式", SearchSorting.entries, sorting, enabled = !dumpHijack) { if (!dumpHijack) sorting = it }
         EnumDropdown("设置目标", WallpaperTarget.entries, target) { target = it }
-        EnumDropdown("缓存与记录", CacheRetention.entries, cacheRetention) { cacheRetention = it }
+        EnumDropdown("缓存与记录", CacheRetention.entries, cacheRetention, enabled = !dumpHijack) { if (!dumpHijack) cacheRetention = it }
         Text(
             "图片缓存与更换记录同步按此时长保留。关闭=随用随清；六小时/一天/三天/七天=删除更早的记录与图片文件。",
             style = MaterialTheme.typography.bodySmall
@@ -763,19 +778,27 @@ fun SettingsScreen(
         ) {
         RowSwitch("启用关键词搜索", useKeywords) { useKeywords = it }
         if (useKeywords) {
-        RowSwitch("跃迁模式（用上次成功标签覆盖跃迁列表）", jumpMode) {
-            jumpMode = it
-            if (!it) {
-                naturalLaw = false
-                annihilMode = false
-                illusionMode = false
-                pastLife = false
-                pastLifeDeep = false
+        RowSwitch(
+            title = "跃迁模式（用上次成功标签覆盖跃迁列表）",
+            checked = jumpMode,
+            enabled = !dumpHijack,
+            onChecked = {
+                if (dumpHijack) return@RowSwitch
+                jumpMode = it
+                if (!it) {
+                    naturalLaw = false
+                    annihilMode = false
+                    illusionMode = false
+                    pastLife = false
+                    pastLifeDeep = false
+                }
             }
-        }
+        )
         Text(
-            "Wallhaven 成功后会用该壁纸标签覆盖跃迁列表；开启且列表非空时优先用跃迁词搜索",
-            style = MaterialTheme.typography.bodySmall
+            if (dumpHijack) "已被呆瓜模式劫持（强制开启）"
+            else "Wallhaven 成功后会用该壁纸标签覆盖跃迁列表；开启且列表非空时优先用跃迁词搜索",
+            style = MaterialTheme.typography.bodySmall,
+            color = if (dumpHijack) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
         )
         run {
             val draftAiOk = (if (keysVisible) transAiKey else settings.translateAiApiKey).trim().isNotBlank() &&
@@ -796,17 +819,32 @@ fun SettingsScreen(
             }
         }
         if (jumpMode) {
-            RowSwitch("湮灭模式（选中即整词入缓存；全命中则新纪元）", annihilMode) {
-                annihilMode = it
-                if (!it) illusionMode = false
+            RowSwitch(
+                title = "湮灭模式（选中即整词入缓存；全命中则新纪元）",
+                checked = annihilMode,
+                enabled = !dumpHijack,
+                onChecked = {
+                    if (dumpHijack) return@RowSwitch
+                    annihilMode = it
+                    if (!it) illusionMode = false
+                }
+            )
+            if (dumpHijack) {
+                Text("已被呆瓜模式劫持（强制开启）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
             if (annihilMode) {
                 Text(
                     "正在湮灭 · 第 ${settings.annihilationEpoch} 纪元 · 缓存 ${com.kers.killove.jhsy.util.AnnihilationStore.size(context)} 条（满 777 强制清空）",
                     style = MaterialTheme.typography.bodySmall
                 )
-                RowSwitch("虚妄模式（含本次搜索词的标签进虚妄，其余才跃迁）", illusionMode) {
-                    illusionMode = it
+                RowSwitch(
+                    title = "虚妄模式（含本次搜索词的标签进虚妄，其余才跃迁）",
+                    checked = illusionMode,
+                    enabled = !dumpHijack,
+                    onChecked = { if (!dumpHijack) illusionMode = it }
+                )
+                if (dumpHijack) {
+                    Text("已被呆瓜模式劫持（强制开启）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }
                 if (illusionMode) {
                     Text(
@@ -913,7 +951,15 @@ fun SettingsScreen(
             expanded = openSection == "fb",
             onToggle = { toggleSection("fb") }
         ) {
-        RowSwitch("网络兜底（Wallhaven 失败 → 备用 API）", netFb) { netFb = it }
+        RowSwitch(
+            title = "网络兜底（Wallhaven 失败 → 备用 API）",
+            checked = netFb,
+            enabled = !dumpHijack,
+            onChecked = { if (!dumpHijack) netFb = it }
+        )
+        if (dumpHijack) {
+            Text("已被呆瓜模式劫持（强制开启 + 指定兜底 API）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        }
         if (netFb) {
         if (keysVisible) {
             OutlinedTextField(
@@ -934,9 +980,25 @@ fun SettingsScreen(
         }
         }
 
-        RowSwitch("本地兜底（无网/失败时从目录随机）", localFb) { localFb = it }
+        RowSwitch(
+            title = "本地兜底（无网/失败时从目录随机）",
+            checked = localFb,
+            enabled = !dumpHijack,
+            onChecked = { if (!dumpHijack) localFb = it }
+        )
+        if (dumpHijack) {
+            Text("已被呆瓜模式劫持（强制开启）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        }
         if (localFb) {
-        RowSwitch("强制本地模式（不访问网络）", forceLocal) { forceLocal = it }
+        RowSwitch(
+            title = "强制本地模式（不访问网络）",
+            checked = forceLocal,
+            enabled = !dumpHijack,
+            onChecked = { if (!dumpHijack) forceLocal = it }
+        )
+        if (dumpHijack) {
+            Text("已被呆瓜模式劫持（强制关闭）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        }
         OutlinedTextField(
             value = localDir,
             onValueChange = { localDir = it },
@@ -945,14 +1007,23 @@ fun SettingsScreen(
             placeholder = { Text("/storage/emulated/0/Pictures/Wallpapers") }
         )
         Text("当前：${vm.localFallbackInfo()}", style = MaterialTheme.typography.bodySmall)
-        RowSwitch("本地兜底也使用下载缓存（跳过最新图）", localFbCache) { localFbCache = it }
+        RowSwitch(
+            title = "本地兜底也使用下载缓存（跳过最新图）",
+            checked = localFbCache,
+            enabled = !dumpHijack,
+            onChecked = { if (!dumpHijack) localFbCache = it }
+        )
+        if (dumpHijack) {
+            Text("已被呆瓜模式劫持（强制开启 · 跳过 7 张）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        }
         if (localFbCache) {
             Text("跳过最新 ${localFbSkip} 张缓存", style = MaterialTheme.typography.bodySmall)
             ThemeSlider(
                 value = localFbSkip.toFloat(),
-                onValueChange = { localFbSkip = it.toInt().coerceIn(0, 20) },
+                onValueChange = { if (!dumpHijack) localFbSkip = it.toInt().coerceIn(0, 20) },
                 valueRange = 0f..20f,
-                steps = 19
+                steps = 19,
+                enabled = !dumpHijack
             )
         }
         }
@@ -986,10 +1057,10 @@ fun SettingsScreen(
                     color = LocalUiTextColor.current.copy(alpha = if (!accelOn) 1f else 0.45f)
                 )
                 ThemeSwitch(
-                    checked = proxyOn && !accelOn,
-                    enabled = !accelOn,
+                    checked = proxyOn && !accelOn && !dumpHijack,
+                    enabled = !accelOn && !dumpHijack,
                     onCheckedChange = { on ->
-                        if (!accelOn) {
+                        if (!accelOn && !dumpHijack) {
                             proxyOn = on
                             if (!on) {
                                 superProxyOn = false
@@ -999,7 +1070,10 @@ fun SettingsScreen(
                     }
                 )
             }
-            if (proxyOn && !accelOn) {
+            if (dumpHijack) {
+                Text("已被呆瓜模式劫持（网络代理强制关闭）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            }
+            if (proxyOn && !accelOn && !dumpHijack) {
             Text(
                 "链路：超级代理（可用）→ 普通代理 → 系统网络。须先开代理才能开超级代理。",
                 style = MaterialTheme.typography.bodySmall
@@ -1325,8 +1399,12 @@ fun SettingsScreen(
             onToggle = { toggleSection("destiny") }
         ) {
             Text("按星期与时段自动劫持纯度搜索策略。详见应用内说明。", style = MaterialTheme.typography.bodySmall)
-            RowSwitch("启用命运先机", settings.destinyEnabled) { on ->
+            RowSwitch(title = "启用命运先机", checked = settings.destinyEnabled, enabled = !dumpHijack) { on ->
+                if (dumpHijack) return@RowSwitch
                 vm.setDestinyEnabled(on)
+            }
+            if (dumpHijack) {
+                Text("已被呆瓜模式劫持（强制开启）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
             if (settings.destinyEnabled) {
                 val n = com.kers.killove.jhsy.util.DestinyHelper.parseRules(settings.destinyRulesJson).size
@@ -1343,7 +1421,15 @@ fun SettingsScreen(
             expanded = openSection == "loc",
             onToggle = { toggleSection("loc") }
         ) {
-        RowSwitch("启用定位避让", locAvoid) { locAvoid = it }
+        RowSwitch(
+            title = "启用定位避让",
+            checked = locAvoid,
+            enabled = !dumpHijack,
+            onChecked = { if (!dumpHijack) locAvoid = it }
+        )
+        if (dumpHijack) {
+            Text("已被呆瓜模式劫持（强制关闭）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        }
         if (locAvoid) {
             if (keysVisible) {
                 OutlinedTextField(value = amapKey, onValueChange = { amapKey = it }, label = { Text("高德 Web 服务 Key") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
@@ -1439,10 +1525,10 @@ fun SettingsScreen(
             )
             RowSwitch(
                 title = "启用前世今生",
-                checked = pastLife && canPast,
-                enabled = canPast,
+                checked = pastLife && canPast && !dumpHijack,
+                enabled = canPast && !dumpHijack,
                 onChecked = { v ->
-                    if (canPast) {
+                    if (canPast && !dumpHijack) {
                         pastLife = v
                         if (!v) {
                             pastLifeDeep = false
@@ -1451,6 +1537,9 @@ fun SettingsScreen(
                     }
                 }
             )
+            if (dumpHijack) {
+                Text("已被呆瓜模式劫持（强制关闭）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            }
             RowSwitch(
                 title = "深入探索",
                 checked = pastLifeDeep && pastLife && canPast,
@@ -1548,10 +1637,13 @@ fun SettingsScreen(
                 transAiModel.trim().isNotBlank()
             RowSwitch(
                 title = "AI 智能翻译",
-                checked = transAiMode && draftAiOk,
-                enabled = draftAiOk,
-                onChecked = { v -> if (draftAiOk) transAiMode = v }
+                checked = transAiMode && draftAiOk && !dumpHijack,
+                enabled = draftAiOk && !dumpHijack,
+                onChecked = { v -> if (draftAiOk && !dumpHijack) transAiMode = v }
             )
+            if (dumpHijack) {
+                Text("已被呆瓜模式劫持（强制关闭）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            }
             Text(
                 if (!draftAiOk) "请先在「AI 模型」中配置 API Key 与模型名"
                 else if (transAiMode) "已开启：关键词展示走 AI 模型翻译"
@@ -1559,7 +1651,7 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.bodySmall
             )
             if (!transAiMode || !draftAiOk) {
-                EnumDropdown("翻译引擎", TranslateProvider.entries, transProv) { transProv = it }
+                EnumDropdown("翻译引擎", TranslateProvider.entries, transProv, enabled = !dumpHijack) { if (!dumpHijack) transProv = it }
                 if (keysVisible) {
                     OutlinedTextField(
                         value = transKey,
@@ -1970,14 +2062,19 @@ private fun <T> EnumDropdown(
             else -> it.toString()
         }
     },
+    enabled: Boolean = true,
     onSelect: (T) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
-    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+    ExposedDropdownMenuBox(
+        expanded = expanded && enabled,
+        onExpandedChange = { if (enabled) expanded = it }
+    ) {
         OutlinedTextField(
-            value = itemLabel(selected),
+            value = if (enabled) itemLabel(selected) else itemLabel(selected) + "（已劫持）",
             onValueChange = {},
             readOnly = true,
+            enabled = enabled,
             label = { Text(label) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
             modifier = Modifier

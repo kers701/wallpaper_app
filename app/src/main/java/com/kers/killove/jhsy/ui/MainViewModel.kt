@@ -1095,7 +1095,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val next = BrainDumpMode.apply(cur)
                 settingsRepo.save(next)
                 applySchedule(next)
-                setStatus("已开启抛弃大脑模式（相关设置已接管，关闭后可还原）", popup = true)
+                setStatus("已开启呆瓜模式（相关设置已接管，关闭后可还原）", popup = true)
             } else {
                 val backup = settingsRepo.loadBrainDumpBackup()
                 val restored = if (!backup.isNullOrBlank()) {
@@ -1106,7 +1106,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 settingsRepo.save(restored)
                 settingsRepo.clearBrainDumpBackup()
                 applySchedule(restored)
-                setStatus("已关闭抛弃大脑模式（已尝试还原原配置）", popup = true)
+                setStatus("已关闭呆瓜模式（已尝试还原原配置）", popup = true)
             }
         }
     }

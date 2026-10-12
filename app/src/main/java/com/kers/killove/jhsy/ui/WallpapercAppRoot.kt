@@ -51,6 +51,7 @@ import com.kers.killove.jhsy.ui.screens.BlacklistSelectedScreen
 import com.kers.killove.jhsy.ui.screens.OverviewScreen
 import com.kers.killove.jhsy.ui.screens.PermissionOnboardingScreen
 import com.kers.killove.jhsy.ui.screens.SettingsScreen
+import com.kers.killove.jhsy.ui.screens.ProxyNodesScreen
 
 val LocalUiTextColor = compositionLocalOf { Color.White }
 val LocalUiControlTextColor = compositionLocalOf { Color.White }
@@ -273,7 +274,9 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
                             SettingsScreen(
                                 vm,
                                 onOpenBlacklist = { nav.navigate("blacklist") },
-                                onOpenLocationAvoid = { nav.navigate("location_avoid") }, onOpenDestiny = { nav.navigate("destiny") },
+                                onOpenLocationAvoid = { nav.navigate("location_avoid") },
+                                onOpenProxyNodes = { nav.navigate("proxy_nodes") },
+                                onOpenDestiny = { nav.navigate("destiny") },
                                 onOpenCloudSync = { nav.navigate("cloud_sync") }
                             )
                         }
@@ -306,6 +309,9 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
                         }
                         composable("destiny") {
                             DestinyScheduleScreen(vm, onBack = { nav.popBackStack() })
+                        }
+                        composable("proxy_nodes") {
+                            ProxyNodesScreen(vm, onBack = { nav.popBackStack() })
                         }
                     }
 

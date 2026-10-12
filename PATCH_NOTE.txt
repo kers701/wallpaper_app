@@ -1,4 +1,6 @@
-修复 BrainDumpMode const 编译错误（不推送）
+修复节点选择无响应 + 呆瓜模式置灰（不推送）
 
-错误: Const 'val' initializer should be a constant value
-FALLBACK_API 改为普通 val（trimIndent 非编译期常量）
+1. Settings 未传入 onOpenProxyNodes，默认空 lambda → 点击无反应
+   现导航到 proxy_nodes 并注册 ProxyNodesScreen
+2. 抛弃大脑模式更名为呆瓜模式
+3. 开启后被劫持项 enabled=false 并显示「已被呆瓜模式劫持」

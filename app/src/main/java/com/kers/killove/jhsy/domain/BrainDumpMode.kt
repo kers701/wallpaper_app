@@ -3,7 +3,7 @@ package com.kers.killove.jhsy.domain
 import org.json.JSONObject
 
 /**
- * 抛弃大脑模式：临时劫持部分设置；关闭后从快照还原。
+ * 呆瓜模式：临时劫持部分设置；关闭后从快照还原。
  * 未列入的字段一律不改动。
  */
 object BrainDumpMode {
@@ -116,7 +116,7 @@ https://api.r10086.com/樱道随机图片api接口.php?图片系列=动漫综合
         }
     }
 
-    /** 保存设置时：若仍处于抛弃大脑模式，强制保持劫持值 */
+    /** 保存设置时：若仍处于呆瓜模式，强制保持劫持值 */
     fun enforceIfActive(s: AppSettings): AppSettings =
         if (s.brainDumpMode) apply(s) else s
 }
