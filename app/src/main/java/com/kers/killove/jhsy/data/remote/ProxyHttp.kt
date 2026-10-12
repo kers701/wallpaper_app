@@ -1,6 +1,10 @@
 package com.kers.killove.jhsy.data.remote
 
 import android.content.Context
+import androidx.core.content.ContextCompat
+import androidx.webkit.ProxyConfig
+import androidx.webkit.ProxyController
+import androidx.webkit.WebViewFeature
 import com.kers.killove.jhsy.domain.AppSettings
 import com.kers.killove.jhsy.domain.ProxyType
 import com.kers.killove.jhsy.util.SuperProxyController
@@ -234,6 +238,55 @@ object ProxyHttp {
 
     fun executeDirect(request: Request): Response =
         directRef.get().newCall(request).execute()
+
+    /**
+     * 为 Android WebView 配置与加速模式相同的内置代理节点。
+     * WebView 不会经过 OkHttp 的 ProxyHttp.execute，因此注册/登录页面必须单独设置代理。
+     * 这是 WebView 的进程级覆盖，调用方离开页面后必须调用 clearWebViewProxy。
+     */
+    fun configureWebViewProxy(context: Context, onComplete: (enabled: Boolean, nodeName: String?) -> Unit) {
+        val app = context.applicationContext
+        if (!accelEnabledRef.get() || !WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
+            onComplete(false, null)
+            return
+        }
+        val node = BuiltinAccelNodes.randomOrNull(app)
+        if (node == null) {
+            onComplete(false, null)
+            return
+        }
+        val proxyScheme = when (node.type) {
+            ProxyType.Socks5 -> "socks"
+            ProxyType.Http -> "http"
+        }
+        val proxyUrl = "$proxyScheme://${node.host}:${node.port}"
+        val config = runCatching {
+            ProxyConfig.Builder()
+                .addProxyRule(proxyUrl)
+                .build()
+        }.getOrNull()
+        if (config == null) {
+            onComplete(false, null)
+            return
+        }
+        ProxyController.getInstance().setProxyOverride(
+            config,
+            ContextCompat.getMainExecutor(app),
+            Runnable { onComplete(true, node.name) }
+        )
+    }
+
+    /** 清理 WebView 的进程级代理覆盖，避免影响其它页面。 */
+    fun clearWebViewProxy(context: Context, onComplete: (() -> Unit)? = null) {
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
+            onComplete?.invoke()
+            return
+        }
+        ProxyController.getInstance().clearProxyOverride(
+            ContextCompat.getMainExecutor(context.applicationContext),
+            Runnable { onComplete?.invoke() }
+        )
+    }
 
     fun measureLatencyMs(
         cfg: Config,

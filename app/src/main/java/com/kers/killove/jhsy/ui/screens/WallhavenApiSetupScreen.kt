@@ -45,6 +45,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.kers.killove.jhsy.data.remote.WallhavenApi
+import com.kers.killove.jhsy.data.remote.ProxyHttp
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -82,7 +83,11 @@ fun WallhavenApiSetupDialog(
     val context = LocalContext.current
 
     DisposableEffect(Unit) {
-        onDispose { webView?.destroy() }
+        onDispose {
+            webView?.destroy()
+            // WebView 代理是进程级覆盖，关闭注册助手后及时恢复默认网络。
+            ProxyHttp.clearWebViewProxy(context)
+        }
     }
 
     // 提取到 Key 后自动检测有效性，通过才允许写入
@@ -386,8 +391,16 @@ fun WallhavenApiSetupDialog(
                                 }
                                 addJavascriptInterface(bridge, "WallhavenBridge")
                                 webView = this
-                                // 直接进入注册页
-                                loadUrl(WALLHAVEN_JOIN)
+                                // WebView 不会自动使用 OkHttp 的 ProxyHttp；加速模式下显式覆写
+                                // 一个内置节点，代理生效后再打开注册页，确保 CF/注册/登录链路一致。
+                                ProxyHttp.configureWebViewProxy(context) { enabled, nodeName ->
+                                    if (enabled) {
+                                        status = "已启用加速代理（$nodeName），正在打开注册页…"
+                                    } else {
+                                        status = "正在打开注册页…"
+                                    }
+                                    if (isAttachedToWindow) loadUrl(WALLHAVEN_JOIN)
+                                }
                             }
                         },
                         update = { webView = it }

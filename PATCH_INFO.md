@@ -1,32 +1,28 @@
-# wallpaper_app 关键词过滤与 Wallhaven 排序补丁
+# wallpaper_app 加速模式 API Key 注册代理修复补丁
 
-## 关键词过滤列表
+## 修复内容
 
-设置 → 关键词 → 关键词过滤列表：
+Wallhaven API 注册助手使用 Android WebView，而原有加速代理只接管 OkHttp 请求，因此注册页、Cloudflare 验证、登录和账户设置页仍然直连。
 
-- 每行一个过滤词。
-- 支持词组，例如 `red hair`、`watermark`。
-- 搜索 Wallhaven 时自动附加排除语法：`-关键词`。
-- 词组会使用带引号的排除形式：`-"red hair"`。
-- 跃迁标签提取时会忽略过滤列表中的词，避免这些词重新进入跃迁列表。
-- 过滤列表会写入 DataStore、配置备份和关键词云同步。
+本补丁新增：
 
-## Wallhaven 排序
+- 引入 AndroidX WebKit `ProxyController`。
+- 加速模式开启且已同意隐私声明时，注册 WebView 打开页面前随机选择一个内置加速节点。
+- 等待 WebView 代理覆盖完成后再加载 Wallhaven 注册页。
+- 注册、Cloudflare 验证、登录、账户设置和 API Key 提取页面统一走该节点。
+- 关闭注册助手时清除 WebView 的进程级代理覆盖，避免影响应用其他页面。
+- 加速模式关闭、无可用节点或设备不支持 WebView 代理覆盖时自动回退直连，并正常显示注册页面。
 
-基础设置新增排序方式，API 参数使用 `sorting`：
+## 变更文件
 
-| 界面选项 | API 值 |
-|---|---|
-| 相关性 | `relevance` |
-| 随机 | `random` |
-| 浏览量 | `views` |
-| 收藏数 | `favorites` |
-| 排行榜 | `toplist` |
-
-排序和过滤条件会参与搜索页缓存键，切换后不会复用不匹配的旧分页信息。
+- `app/build.gradle.kts`
+- `app/src/main/java/com/kers/killove/jhsy/data/remote/ProxyHttp.kt`
+- `app/src/main/java/com/kers/killove/jhsy/ui/screens/WallhavenApiSetupScreen.kt`
+- 同时包含当前工作区此前关键词过滤与 Wallhaven 排序改动，便于按完整工程路径应用。
 
 ## 验证
 
 - `git diff --check` 通过。
-- 构建未能在当前沙箱执行：缺少 Android SDK，Gradle 报 `SDK location not found`。
+- AndroidX WebKit `1.12.1` 的 `ProxyConfig`、`ProxyController` 和 `WebViewFeature.PROXY_OVERRIDE` API 已核对。
+- 当前沙箱缺少 Android SDK，无法完成 Gradle 编译验证。
 - 未推送远程仓库。
