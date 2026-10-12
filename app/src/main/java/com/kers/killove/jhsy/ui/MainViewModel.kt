@@ -415,18 +415,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val wasSuper = settings.value.superProxyEnabled && settings.value.proxyEnabled
             val nowSuper = final.superProxyEnabled && final.proxyEnabled
             val pastOn = final.pastLifeEnabled && final.jumpModeEnabled
-            val naturalLawOn = final.naturalLawEnabled &&
-                final.jumpModeEnabled &&
-                final.translateAiApiKey.isNotBlank() &&
-                final.translateAiModel.isNotBlank()
-            val aiReady = final.translateAiApiKey.isNotBlank() && final.translateAiModel.isNotBlank()
+            val modelOk = final.translateAiApiKey.isNotBlank() && final.translateAiModel.isNotBlank()
+            val aiReady = final.aiEnabled && modelOk
+            val naturalLawOn = final.naturalLawEnabled && final.jumpModeEnabled && aiReady
+            val pastOnGated = pastOn && aiReady
             val gated = final.copy(
-                pastLifeEnabled = pastOn,
-                pastLifeDeepExplore = pastOn && final.pastLifeDeepExplore,
-                pastLifeIsolateSplit = pastOn && final.isolateHomeLock && final.pastLifeIsolateSplit,
+                pastLifeEnabled = pastOnGated,
+                pastLifeDeepExplore = pastOnGated && final.pastLifeDeepExplore,
+                pastLifeIsolateSplit = pastOnGated && final.isolateHomeLock && final.pastLifeIsolateSplit,
                 naturalLawEnabled = naturalLawOn,
-                // 智能翻译依赖 AI 模型配置
-                translateAiMode = final.translateAiMode && aiReady
+                // 智能翻译仅影响翻译，仍需已配置模型
+                translateAiMode = final.translateAiMode && modelOk
             )
             val normalized = BrainDumpMode.enforceIfActive(clearGreenIfNoAvoidPoints(gated))
             settingsRepo.save(normalized)
@@ -1240,12 +1239,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun testAiModelAvailability() {
         viewModelScope.launch {
             val s = settings.value
-            if (!s.translateAiMode) {
-                setStatus("请先开启 AI 模式", popup = true)
+            if (!s.aiEnabled) {
+                setStatus("请先在「AI 模型」中开启 AI", popup = true)
                 return@launch
             }
-            if (s.translateAiApiKey.isBlank()) {
-                setStatus("请填写 AI API Key", popup = true)
+            if (s.translateAiApiKey.isBlank() || s.translateAiModel.isBlank()) {
+                setStatus("请填写 AI API Key 与模型名", popup = true)
                 return@launch
             }
             _busy.value = true

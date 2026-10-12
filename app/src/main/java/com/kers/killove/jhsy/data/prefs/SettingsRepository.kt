@@ -63,6 +63,7 @@ class SettingsRepository(private val context: Context) {
         val TRANS_KEY = stringPreferencesKey("translate_api_key")
         val TRANS_SECRET = stringPreferencesKey("translate_secret")
         val TRANS_REGION = stringPreferencesKey("translate_region")
+        val AI_ENABLED = booleanPreferencesKey("ai_enabled")
         val TRANS_AI_MODE = booleanPreferencesKey("translate_ai_mode")
         val TRANS_AI_KEY = stringPreferencesKey("translate_ai_api_key")
         val TRANS_AI_BASE = stringPreferencesKey("translate_ai_base_url")
@@ -232,6 +233,7 @@ class SettingsRepository(private val context: Context) {
             translateApiKey = p[Keys.TRANS_KEY] ?: "",
             translateSecret = p[Keys.TRANS_SECRET] ?: "",
             translateRegion = p[Keys.TRANS_REGION] ?: "global",
+            aiEnabled = p[Keys.AI_ENABLED] ?: (p[Keys.TRANS_AI_MODE] ?: false),
             translateAiMode = p[Keys.TRANS_AI_MODE] ?: false,
             translateAiApiKey = p[Keys.TRANS_AI_KEY] ?: "",
             translateAiBaseUrl = p[Keys.TRANS_AI_BASE] ?: "https://api.openai.com/v1",
@@ -415,6 +417,7 @@ class SettingsRepository(private val context: Context) {
             p[Keys.TRANS_KEY] = settings.translateApiKey
             p[Keys.TRANS_SECRET] = settings.translateSecret
             p[Keys.TRANS_REGION] = settings.translateRegion
+            p[Keys.AI_ENABLED] = settings.aiEnabled
             p[Keys.TRANS_AI_MODE] = settings.translateAiMode
             p[Keys.TRANS_AI_KEY] = settings.translateAiApiKey
             p[Keys.TRANS_AI_BASE] = settings.translateAiBaseUrl

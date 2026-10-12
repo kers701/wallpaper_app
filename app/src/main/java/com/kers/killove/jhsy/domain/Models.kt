@@ -381,7 +381,12 @@ data class AppSettings(
     val translateApiKey: String = "",
     val translateSecret: String = "",
     val translateRegion: String = "global",
-    /** AI 翻译模式：开启后走智能模型，关闭走翻译 API */
+    /**
+     * 启用 AI（前世今生 / 自然法则等非翻译能力）。
+     * 与 [translateAiMode] 独立：智能翻译只影响关键词翻译展示。
+     */
+    val aiEnabled: Boolean = false,
+    /** AI 智能翻译：仅影响关键词中文展示/日志，不控制其它 AI 功能 */
     val translateAiMode: Boolean = false,
     val translateAiApiKey: String = "",
     /** OpenAI 兼容接口，如 https://api.openai.com/v1 或中转 */
@@ -726,6 +731,10 @@ sealed class ChangeResult {
     data class Failure(val message: String) : ChangeResult()
 }
 
-/** AI 模型是否已配置（密钥+模型名）；前世今生/自然法则/智能翻译共用 */
+/** AI 模型是否已配置（密钥+模型名） */
 fun AppSettings.aiModelConfigured(): Boolean =
     translateAiApiKey.isNotBlank() && translateAiModel.isNotBlank()
+
+/** AI 功能是否可用（已启用 + 已配置模型）；不含「仅智能翻译」 */
+fun AppSettings.aiReady(): Boolean =
+    aiEnabled && aiModelConfigured()

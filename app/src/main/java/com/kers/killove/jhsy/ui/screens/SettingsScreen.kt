@@ -193,6 +193,7 @@ fun SettingsScreen(
     var pastLife by remember(settings.pastLifeEnabled) { mutableStateOf(settings.pastLifeEnabled) }
     var pastLifeDeep by remember(settings.pastLifeDeepExplore) { mutableStateOf(settings.pastLifeDeepExplore) }
     var pastLifeSplit by remember(settings.pastLifeIsolateSplit) { mutableStateOf(settings.pastLifeIsolateSplit) }
+    var aiOn by remember(settings.aiEnabled) { mutableStateOf(settings.aiEnabled) }
     var transAiMode by remember(settings.translateAiMode) { mutableStateOf(settings.translateAiMode) }
     var transAiKey by remember(settings.translateAiApiKey, keysVisible) {
         mutableStateOf(if (keysVisible) settings.translateAiApiKey else "")
@@ -378,6 +379,7 @@ fun SettingsScreen(
                                             superServiceEnabled = superSvc,
                                             translateProvider = transProv,
                                             translateApiKey = if (keysVisible) transKey.trim() else settings.translateApiKey,
+                                            aiEnabled = aiOn,
                                             translateAiMode = transAiMode,
                                             pastLifeEnabled = pastLife,
                                             pastLifeDeepExplore = pastLifeDeep,
@@ -402,7 +404,7 @@ fun SettingsScreen(
                                             keywordsRemoteUrl = kwUrl,
                                             useKeywords = useKeywords,
                                             jumpModeEnabled = jumpMode,
-                                            naturalLawEnabled = naturalLaw && jumpMode &&
+                                            naturalLawEnabled = naturalLaw && jumpMode && aiOn &&
                                                 (if (keysVisible) transAiKey else settings.translateAiApiKey).trim().isNotBlank() &&
                                                 transAiModel.trim().isNotBlank(),
                                             annihilationModeEnabled = annihilMode && jumpMode,
@@ -801,7 +803,8 @@ fun SettingsScreen(
             color = if (dumpHijack) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
         )
         run {
-            val draftAiOk = (if (keysVisible) transAiKey else settings.translateAiApiKey).trim().isNotBlank() &&
+            val draftAiOk = aiOn &&
+                (if (keysVisible) transAiKey else settings.translateAiApiKey).trim().isNotBlank() &&
                 transAiModel.trim().isNotBlank()
             if (jumpMode && draftAiOk) {
                 RowSwitch("自然法则（AI 推荐词替换一半跃迁词）", naturalLaw) {
@@ -813,7 +816,7 @@ fun SettingsScreen(
                 )
             } else if (jumpMode) {
                 Text(
-                    "自然法则：请先在「AI 模型」中配置 API Key 与模型名",
+                    "自然法则：请先在「AI 模型」中开启 AI 并配置 Key / 模型",
                     style = MaterialTheme.typography.bodySmall
                 )
             }
@@ -1517,7 +1520,8 @@ fun SettingsScreen(
         ) {
             val jumpOk = settings.jumpModeEnabled || jumpMode
             val draftKey = (if (keysVisible) transAiKey else settings.translateAiApiKey).trim()
-            val aiOk = draftKey.isNotBlank() && transAiModel.trim().isNotBlank()
+            val modelOk = draftKey.isNotBlank() && transAiModel.trim().isNotBlank()
+            val aiOk = aiOn && modelOk
             val canPast = jumpOk && aiOk
             Text(
                 "需开启「跃迁模式」并配置「AI 模型」后可用。换壁纸成功后描述主词与前后词关系。",
@@ -1571,7 +1575,12 @@ fun SettingsScreen(
             if (!jumpOk) {
                 Text("请先开启跃迁模式", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             } else if (!aiOk) {
-                Text("请先在「AI 模型」中配置 API Key 与模型名", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                Text(
+                    if (!aiOn) "请先在「AI 模型」中开启 AI"
+                    else "请先在「AI 模型」中配置 API Key 与模型名",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
             }
         }
 
@@ -1582,8 +1591,22 @@ fun SettingsScreen(
             expanded = openSection == "ai",
             onToggle = { toggleSection("ai") }
         ) {
+            RowSwitch(
+                title = "启用 AI",
+                checked = aiOn,
+                onChecked = { on ->
+                    aiOn = on
+                    if (!on) {
+                        // 关闭 AI 不影响「智能翻译」开关本身，但前世今生/自然法则不可用
+                    }
+                }
+            )
             Text(
-                "前世今生、自然法则、智能翻译等 AI 功能共用此处配置（OpenAI 兼容接口）。",
+                "总开关：前世今生、自然法则等。关键词「AI 智能翻译」在翻译板块单独控制。",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Text(
+                "配置 OpenAI 兼容接口（Key / Base URL / 模型），各 AI 功能共用。",
                 style = MaterialTheme.typography.bodySmall
             )
             if (keysVisible) {
@@ -1612,6 +1635,7 @@ fun SettingsScreen(
                     onClick = {
                         vm.saveSettings(
                             settings.copy(
+                                aiEnabled = aiOn,
                                 translateAiApiKey = transAiKey.trim(),
                                 translateAiBaseUrl = transAiBase.trim().ifBlank { "https://api.openai.com/v1" },
                                 translateAiModel = transAiModel.trim().ifBlank { "gpt-4o-mini" }
@@ -1645,8 +1669,8 @@ fun SettingsScreen(
                 Text("已被呆瓜模式劫持（强制关闭）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
             Text(
-                if (!draftAiOk) "请先在「AI 模型」中配置 API Key 与模型名"
-                else if (transAiMode) "已开启：关键词展示走 AI 模型翻译"
+                if (!draftAiOk) "请先在「AI 模型」中配置 API Key 与模型名（与是否开启 AI 总开关无关）"
+                else if (transAiMode) "已开启：仅关键词展示走 AI 翻译；不影响前世今生等"
                 else "已关闭：使用下方翻译引擎 API",
                 style = MaterialTheme.typography.bodySmall
             )

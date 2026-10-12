@@ -10,8 +10,9 @@ object PastLifeAi {
     fun canUse(settings: AppSettings): Boolean =
         settings.pastLifeEnabled &&
             settings.jumpModeEnabled &&
-            settings.translateAiMode &&
-            settings.translateAiApiKey.isNotBlank()
+            settings.aiEnabled &&
+            settings.translateAiApiKey.isNotBlank() &&
+            settings.translateAiModel.isNotBlank()
 
     suspend fun refresh(
         context: Context,

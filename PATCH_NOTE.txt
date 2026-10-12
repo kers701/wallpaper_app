@@ -1,6 +1,6 @@
-修复节点选择无响应 + 呆瓜模式置灰（不推送）
+AI 总开关与智能翻译分离（不推送）
 
-1. Settings 未传入 onOpenProxyNodes，默认空 lambda → 点击无反应
-   现导航到 proxy_nodes 并注册 ProxyNodesScreen
-2. 抛弃大脑模式更名为呆瓜模式
-3. 开启后被劫持项 enabled=false 并显示「已被呆瓜模式劫持」
+- AI 模型板块新增「启用 AI」总开关（aiEnabled）
+- 前世今生 / 自然法则 / 检测可用性：依赖启用 AI + Key + 模型
+- 「AI 智能翻译」仅控制翻译，不再卡住其它 AI 功能
+- 旧用户：若曾开过智能翻译，会迁移为已启用 AI

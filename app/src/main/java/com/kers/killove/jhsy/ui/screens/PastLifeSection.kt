@@ -108,7 +108,7 @@ fun PastLifeSection(vm: MainViewModel) {
 
                     if (!aiOk) {
                         Text(
-                            "请开启跃迁、AI 模式并配置 API Key 后生效",
+                            "请开启跃迁，并在「AI 模型」中启用 AI、配置 API Key 后生效",
                             style = MaterialTheme.typography.bodySmall,
                             color = textColor.copy(alpha = 0.65f)
                         )
