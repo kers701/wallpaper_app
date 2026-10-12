@@ -62,18 +62,15 @@ class WallhavenApi {
             else -> null
         }
 
-        // 始终 random + 随机 seed，避免同关键词 relevance 永远返回同一批图
-        val seed = (1..Int.MAX_VALUE).random().toString()
         val urlBuilder = "https://wallhaven.cc/api/v1/search".toHttpUrl().newBuilder()
             .addQueryParameter("purity", settings.purity.code)
             .addQueryParameter("categories", categories)
-            .addQueryParameter("sorting", "random")
-            .addQueryParameter("seed", seed)
+            .addQueryParameter("sorting", settings.sorting.code)
             .addQueryParameter("page", page.toString())
         atleast?.let { urlBuilder.addQueryParameter("atleast", it) }
         ratios?.let { urlBuilder.addQueryParameter("ratios", it) }
-        if (!keyword.isNullOrBlank()) {
-            urlBuilder.addQueryParameter("q", keyword)
+        settings.wallhavenQuery(keyword)?.let {
+            urlBuilder.addQueryParameter("q", it)
         }
         settings.nextApiKey()?.let {
             urlBuilder.addQueryParameter("apikey", it)
@@ -107,11 +104,12 @@ class WallhavenApi {
         pageCache: PageCacheStore
     ): SearchPageResult {
         val key = PageCacheStore.key(
-            keyword = keyword.orEmpty(),
+            keyword = settings.wallhavenQuery(keyword).orEmpty(),
             category = categoryCode,
             purity = settings.purity.code,
             orientation = settings.orientationFilter.name,
-            resolution = settings.resolutionMode.name + "_${settings.minWidth}x${settings.minHeight}"
+            resolution = settings.resolutionMode.name + "_${settings.minWidth}x${settings.minHeight}" +
+                "_${settings.sorting.code}_${settings.keywordFilters.joinToString(",")}"
         )
         var lastPage = pageCache.getLastPage(key)
         if (lastPage == null || lastPage < 1) {

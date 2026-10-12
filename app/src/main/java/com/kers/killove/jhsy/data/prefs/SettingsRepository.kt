@@ -14,6 +14,7 @@ import com.kers.killove.jhsy.domain.AppSettings
 import com.kers.killove.jhsy.domain.CacheRetention
 import com.kers.killove.jhsy.domain.BgMode
 import com.kers.killove.jhsy.domain.CategoryMode
+import com.kers.killove.jhsy.domain.SearchSorting
 import com.kers.killove.jhsy.domain.Purity
 import com.kers.killove.jhsy.domain.TranslateProvider
 import com.kers.killove.jhsy.domain.WallpaperFitMode
@@ -42,6 +43,7 @@ class SettingsRepository(private val context: Context) {
         val PURITY = stringPreferencesKey("purity")
         val PURITY_FILTER = booleanPreferencesKey("purity_filter_enabled")
         val CATEGORY = stringPreferencesKey("category_mode")
+        val SORTING = stringPreferencesKey("sorting")
         val TARGET = stringPreferencesKey("target")
         val RES_MODE = stringPreferencesKey("res_mode")
         val MIN_W = intPreferencesKey("min_width")
@@ -79,6 +81,7 @@ class SettingsRepository(private val context: Context) {
         val KEYWORDS = stringPreferencesKey("keywords")
         val KEYWORDS_ZH = stringPreferencesKey("keywords_chinese")
         val KEYWORDS_URL = stringPreferencesKey("keywords_remote_url")
+        val KEYWORD_FILTERS = stringPreferencesKey("keyword_filters")
         val USE_KEYWORDS = booleanPreferencesKey("use_keywords")
         val JUMP_MODE = booleanPreferencesKey("jump_mode")
         val JUMP_KEYWORDS = stringPreferencesKey("jump_keywords")
@@ -180,6 +183,7 @@ class SettingsRepository(private val context: Context) {
             cacheRetention = CacheRetention.fromCode(p[Keys.CACHE_RETENTION] ?: "7d"),
             purity = Purity.fromCode(p[Keys.PURITY] ?: "110"),
             purityFilterEnabled = p[Keys.PURITY_FILTER] ?: false,
+            sorting = SearchSorting.fromCode(p[Keys.SORTING] ?: "random"),
             gitSyncEnabled = p[Keys.GIT_SYNC_ENABLED] ?: false,
             gitUserName = p[Keys.GIT_USER] ?: "",
             gitUserEmail = p[Keys.GIT_EMAIL] ?: "",
@@ -244,6 +248,7 @@ class SettingsRepository(private val context: Context) {
             keywords = splitLines(p[Keys.KEYWORDS] ?: ""),
             keywordsChinese = splitLines(p[Keys.KEYWORDS_ZH] ?: ""),
             keywordsRemoteUrl = p[Keys.KEYWORDS_URL] ?: "",
+            keywordFilters = splitLines(p[Keys.KEYWORD_FILTERS] ?: ""),
             useKeywords = p[Keys.USE_KEYWORDS] ?: true,
             jumpModeEnabled = p[Keys.JUMP_MODE] ?: false,
             jumpKeywords = splitLines(p[Keys.JUMP_KEYWORDS] ?: ""),
@@ -364,6 +369,7 @@ class SettingsRepository(private val context: Context) {
             p[Keys.CACHE_RETENTION] = settings.cacheRetention.code
             p[Keys.PURITY] = settings.purity.code
             p[Keys.PURITY_FILTER] = settings.purityFilterEnabled
+            p[Keys.SORTING] = settings.sorting.code
             p[Keys.GIT_SYNC_ENABLED] = settings.gitSyncEnabled
             p[Keys.GIT_USER] = settings.gitUserName
             p[Keys.GIT_EMAIL] = settings.gitUserEmail
@@ -424,6 +430,7 @@ class SettingsRepository(private val context: Context) {
             p[Keys.KEYWORDS] = settings.keywords.joinToString("\n")
             p[Keys.KEYWORDS_ZH] = settings.keywordsChinese.joinToString("\n")
             p[Keys.KEYWORDS_URL] = settings.keywordsRemoteUrl
+            p[Keys.KEYWORD_FILTERS] = settings.keywordFilters.joinToString("\n")
             p[Keys.USE_KEYWORDS] = settings.useKeywords
             p[Keys.JUMP_MODE] = settings.jumpModeEnabled
             p[Keys.JUMP_KEYWORDS] = settings.jumpKeywords.joinToString("\n")

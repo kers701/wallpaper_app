@@ -11,6 +11,7 @@ import com.kers.killove.jhsy.domain.ProxySelectMode
 import com.kers.killove.jhsy.domain.ProxyType
 import com.kers.killove.jhsy.domain.Purity
 import com.kers.killove.jhsy.domain.ResolutionMode
+import com.kers.killove.jhsy.domain.SearchSorting
 import com.kers.killove.jhsy.domain.TranslateProvider
 import com.kers.killove.jhsy.domain.UiTextColor
 import com.kers.killove.jhsy.domain.WallpaperFitMode
@@ -53,6 +54,7 @@ object ConfigBackup {
         o.put("purity", settings.purity.name)
         o.put("purityFilterEnabled", settings.purityFilterEnabled)
         o.put("categoryMode", settings.categoryMode.name)
+        o.put("sorting", settings.sorting.code)
         o.put("target", settings.target.name)
         o.put("resolutionMode", settings.resolutionMode.name)
         o.put("minWidth", settings.minWidth)
@@ -88,6 +90,7 @@ object ConfigBackup {
         o.put("apiKeys", JSONArray(settings.apiKeys))
         o.put("apiKeyIndex", settings.apiKeyIndex)
         o.put("keywords", JSONArray(settings.keywords))
+        o.put("keywordFilters", JSONArray(settings.keywordFilters))
         o.put("keywordsRemoteUrl", settings.keywordsRemoteUrl)
         o.put("useKeywords", settings.useKeywords)
         o.put("jumpModeEnabled", settings.jumpModeEnabled)
@@ -202,6 +205,7 @@ object ConfigBackup {
             }.getOrDefault(base.purity),
             purityFilterEnabled = o.optBoolean("purityFilterEnabled", base.purityFilterEnabled),
             categoryMode = runCatching { CategoryMode.valueOf(o.optString("categoryMode", base.categoryMode.name)) }.getOrDefault(base.categoryMode),
+            sorting = SearchSorting.fromCode(o.optString("sorting", base.sorting.code)),
             target = runCatching { WallpaperTarget.valueOf(o.optString("target", base.target.name)) }.getOrDefault(base.target),
             resolutionMode = runCatching { ResolutionMode.valueOf(o.optString("resolutionMode", base.resolutionMode.name)) }.getOrDefault(base.resolutionMode),
             minWidth = o.optInt("minWidth", base.minWidth).coerceAtLeast(480),
@@ -235,6 +239,7 @@ object ConfigBackup {
             apiKeys = strList("apiKeys")?.ifEmpty { base.apiKeys } ?: base.apiKeys,
             apiKeyIndex = o.optInt("apiKeyIndex", base.apiKeyIndex).coerceAtLeast(0),
             keywords = strList("keywords") ?: base.keywords,
+            keywordFilters = strList("keywordFilters") ?: base.keywordFilters,
             keywordsRemoteUrl = o.optString("keywordsRemoteUrl", base.keywordsRemoteUrl),
             useKeywords = o.optBoolean("useKeywords", base.useKeywords),
             jumpModeEnabled = o.optBoolean("jumpModeEnabled", base.jumpModeEnabled),
@@ -342,7 +347,7 @@ object ConfigBackup {
             copyKeys(
                 listOf(
                     "enabled", "intervalMinutes", "cacheRetention", "purity", "purityFilterEnabled",
-                    "categoryMode", "target", "resolutionMode", "minWidth", "minHeight",
+                    "categoryMode", "sorting", "target", "resolutionMode", "minWidth", "minHeight",
                     "useForegroundService", "skipWhenScreenOff", "orientationFilter",
                     "aspectRatioFilterEnabled", "aspectRatioMin", "aspectRatioMax",
                     "fitMode", "isolateHomeLock", "powerSaveEnabled", "powerSaveBatteryThreshold",
@@ -356,7 +361,7 @@ object ConfigBackup {
             copyKeys(listOf("apiKeys", "apiKeyIndex"))
         }
         if (settings.gitSyncKeywords) {
-            copyKeys(listOf("keywords", "keywordsRemoteUrl", "useKeywords", "keywordIndex"))
+            copyKeys(listOf("keywords", "keywordFilters", "keywordsRemoteUrl", "useKeywords", "keywordIndex"))
         }
         if (settings.gitSyncJump) {
             copyKeys(

@@ -11,6 +11,20 @@ enum class CategoryMode(val code: String, val label: String) {
     }
 }
 
+/** Wallhaven API sorting 参数。 */
+enum class SearchSorting(val code: String, val label: String) {
+    Relevance("relevance", "相关性"),
+    Random("random", "随机"),
+    Views("views", "浏览量"),
+    Favorites("favorites", "收藏数"),
+    Toplist("toplist", "排行榜");
+
+    companion object {
+        fun fromCode(code: String): SearchSorting =
+            entries.find { it.code.equals(code.trim(), ignoreCase = true) } ?: Random
+    }
+}
+
 enum class WallpaperTarget(val label: String) {
     Home("仅桌面"),
     Lock("仅锁屏"),
@@ -329,6 +343,7 @@ data class AppSettings(
     /** 是否启用纯度筛选；关闭则每次更换在全部合法组合中完全随机 */
     val purityFilterEnabled: Boolean = false,
     val categoryMode: CategoryMode = CategoryMode.Rotate,
+    val sorting: SearchSorting = SearchSorting.Random,
     val target: WallpaperTarget = WallpaperTarget.Both,
     val resolutionMode: ResolutionMode = ResolutionMode.Device,
     val minWidth: Int = 1080,
@@ -398,6 +413,8 @@ data class AppSettings(
     /** 中文关键词草稿：同步时经翻译 API 译成英文并追加到 keywords */
     val keywordsChinese: List<String> = emptyList(),
     val keywordsRemoteUrl: String = "",
+    /** Wallhaven 搜索排除词；每行一项，支持带空格的词组。 */
+    val keywordFilters: List<String> = emptyList(),
     val useKeywords: Boolean = true,
 
     val jumpModeEnabled: Boolean = false,
@@ -571,6 +588,23 @@ data class AppSettings(
 
     fun activeKeywordIndex(): Int {
         return if (jumpModeEnabled && jumpKeywords.isNotEmpty()) jumpKeywordIndex else keywordIndex
+    }
+
+    /** 将基础搜索词与 Wallhaven 排除词组合为 q 参数。 */
+    fun wallhavenQuery(keyword: String?): String? {
+        val base = keyword?.trim().orEmpty()
+        val filters = keywordFilters.mapNotNull { raw ->
+            val value = raw.trim().removePrefix("-").trim()
+            if (value.isEmpty()) null
+            else if (value.any(Char::isWhitespace)) {
+                "-\"${value.replace("\"", "\\\"")}\""
+            } else {
+                "-$value"
+            }
+        }
+        return (listOf(base).filter { it.isNotEmpty() } + filters)
+            .joinToString(" ")
+            .ifBlank { null }
     }
 
     val filterLandscape: Boolean get() = orientationFilter == OrientationFilter.NoLandscape

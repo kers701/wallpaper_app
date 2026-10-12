@@ -957,7 +957,7 @@ class WallpaperChanger(
             }.getOrDefault(emptyList())
         }
         // 清洗 →（虚妄）→（湮灭）；虚妄/湮灭无论候选是否为空都执行以写 meta
-        val cleaned = filterJumpTags(tags, usedKeyword)
+        val cleaned = filterJumpTags(settings, tags, usedKeyword)
         var forJump = cleaned
         if (settings.annihilationModeEnabled && settings.illusionModeEnabled) {
             val (kept, illusory) = com.kers.killove.jhsy.util.IllusionStore.filterForJump(
@@ -1071,8 +1071,12 @@ class WallpaperChanger(
         return true
     }
 
-    private fun filterJumpTags(tags: List<String>, usedKeyword: String?): List<String> {
+    private fun filterJumpTags(settings: AppSettings, tags: List<String>, usedKeyword: String?): List<String> {
         val exclude = mutableSetOf<String>()
+        settings.keywordFilters
+            .map { it.trim().lowercase() }
+            .filter { it.isNotEmpty() }
+            .forEach { exclude += it }
         val raw = usedKeyword?.trim().orEmpty()
         if (raw.isNotEmpty()) {
             exclude += raw.lowercase()

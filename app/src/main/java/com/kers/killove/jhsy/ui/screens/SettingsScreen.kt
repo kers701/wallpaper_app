@@ -64,6 +64,7 @@ import androidx.compose.ui.unit.dp
 import com.kers.killove.jhsy.data.prefs.SettingsRepository
 import com.kers.killove.jhsy.domain.BgMode
 import com.kers.killove.jhsy.domain.CategoryMode
+import com.kers.killove.jhsy.domain.SearchSorting
 import com.kers.killove.jhsy.domain.Purity
 import com.kers.killove.jhsy.domain.ResolutionMode
 import com.kers.killove.jhsy.domain.UiTextColor
@@ -146,6 +147,7 @@ fun SettingsScreen(
     var puritySketchy by remember(settings.purity) { mutableStateOf(settings.purity.sketchy) }
     var purityNsfw by remember(settings.purity) { mutableStateOf(settings.purity.nsfw) }
     var category by remember(settings.categoryMode) { mutableStateOf(settings.categoryMode) }
+    var sorting by remember(settings.sorting) { mutableStateOf(settings.sorting) }
     var target by remember(settings.target) { mutableStateOf(settings.target) }
     var resMode by remember(settings.resolutionMode) { mutableStateOf(settings.resolutionMode) }
     var fgs by remember(settings.useForegroundService) { mutableStateOf(settings.useForegroundService) }
@@ -232,6 +234,9 @@ fun SettingsScreen(
     }
     var keywordsText by remember(settings.keywords, keysVisible) {
         mutableStateOf(if (keysVisible) settings.keywords.joinToString("\n") else "")
+    }
+    var keywordFiltersText by remember(settings.keywordFilters, keysVisible) {
+        mutableStateOf(if (keysVisible) settings.keywordFilters.joinToString("\n") else "")
     }
     var keywordsUrl by remember(settings.keywordsRemoteUrl, keysVisible) {
         mutableStateOf(if (keysVisible) settings.keywordsRemoteUrl else "")
@@ -334,6 +339,7 @@ fun SettingsScreen(
                                     val keys = if (keysVisible) SettingsRepository.splitLines(apiKeysText) else settings.apiKeys
                                     val kws = if (keysVisible) SettingsRepository.splitLines(keywordsText) else settings.keywords
                                     val kwsZh = if (keysVisible) SettingsRepository.splitLines(keywordsZhText) else settings.keywordsChinese
+                                    val kwFilters = if (keysVisible) SettingsRepository.splitLines(keywordFiltersText) else settings.keywordFilters
                                     val kwUrl = if (keysVisible) keywordsUrl.trim() else settings.keywordsRemoteUrl
                                     val fbUrl = if (keysVisible) fallbackApi.trim() else settings.fallbackApiUrl
                                     vm.saveSettings(
@@ -347,6 +353,7 @@ fun SettingsScreen(
                                             destinyEnabled = settings.destinyEnabled,
                                             destinyRulesJson = settings.destinyRulesJson,
                                             categoryMode = category,
+                                            sorting = sorting,
                                             target = target,
                                             resolutionMode = resMode,
                                             useForegroundService = fgs,
@@ -389,6 +396,7 @@ fun SettingsScreen(
                                             apiKeys = keys,
                                             keywords = kws,
                                             keywordsChinese = kwsZh,
+                                            keywordFilters = kwFilters,
                                             keywordsRemoteUrl = kwUrl,
                                             useKeywords = useKeywords,
                                             jumpModeEnabled = jumpMode,
@@ -617,6 +625,7 @@ fun SettingsScreen(
             }
         }
         EnumDropdown("类别", CategoryMode.entries, category) { category = it }
+        EnumDropdown("排序方式", SearchSorting.entries, sorting) { sorting = it }
         EnumDropdown("设置目标", WallpaperTarget.entries, target) { target = it }
         EnumDropdown("缓存与记录", CacheRetention.entries, cacheRetention) { cacheRetention = it }
         Text(
@@ -830,6 +839,17 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp),
                 minLines = 4,
                 maxLines = 12
+            )
+            OutlinedTextField(
+                value = keywordFiltersText,
+                onValueChange = { keywordFiltersText = it },
+                label = { Text("关键词过滤列表（每行一个，支持词组）") },
+                supportingText = {
+                    Text("搜索时自动附加 -关键词；提取跃迁标签时也会忽略这些词。例如：watermark 或 red hair")
+                },
+                modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp),
+                minLines = 3,
+                maxLines = 10
             )
             OutlinedTextField(
                 value = keywordsZhText,
@@ -1902,6 +1922,7 @@ private fun <T> EnumDropdown(
         when (it) {
             is Purity -> it.label
             is CategoryMode -> it.label
+            is SearchSorting -> it.label
             is WallpaperTarget -> it.label
             is ResolutionMode -> it.label
             is BgMode -> it.label
