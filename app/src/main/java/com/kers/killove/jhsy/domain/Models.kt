@@ -723,3 +723,7 @@ sealed class ChangeResult {
     data class Success(val item: WallpaperItem, val localPath: String, val detail: String = "") : ChangeResult()
     data class Failure(val message: String) : ChangeResult()
 }
+
+/** AI 模型是否已配置（密钥+模型名）；前世今生/自然法则/智能翻译共用 */
+fun AppSettings.aiModelConfigured(): Boolean =
+    translateAiApiKey.isNotBlank() && translateAiModel.isNotBlank()

@@ -95,7 +95,7 @@ class KeywordTranslator(
      */
     suspend fun translateListToEn(words: List<String>, settings: AppSettings): Map<String, String> {
         if (words.isEmpty()) return emptyMap()
-        if (settings.translateAiMode) {
+        if (settings.translateAiMode && settings.translateAiApiKey.isNotBlank() && settings.translateAiModel.isNotBlank()) {
             return try {
                 translateViaAi(words, settings, toEnglish = true)
             } catch (_: Exception) {
@@ -209,7 +209,10 @@ class KeywordTranslator(
 
     suspend fun translateList(words: List<String>, settings: AppSettings): Map<String, String> {
         if (words.isEmpty()) return emptyMap()
-        if (settings.translateAiMode) {
+        if (settings.translateAiMode &&
+            settings.translateAiApiKey.isNotBlank() &&
+            settings.translateAiModel.isNotBlank()
+        ) {
             return try {
                 translateViaAi(words, settings, toEnglish = false)
             } catch (_: Exception) {

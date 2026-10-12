@@ -69,6 +69,7 @@ import com.kers.killove.jhsy.domain.Purity
 import com.kers.killove.jhsy.domain.ResolutionMode
 import com.kers.killove.jhsy.domain.UiTextColor
 import com.kers.killove.jhsy.domain.TranslateProvider
+import com.kers.killove.jhsy.domain.aiModelConfigured
 import com.kers.killove.jhsy.domain.WallpaperFitMode
 import com.kers.killove.jhsy.domain.CacheRetention
 import com.kers.killove.jhsy.domain.OrientationFilter
@@ -400,7 +401,7 @@ fun SettingsScreen(
                                             keywordsRemoteUrl = kwUrl,
                                             useKeywords = useKeywords,
                                             jumpModeEnabled = jumpMode,
-                                            naturalLawEnabled = naturalLaw && jumpMode && transAiMode &&
+                                            naturalLawEnabled = naturalLaw && jumpMode &&
                                                 (if (keysVisible) transAiKey else settings.translateAiApiKey).trim().isNotBlank() &&
                                                 transAiModel.trim().isNotBlank(),
                                             annihilationModeEnabled = annihilMode && jumpMode,
@@ -768,17 +769,23 @@ fun SettingsScreen(
             "Wallhaven 成功后会用该壁纸标签覆盖跃迁列表；开启且列表非空时优先用跃迁词搜索",
             style = MaterialTheme.typography.bodySmall
         )
-        if (jumpMode && transAiMode &&
-            (if (keysVisible) transAiKey else settings.translateAiApiKey).trim().isNotBlank() &&
-            transAiModel.trim().isNotBlank()
-        ) {
-            RowSwitch("自然法则（AI 推荐词替换一半跃迁词）", naturalLaw) {
-                naturalLaw = it
+        run {
+            val draftAiOk = (if (keysVisible) transAiKey else settings.translateAiApiKey).trim().isNotBlank() &&
+                transAiModel.trim().isNotBlank()
+            if (jumpMode && draftAiOk) {
+                RowSwitch("自然法则（AI 推荐词替换一半跃迁词）", naturalLaw) {
+                    naturalLaw = it
+                }
+                Text(
+                    "提取跃迁标签后交给 AI 推荐约一半关键词，并随机替换原列表中的一半；AI 失败时保留原标签。跟随「AI 模型」配置。",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            } else if (jumpMode) {
+                Text(
+                    "自然法则：请先在「AI 模型」中配置 API Key 与模型名",
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
-            Text(
-                "提取跃迁标签后交给 AI 推荐约一半关键词，并随机替换原列表中的一半；AI 失败时保留原标签",
-                style = MaterialTheme.typography.bodySmall
-            )
         }
         if (jumpMode) {
             RowSwitch("湮灭模式（选中即整词入缓存；全命中则新纪元）", annihilMode) {
@@ -1415,10 +1422,11 @@ fun SettingsScreen(
             onToggle = { toggleSection("pastlife") }
         ) {
             val jumpOk = settings.jumpModeEnabled || jumpMode
-            val aiOk = settings.translateAiMode && settings.translateAiApiKey.isNotBlank()
+            val draftKey = (if (keysVisible) transAiKey else settings.translateAiApiKey).trim()
+            val aiOk = draftKey.isNotBlank() && transAiModel.trim().isNotBlank()
             val canPast = jumpOk && aiOk
             Text(
-                "需开启「跃迁模式」与 AI 模式后可用。换壁纸成功后描述主词与前后词关系。",
+                "需开启「跃迁模式」并配置「AI 模型」后可用。换壁纸成功后描述主词与前后词关系。",
                 style = MaterialTheme.typography.bodySmall
             )
             RowSwitch(
@@ -1466,23 +1474,21 @@ fun SettingsScreen(
             if (!jumpOk) {
                 Text("请先开启跃迁模式", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             } else if (!aiOk) {
-                Text("请配置 AI 模式与 API Key", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                Text("请先在「AI 模型」中配置 API Key 与模型名", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
         }
 
-        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["trans"] = c.positionInParent().y.toInt() }) { }
+        // —— AI 模型（前世今生 / 自然法则 / 智能翻译 共用）——
+        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["ai"] = c.positionInParent().y.toInt() }) { }
         CollapsibleSection(
-            title = "关键词翻译（仅展示/日志）",
-            expanded = openSection == "trans",
-            onToggle = { toggleSection("trans") }
+            title = "AI 模型",
+            expanded = openSection == "ai",
+            onToggle = { toggleSection("ai") }
         ) {
-        RowSwitch("AI 模式（智能模型翻译）", transAiMode) { transAiMode = it }
-        Text(
-            if (transAiMode) "已开启 AI：走智能模型；关闭后使用下方翻译引擎 API"
-            else "已关闭 AI：使用下方翻译引擎 API",
-            style = MaterialTheme.typography.bodySmall
-        )
-        if (transAiMode) {
+            Text(
+                "前世今生、自然法则、智能翻译等 AI 功能共用此处配置（OpenAI 兼容接口）。",
+                style = MaterialTheme.typography.bodySmall
+            )
             if (keysVisible) {
                 OutlinedTextField(
                     value = transAiKey,
@@ -1494,7 +1500,7 @@ fun SettingsScreen(
                 OutlinedTextField(
                     value = transAiBase,
                     onValueChange = { transAiBase = it },
-                    label = { Text("AI Base URL（OpenAI 兼容，如 https://api.openai.com/v1）") },
+                    label = { Text("AI Base URL（如 https://api.openai.com/v1）") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
@@ -1507,10 +1513,8 @@ fun SettingsScreen(
                 )
                 ThemeOutlinedButton(
                     onClick = {
-                        // 先写入当前编辑中的 AI 配置再检测
                         vm.saveSettings(
                             settings.copy(
-                                translateAiMode = true,
                                 translateAiApiKey = transAiKey.trim(),
                                 translateAiBaseUrl = transAiBase.trim().ifBlank { "https://api.openai.com/v1" },
                                 translateAiModel = transAiModel.trim().ifBlank { "gpt-4o-mini" }
@@ -1519,45 +1523,66 @@ fun SettingsScreen(
                         vm.testAiModelAvailability()
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = transAiKey.isNotBlank()
+                    enabled = transAiKey.isNotBlank() && transAiModel.isNotBlank()
                 ) { Text("检查 AI 模型可用性") }
             } else {
                 LockedField("AI API Key / 模型配置", onRequestUnlock = { showPinDialog = true })
             }
-        } else {
-            EnumDropdown("翻译引擎", TranslateProvider.entries, transProv) { transProv = it }
-            if (keysVisible) {
-                OutlinedTextField(
-                    value = transKey,
-                    onValueChange = { transKey = it },
-                    label = { Text("API Key / SecretId") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-                if (transProv == TranslateProvider.Tencent) {
-                    OutlinedTextField(
-                        value = transSecret,
-                        onValueChange = { transSecret = it },
-                        label = { Text("腾讯 SecretKey") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-                }
-                if (transProv == TranslateProvider.Microsoft) {
-                    OutlinedTextField(
-                        value = transRegion,
-                        onValueChange = { transRegion = it },
-                        label = { Text("微软 Region（如 global / eastasia）") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-                }
-            } else {
-                LockedField("翻译 API 密钥", onRequestUnlock = { showPinDialog = true })
-            }
         }
-        Text("翻译结果只显示在首页跃迁列表与状态；中文关键词同步会改写本地关键词", style = MaterialTheme.typography.bodySmall)
 
+        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["trans"] = c.positionInParent().y.toInt() }) { }
+        CollapsibleSection(
+            title = "关键词翻译（仅展示/日志）",
+            expanded = openSection == "trans",
+            onToggle = { toggleSection("trans") }
+        ) {
+            val draftAiOk = (if (keysVisible) transAiKey else settings.translateAiApiKey).trim().isNotBlank() &&
+                transAiModel.trim().isNotBlank()
+            RowSwitch(
+                title = "AI 智能翻译",
+                checked = transAiMode && draftAiOk,
+                enabled = draftAiOk,
+                onChecked = { v -> if (draftAiOk) transAiMode = v }
+            )
+            Text(
+                if (!draftAiOk) "请先在「AI 模型」中配置 API Key 与模型名"
+                else if (transAiMode) "已开启：关键词展示走 AI 模型翻译"
+                else "已关闭：使用下方翻译引擎 API",
+                style = MaterialTheme.typography.bodySmall
+            )
+            if (!transAiMode || !draftAiOk) {
+                EnumDropdown("翻译引擎", TranslateProvider.entries, transProv) { transProv = it }
+                if (keysVisible) {
+                    OutlinedTextField(
+                        value = transKey,
+                        onValueChange = { transKey = it },
+                        label = { Text("API Key / SecretId") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    if (transProv == TranslateProvider.Tencent) {
+                        OutlinedTextField(
+                            value = transSecret,
+                            onValueChange = { transSecret = it },
+                            label = { Text("腾讯 SecretKey") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                    }
+                    if (transProv == TranslateProvider.Microsoft) {
+                        OutlinedTextField(
+                            value = transRegion,
+                            onValueChange = { transRegion = it },
+                            label = { Text("微软 Region（如 global / eastasia）") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                    }
+                } else {
+                    LockedField("翻译 API 密钥", onRequestUnlock = { showPinDialog = true })
+                }
+            }
+            Text("翻译结果只显示在首页跃迁列表与状态；中文关键词同步会改写本地关键词", style = MaterialTheme.typography.bodySmall)
         }
 
 

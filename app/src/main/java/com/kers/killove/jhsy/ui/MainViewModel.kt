@@ -416,14 +416,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val pastOn = final.pastLifeEnabled && final.jumpModeEnabled
             val naturalLawOn = final.naturalLawEnabled &&
                 final.jumpModeEnabled &&
-                final.translateAiMode &&
                 final.translateAiApiKey.isNotBlank() &&
                 final.translateAiModel.isNotBlank()
+            val aiReady = final.translateAiApiKey.isNotBlank() && final.translateAiModel.isNotBlank()
             val gated = final.copy(
                 pastLifeEnabled = pastOn,
                 pastLifeDeepExplore = pastOn && final.pastLifeDeepExplore,
                 pastLifeIsolateSplit = pastOn && final.isolateHomeLock && final.pastLifeIsolateSplit,
-                naturalLawEnabled = naturalLawOn
+                naturalLawEnabled = naturalLawOn,
+                // 智能翻译依赖 AI 模型配置
+                translateAiMode = final.translateAiMode && aiReady
             )
             val normalized = clearGreenIfNoAvoidPoints(gated)
             settingsRepo.save(normalized)

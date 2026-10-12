@@ -1,6 +1,6 @@
-跃迁关键词板块及时刷新（不推送）
+AI 模型从翻译中分离（不推送）
 
-根因：换图在 :svc 进程写 DataStore，主进程 UI 仍用旧内存；前世今生读文件所以先变。
-- setJumpKeywords / 自然法则 / 索引写入 jhsy_jump_keywords.json 桥接文件
-- 主进程每 2s 拉取桥接 + PastLife，liveJumpKeywords 驱动板块
-- 首页/概览优先显示 live 列表
+- 新增设置板块「AI 模型」：Key / Base URL / 模型名 / 可用性检查
+- 前世今生、自然法则、智能翻译共用该配置
+- 「关键词翻译」仅保留「AI 智能翻译」开关；关闭时用传统翻译引擎
+- 未配置 AI 模型时智能翻译开关置灰并强制关闭
