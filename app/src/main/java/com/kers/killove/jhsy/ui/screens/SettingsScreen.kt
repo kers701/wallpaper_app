@@ -101,7 +101,9 @@ fun SettingsScreen(
     onOpenDestiny: () -> Unit = {},
     onOpenCloudSync: () -> Unit = {},
     onOpenAiProviders: () -> Unit = {},
-    onOpenAiModels: () -> Unit = {}
+    onOpenAiModels: () -> Unit = {},
+    onOpenApiKeys: () -> Unit = {},
+    onOpenFallbackUrls: () -> Unit = {}
 ) {
     var cacheConfirm by remember { mutableStateOf<String?>(null) }
     var showPinDialog by remember { mutableStateOf(false) }
@@ -236,12 +238,6 @@ fun SettingsScreen(
     var minW by remember(settings.minWidth) { mutableStateOf(settings.minWidth.toString()) }
     var minH by remember(settings.minHeight) { mutableStateOf(settings.minHeight.toString()) }
 
-    var apiKeyFields by remember(settings.apiKeys, keysVisible) {
-        mutableStateOf(
-            if (!keysVisible) emptyList()
-            else settings.apiKeys.map { it }.ifEmpty { listOf("") }
-        )
-    }
     var keywordsZhText by remember(settings.keywordsChinese, keysVisible) {
         mutableStateOf(if (keysVisible) settings.keywordsChinese.joinToString("\n") else "••••")
     }
@@ -262,12 +258,6 @@ fun SettingsScreen(
 
     var netFb by remember(settings.networkFallbackEnabled) {
         mutableStateOf(settings.networkFallbackEnabled)
-    }
-    var fallbackEntries by remember(settings.fallbackApiUrl, keysVisible) {
-        mutableStateOf(
-            if (!keysVisible) emptyList()
-            else parseFallbackEntries(settings.fallbackApiUrl)
-        )
     }
     var proxyOn by remember(settings.proxyEnabled) { mutableStateOf(settings.proxyEnabled) }
     var accelOn by remember(settings.accelModeEnabled) { mutableStateOf(settings.accelModeEnabled) }
@@ -352,12 +342,12 @@ fun SettingsScreen(
             ) { Text("搜索") }
             ThemeOutlinedButton(
                 onClick = {
-                                    val keys = if (keysVisible) apiKeyFields.map { it.trim() }.filter { it.isNotEmpty() } else settings.apiKeys
+                                    val keys = settings.apiKeys
                                     val kws = if (keysVisible) SettingsRepository.splitLines(keywordsText) else settings.keywords
                                     val kwsZh = if (keysVisible) SettingsRepository.splitLines(keywordsZhText) else settings.keywordsChinese
                                     val kwFilters = if (keysVisible) SettingsRepository.splitLines(keywordFiltersText) else settings.keywordFilters
                                     val kwUrl = if (keysVisible) keywordsUrl.trim() else settings.keywordsRemoteUrl
-                                    val fbUrl = if (keysVisible) composeFallbackApiUrl(fallbackEntries) else settings.fallbackApiUrl
+                                    val fbUrl = settings.fallbackApiUrl
                                     vm.saveSettings(
                                         settings.copy(
                                             intervalMinutes = interval.toInt().coerceIn(5, 180),
@@ -547,8 +537,7 @@ fun SettingsScreen(
             null -> ""
             else -> lockedPurity.label
         }
-        val hasApiKey = settings.apiKeys.any { it.isNotBlank() } ||
-            apiKeyFields.any { it.trim().isNotEmpty() }
+        val hasApiKey = settings.apiKeys.any { it.isNotBlank() }
 
         if (modeLocked && lockedPurity != null) {
             val lp = lockedPurity
@@ -867,41 +856,16 @@ fun SettingsScreen(
             onToggle = { toggleSection("keys") }
         ) {
         Text("—— API 密钥 ——", style = MaterialTheme.typography.titleSmall)
-
         if (keysVisible) {
-            Text("每个输入框一个密钥；下方加号追加。失败时自动轮换。", style = MaterialTheme.typography.bodySmall)
-            apiKeyFields.forEachIndexed { index, keyVal ->
-                Row(
-                    Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    OutlinedTextField(
-                        value = keyVal,
-                        onValueChange = { v ->
-                            apiKeyFields = apiKeyFields.toMutableList().also { it[index] = v }
-                        },
-                        label = { Text("API Key ${index + 1}") },
-                        modifier = Modifier.weight(1f),
-                        singleLine = true
-                    )
-                    if (apiKeyFields.size > 1) {
-                        IconButton(onClick = {
-                            apiKeyFields = apiKeyFields.toMutableList().also { it.removeAt(index) }
-                        }) {
-                            Icon(Icons.Default.Close, contentDescription = "删除", tint = LocalUiTextColor.current)
-                        }
-                    }
-                }
-            }
+            val n = settings.apiKeys.count { it.isNotBlank() }
+            Text(
+                if (n > 0) "已配置 $n 个密钥（失败自动轮换）" else "尚未配置密钥",
+                style = MaterialTheme.typography.bodySmall
+            )
             ThemeOutlinedButton(
-                onClick = { apiKeyFields = apiKeyFields + "" },
+                onClick = onOpenApiKeys,
                 modifier = Modifier.fillMaxWidth()
-            ) { Text("+ 添加密钥") }
-            ThemeOutlinedButton(
-                onClick = { showWallhavenApiSetup = true },
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("自动注册并获取 Wallhaven API Key") }
+            ) { Text("管理 API 密钥…") }
         } else {
             LockedField("Wallhaven API Keys", onRequestUnlock = { showPinDialog = true })
         }
@@ -1097,92 +1061,19 @@ fun SettingsScreen(
         }
         if (netFb) {
         if (keysVisible) {
+            val n = settings.fallbackApiUrls().size
             Text(
-                "每个大框一条兜底 URL；框后小加号可追加参数（如 q=200）。下方加号添加新 URL。失败自动试下一条。",
+                if (n > 0) "已配置 $n 条兜底 URL（失败自动试下一条）" else "尚未配置兜底 URL",
                 style = MaterialTheme.typography.bodySmall
             )
-            fallbackEntries.forEachIndexed { index, entry ->
-                Column(
-                    Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = entry.base,
-                            onValueChange = { v ->
-                                fallbackEntries = fallbackEntries.toMutableList().also {
-                                    it[index] = it[index].copy(base = v)
-                                }
-                            },
-                            label = { Text("兜底 URL ${index + 1}") },
-                            modifier = Modifier.weight(1f),
-                            singleLine = true,
-                            placeholder = { Text("https://… 支持 {width}{height}") }
-                        )
-                        IconButton(onClick = {
-                            fallbackEntries = fallbackEntries.toMutableList().also {
-                                it[index] = it[index].copy(params = it[index].params + "")
-                            }
-                        }) {
-                            Icon(Icons.Default.Add, contentDescription = "添加参数", tint = LocalUiTextColor.current)
-                        }
-                        if (fallbackEntries.size > 1) {
-                            IconButton(onClick = {
-                                fallbackEntries = fallbackEntries.toMutableList().also { it.removeAt(index) }
-                            }) {
-                                Icon(Icons.Default.Close, contentDescription = "删除 URL", tint = LocalUiTextColor.current)
-                            }
-                        }
-                    }
-                    entry.params.forEachIndexed { pIdx, param ->
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(start = 24.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            OutlinedTextField(
-                                value = param,
-                                onValueChange = { v ->
-                                    fallbackEntries = fallbackEntries.toMutableList().also {
-                                        val ps = it[index].params.toMutableList()
-                                        ps[pIdx] = v
-                                        it[index] = it[index].copy(params = ps)
-                                    }
-                                },
-                                label = { Text("参数 ${pIdx + 1}") },
-                                modifier = Modifier.weight(1f),
-                                singleLine = true,
-                                placeholder = { Text("q=200") }
-                            )
-                            IconButton(onClick = {
-                                fallbackEntries = fallbackEntries.toMutableList().also {
-                                    val ps = it[index].params.toMutableList()
-                                    ps.removeAt(pIdx)
-                                    it[index] = it[index].copy(params = ps)
-                                }
-                            }) {
-                                Icon(Icons.Default.Close, contentDescription = "删除参数", tint = LocalUiTextColor.current)
-                            }
-                        }
-                    }
-                }
-            }
             ThemeOutlinedButton(
-                onClick = {
-                    fallbackEntries = fallbackEntries + FallbackUrlEntry(base = "", params = emptyList())
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("+ 添加兜底 URL") }
-            Text(
-                "响应可为直接图片、一行图片 URL、或含 path/url/image 的 JSON",
-                style = MaterialTheme.typography.bodySmall
-            )
+                onClick = onOpenFallbackUrls,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !dumpHijack
+            ) { Text("管理兜底 URL…") }
+            if (dumpHijack) {
+                Text("呆瓜模式下兜底 API 被强制接管", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            }
         } else {
             LockedField("兜底 API URL", onRequestUnlock = { showPinDialog = true })
         }
@@ -2088,41 +1979,6 @@ fun SettingsScreen(
 
 
 
-
-/** 兜底 URL：主地址 + 可选查询参数片段（如 q=200） */
-private data class FallbackUrlEntry(
-    val base: String = "",
-    val params: List<String> = emptyList()
-)
-
-private fun parseFallbackEntries(raw: String): List<FallbackUrlEntry> {
-    val lines = raw.split('\n', ',', ';')
-        .map { it.trim() }
-        .filter { it.isNotEmpty() }
-    if (lines.isEmpty()) return listOf(FallbackUrlEntry())
-    return lines.map { url ->
-        val q = url.indexOf('?')
-        if (q < 0) FallbackUrlEntry(base = url, params = emptyList())
-        else {
-            val base = url.substring(0, q)
-            val params = url.substring(q + 1).split('&').map { it.trim() }.filter { it.isNotEmpty() }
-            FallbackUrlEntry(base = base, params = params)
-        }
-    }
-}
-
-private fun composeFallbackApiUrl(entries: List<FallbackUrlEntry>): String {
-    return entries.mapNotNull { e ->
-        val b = e.base.trim()
-        if (b.isEmpty()) return@mapNotNull null
-        val ps = e.params.map { it.trim() }.filter { it.isNotEmpty() }
-        if (ps.isEmpty()) b
-        else {
-            val joined = ps.joinToString("&")
-            if (b.contains('?')) "$b&$joined" else "$b?$joined"
-        }
-    }.joinToString("\n")
-}
 
 @Composable
 private fun PurityChip(

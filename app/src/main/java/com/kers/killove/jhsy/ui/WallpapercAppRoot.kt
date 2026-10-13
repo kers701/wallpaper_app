@@ -54,6 +54,8 @@ import com.kers.killove.jhsy.ui.screens.SettingsScreen
 import com.kers.killove.jhsy.ui.screens.ProxyNodesScreen
 import com.kers.killove.jhsy.ui.screens.AiProvidersScreen
 import com.kers.killove.jhsy.ui.screens.AiModelGroupScreen
+import com.kers.killove.jhsy.ui.screens.ApiKeysScreen
+import com.kers.killove.jhsy.ui.screens.FallbackUrlsScreen
 
 val LocalUiTextColor = compositionLocalOf { Color.White }
 val LocalUiControlTextColor = compositionLocalOf { Color.White }
@@ -281,7 +283,9 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
                                 onOpenDestiny = { nav.navigate("destiny") },
                                 onOpenCloudSync = { nav.navigate("cloud_sync") },
                                 onOpenAiProviders = { nav.navigate("ai_providers") },
-                                onOpenAiModels = { nav.navigate("ai_models") }
+                                onOpenAiModels = { nav.navigate("ai_models") },
+                                onOpenApiKeys = { nav.navigate("api_keys") },
+                                onOpenFallbackUrls = { nav.navigate("fallback_urls") }
                             )
                         }
                         composable("history") { HistoryScreen(vm) }
@@ -326,6 +330,12 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
                         }
                         composable("ai_models") {
                             AiModelGroupScreen(vm, onBack = { nav.popBackStack() })
+                        }
+                        composable("api_keys") {
+                            ApiKeysScreen(vm, onBack = { nav.popBackStack() })
+                        }
+                        composable("fallback_urls") {
+                            FallbackUrlsScreen(vm, onBack = { nav.popBackStack() })
                         }
                     }
 
