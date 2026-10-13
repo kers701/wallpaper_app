@@ -1466,8 +1466,8 @@ fun SettingsScreen(
         }
 
 
-        // 前世今生：独立板块；需跃迁 + AI
-        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["pastlife"] = c.positionInParent().y.toInt(); sectionOffsets["ai"] = c.positionInParent().y.toInt(); sectionOffsets["trans"] = c.positionInParent().y.toInt() }) { }
+        // 超级智能体：AI 模型 → 前世今生 → 翻译
+        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["ai"] = c.positionInParent().y.toInt(); sectionOffsets["pastlife"] = c.positionInParent().y.toInt(); sectionOffsets["trans"] = c.positionInParent().y.toInt() }) { }
         CollapsibleSection(
             title = "超级智能体",
             expanded = openSection == "pastlife" || openSection == "ai" || openSection == "trans",
@@ -1483,6 +1483,56 @@ fun SettingsScreen(
             )
             val aiOk = aiOn && modelOk
             val canPast = jumpOk && aiOk
+            RowSwitch(
+                title = "启用 AI",
+                checked = aiOn,
+                onChecked = { on ->
+                    aiOn = on
+                    if (!on) {
+                        // 关闭 AI 不影响「智能翻译」开关本身，但前世今生/自然法则不可用
+                    }
+                }
+            )
+            Text(
+                "总开关：前世今生、自然法则等。关键词「AI 智能翻译」在翻译板块单独控制。",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Text(
+                "支持多个提供商配置；拉取后的模型进入「模型组」，可按优先级与生效项目调度，失败自动回退。",
+                style = MaterialTheme.typography.bodySmall
+            )
+            if (keysVisible) {
+                val pCount = try {
+                    org.json.JSONArray(settings.aiProvidersJson.ifBlank { "[]" }).length()
+                } catch (_: Exception) { 0 }
+                val mCount = try {
+                    org.json.JSONArray(settings.aiModelsJson.ifBlank { "[]" }).length()
+                } catch (_: Exception) { 0 }
+                Text(
+                    "提供商 $pCount 条 · 模型组 $mCount 条" +
+                        if (settings.translateAiApiKey.isNotBlank() && pCount == 0) " · 仍兼容旧单配置" else "",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                ThemeOutlinedButton(
+                    onClick = onOpenAiProviders,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("AI 提供商配置…") }
+                ThemeOutlinedButton(
+                    onClick = onOpenAiModels,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("模型组…") }
+                ThemeOutlinedButton(
+                    onClick = {
+                        vm.saveSettings(settings.copy(aiEnabled = aiOn))
+                        vm.testAiModelAvailability()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = aiOn
+                ) { Text("检查 AI 可用性（按优先级）") }
+            } else {
+                LockedField("AI 提供商 / 模型组", onRequestUnlock = { showPinDialog = true })
+            }
+
             Text(
                 "需开启「跃迁模式」并配置「AI 模型」后可用。换壁纸成功后描述主词与前后词关系。",
                 style = MaterialTheme.typography.bodySmall
@@ -1542,55 +1592,6 @@ fun SettingsScreen(
                     color = MaterialTheme.colorScheme.error
                 )
             }
-            RowSwitch(
-                title = "启用 AI",
-                checked = aiOn,
-                onChecked = { on ->
-                    aiOn = on
-                    if (!on) {
-                        // 关闭 AI 不影响「智能翻译」开关本身，但前世今生/自然法则不可用
-                    }
-                }
-            )
-            Text(
-                "总开关：前世今生、自然法则等。关键词「AI 智能翻译」在翻译板块单独控制。",
-                style = MaterialTheme.typography.bodySmall
-            )
-            Text(
-                "支持多个提供商配置；拉取后的模型进入「模型组」，可按优先级与生效项目调度，失败自动回退。",
-                style = MaterialTheme.typography.bodySmall
-            )
-            if (keysVisible) {
-                val pCount = try {
-                    org.json.JSONArray(settings.aiProvidersJson.ifBlank { "[]" }).length()
-                } catch (_: Exception) { 0 }
-                val mCount = try {
-                    org.json.JSONArray(settings.aiModelsJson.ifBlank { "[]" }).length()
-                } catch (_: Exception) { 0 }
-                Text(
-                    "提供商 $pCount 条 · 模型组 $mCount 条" +
-                        if (settings.translateAiApiKey.isNotBlank() && pCount == 0) " · 仍兼容旧单配置" else "",
-                    style = MaterialTheme.typography.bodySmall
-                )
-                ThemeOutlinedButton(
-                    onClick = onOpenAiProviders,
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text("AI 提供商配置…") }
-                ThemeOutlinedButton(
-                    onClick = onOpenAiModels,
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text("模型组…") }
-                ThemeOutlinedButton(
-                    onClick = {
-                        vm.saveSettings(settings.copy(aiEnabled = aiOn))
-                        vm.testAiModelAvailability()
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = aiOn
-                ) { Text("检查 AI 可用性（按优先级）") }
-            } else {
-                LockedField("AI 提供商 / 模型组", onRequestUnlock = { showPinDialog = true })
-            }
             val draftAiOk = com.kers.killove.jhsy.domain.AiRouter.hasAnyConfigured(settings.copy(aiEnabled = true))
             RowSwitch(
                 title = "AI 智能翻译",
@@ -1640,7 +1641,7 @@ fun SettingsScreen(
                 }
             }
             Text("翻译结果只显示在首页跃迁列表与状态；中文关键词同步会改写本地关键词", style = MaterialTheme.typography.bodySmall)
-        
+
         }
 
 
