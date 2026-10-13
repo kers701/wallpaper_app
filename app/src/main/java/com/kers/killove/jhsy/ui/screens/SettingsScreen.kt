@@ -480,12 +480,14 @@ fun SettingsScreen(
         }
 
         // —— 常用：调度与来源 ——
-        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["basic"] = c.positionInParent().y.toInt() }) { }
+        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["basic"] = c.positionInParent().y.toInt(); sectionOffsets["super"] = c.positionInParent().y.toInt() }) { }
         CollapsibleSection(
-            title = "基础",
-            expanded = openSection == "basic",
+            title = "系统核心",
+            expanded = openSection == "basic" || openSection == "super",
             onToggle = { toggleSection("basic") }
         ) {
+        Text("—— 基础设置 ——", style = MaterialTheme.typography.titleSmall)
+
         Text("更换间隔：${interval.toInt()} 分钟" + if (dumpHijack) " · 已被呆瓜模式劫持" else "")
         ThemeSlider(
             value = interval,
@@ -758,14 +760,114 @@ fun SettingsScreen(
             )
         }
 
+        
+        Text("—— 超级服务 ——", style = MaterialTheme.typography.titleSmall)
+
+        val superSt = SuperServiceController.status(context)
+        Text(superSt.message, style = MaterialTheme.typography.bodySmall)
+        Text(
+            "Root: ${if (superSt.hasRoot) "可用" else "无"} · 无障碍: ${if (superSt.hasAccessibility) "已开" else "未开"}",
+            style = MaterialTheme.typography.bodySmall
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            ThemeOutlinedButton(
+                onClick = { SuperServiceController.openAccessibilitySettings(context) },
+                modifier = Modifier.weight(1f)
+            ) { Text("申请无障碍") }
+            ThemeOutlinedButton(
+                onClick = {
+                    if (!superSt.canEnable) {
+                        SuperServiceController.openAccessibilitySettings(context)
+                        return@ThemeOutlinedButton
+                    }
+                    val err = SuperServiceController.enable(context)
+                    if (err == null) {
+                        superSvc = true
+                    }
+                },
+                modifier = Modifier.weight(1f),
+                enabled = true
+            ) { Text(if (superSvc) "已开启" else "开启超级服务") }
+        }
+        if (superSvc) {
+            ThemeOutlinedButton(
+                onClick = {
+                    SuperServiceController.disable(context)
+                    superSvc = false
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("关闭超级服务") }
+        }
+        Text(
+            "说明：更换服务运行在独立进程 :svc；UI 划掉后服务进程仍可继续。无 Root/无障碍时无法开启超级服务。",
+            style = MaterialTheme.typography.bodySmall
+        )
+        EnumDropdown("方向过滤", OrientationFilter.entries, orientFilter) { orientFilter = it }
+        RowSwitch("宽高比过滤（宽÷高）", aspectRatioOn) { aspectRatioOn = it }
+        if (aspectRatioOn) {
+            Text(
+                "写入最低/最高宽高比；任一端留空表示该端不限制。两端都空则保存时自动关闭。例：竖屏约 0.45～0.7，横屏约 1.4～2.0。",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = aspectRatioMinText,
+                    onValueChange = { aspectRatioMinText = it },
+                    label = { Text("最低宽高比") },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    placeholder = { Text("不限制") }
+                )
+                OutlinedTextField(
+                    value = aspectRatioMaxText,
+                    onValueChange = { aspectRatioMaxText = it },
+                    label = { Text("最高宽高比") },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    placeholder = { Text("不限制") }
+                )
+            }
+        }
+        EnumDropdown("壁纸铺满方式", WallpaperFitMode.entries, fitMode) { fitMode = it }
+        Text("填充=等比铺满裁边；适应=完整显示留边；拉伸=强制变形铺满；平铺=按原图大小重复；居中=原图居中；跨区=在整个壁纸画布显示一张连续图片。修改后保存会用当前壁纸重设（不重新下载）", style = MaterialTheme.typography.bodySmall)
+        RowSwitch("桌面锁屏隔离（两次下载，可用不同关键词）", isolate) {
+            isolate = it
+            if (!it) pastLifeSplit = false
+        }
+        RowSwitch("省电模式", powerSave) { powerSave = it }
+        RowSwitch("省流量模式", dataSaver) { dataSaver = it }
+        if (dataSaver) {
+            Text(
+                "当日写入缓存：≥1GB 间隔+5 分钟；≥10GB 再+5；≥20GB 今日停换。手动更换不受限。",
+                style = MaterialTheme.typography.bodySmall,
+                color = textColor.copy(alpha = 0.75f)
+            )
+        }
+        if (powerSave) {
+            Text("电量低于 ${powerTh}% 时休眠，充电忽略，恢复后继续", style = MaterialTheme.typography.bodySmall)
+            ThemeSlider(
+                value = powerTh.toFloat(),
+                onValueChange = { powerTh = it.toInt().coerceIn(5, 50) },
+                valueRange = 5f..50f,
+                steps = 8
+            )
         }
 
-        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["keys"] = c.positionInParent().y.toInt() }) { }
+        
+        }
+
+
+        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["keys"] = c.positionInParent().y.toInt(); sectionOffsets["kw"] = c.positionInParent().y.toInt() }) { }
         CollapsibleSection(
-            title = "API 密钥（可多个）",
-            expanded = openSection == "keys",
+            title = "密钥与索引",
+            expanded = openSection == "keys" || openSection == "kw",
             onToggle = { toggleSection("keys") }
         ) {
+        Text("—— API 密钥 ——", style = MaterialTheme.typography.titleSmall)
+
         if (keysVisible) {
             Text("每个输入框一个密钥；下方加号追加。失败时自动轮换。", style = MaterialTheme.typography.bodySmall)
             apiKeyFields.forEachIndexed { index, keyVal ->
@@ -803,14 +905,9 @@ fun SettingsScreen(
         } else {
             LockedField("Wallhaven API Keys", onRequestUnlock = { showPinDialog = true })
         }
-        }
+        
+        Text("—— 关键词 ——", style = MaterialTheme.typography.titleSmall)
 
-        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["kw"] = c.positionInParent().y.toInt() }) { }
-        CollapsibleSection(
-            title = "关键词",
-            expanded = openSection == "kw",
-            onToggle = { toggleSection("kw") }
-        ) {
         RowSwitch("启用关键词搜索", useKeywords) { useKeywords = it }
         if (useKeywords) {
         RowSwitch(
@@ -977,14 +1074,18 @@ fun SettingsScreen(
         }
         } // end if (useKeywords)
 
+        
         }
 
-        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["fb"] = c.positionInParent().y.toInt() }) { }
+
+        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["fb"] = c.positionInParent().y.toInt(); sectionOffsets["proxy"] = c.positionInParent().y.toInt() }) { }
         CollapsibleSection(
-            title = "兜底策略",
-            expanded = openSection == "fb",
+            title = "代理与回退",
+            expanded = openSection == "fb" || openSection == "proxy",
             onToggle = { toggleSection("fb") }
         ) {
+        Text("—— 兜底策略 ——", style = MaterialTheme.typography.titleSmall)
+
         RowSwitch(
             title = "网络兜底（Wallhaven 失败 → 备用 API）",
             checked = netFb,
@@ -1135,16 +1236,9 @@ fun SettingsScreen(
         }
         }
 
-        }
+        
+        Text("—— 网络代理 ——", style = MaterialTheme.typography.titleSmall)
 
-
-        // —— 网络与保活 ——
-        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["proxy"] = c.positionInParent().y.toInt() }) { }
-        CollapsibleSection(
-            title = "网络代理",
-            expanded = openSection == "proxy",
-            onToggle = { toggleSection("proxy") }
-        ) {
         if (keysVisible) {
             if (accelOn) {
                 Text(
@@ -1378,117 +1472,18 @@ fun SettingsScreen(
         } else {
             LockedField("网络代理（请先解锁 PIN）", onRequestUnlock = { showPinDialog = true })
         }
+        
         }
 
-        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["super"] = c.positionInParent().y.toInt() }) { }
+
+        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["super"] = c.positionInParent().y.toInt(ionInParent().y.toInt(); sectionOffsets["destiny"] = c.positionInParent().y.toInt(); sectionOffsets["loc"] = c.positionInParent().y.toInt() }) { }
         CollapsibleSection(
-            title = "超级服务（独立进程保活）",
-            expanded = openSection == "super",
-            onToggle = { toggleSection("super") }
-        ) {
-        val superSt = SuperServiceController.status(context)
-        Text(superSt.message, style = MaterialTheme.typography.bodySmall)
-        Text(
-            "Root: ${if (superSt.hasRoot) "可用" else "无"} · 无障碍: ${if (superSt.hasAccessibility) "已开" else "未开"}",
-            style = MaterialTheme.typography.bodySmall
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            ThemeOutlinedButton(
-                onClick = { SuperServiceController.openAccessibilitySettings(context) },
-                modifier = Modifier.weight(1f)
-            ) { Text("申请无障碍") }
-            ThemeOutlinedButton(
-                onClick = {
-                    if (!superSt.canEnable) {
-                        SuperServiceController.openAccessibilitySettings(context)
-                        return@ThemeOutlinedButton
-                    }
-                    val err = SuperServiceController.enable(context)
-                    if (err == null) {
-                        superSvc = true
-                    }
-                },
-                modifier = Modifier.weight(1f),
-                enabled = true
-            ) { Text(if (superSvc) "已开启" else "开启超级服务") }
-        }
-        if (superSvc) {
-            ThemeOutlinedButton(
-                onClick = {
-                    SuperServiceController.disable(context)
-                    superSvc = false
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("关闭超级服务") }
-        }
-        Text(
-            "说明：更换服务运行在独立进程 :svc；UI 划掉后服务进程仍可继续。无 Root/无障碍时无法开启超级服务。",
-            style = MaterialTheme.typography.bodySmall
-        )
-        EnumDropdown("方向过滤", OrientationFilter.entries, orientFilter) { orientFilter = it }
-        RowSwitch("宽高比过滤（宽÷高）", aspectRatioOn) { aspectRatioOn = it }
-        if (aspectRatioOn) {
-            Text(
-                "写入最低/最高宽高比；任一端留空表示该端不限制。两端都空则保存时自动关闭。例：竖屏约 0.45～0.7，横屏约 1.4～2.0。",
-                style = MaterialTheme.typography.bodySmall
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedTextField(
-                    value = aspectRatioMinText,
-                    onValueChange = { aspectRatioMinText = it },
-                    label = { Text("最低宽高比") },
-                    modifier = Modifier.weight(1f),
-                    singleLine = true,
-                    placeholder = { Text("不限制") }
-                )
-                OutlinedTextField(
-                    value = aspectRatioMaxText,
-                    onValueChange = { aspectRatioMaxText = it },
-                    label = { Text("最高宽高比") },
-                    modifier = Modifier.weight(1f),
-                    singleLine = true,
-                    placeholder = { Text("不限制") }
-                )
-            }
-        }
-        EnumDropdown("壁纸铺满方式", WallpaperFitMode.entries, fitMode) { fitMode = it }
-        Text("填充=等比铺满裁边；适应=完整显示留边；拉伸=强制变形铺满；平铺=按原图大小重复；居中=原图居中；跨区=在整个壁纸画布显示一张连续图片。修改后保存会用当前壁纸重设（不重新下载）", style = MaterialTheme.typography.bodySmall)
-        RowSwitch("桌面锁屏隔离（两次下载，可用不同关键词）", isolate) {
-            isolate = it
-            if (!it) pastLifeSplit = false
-        }
-        RowSwitch("省电模式", powerSave) { powerSave = it }
-        RowSwitch("省流量模式", dataSaver) { dataSaver = it }
-        if (dataSaver) {
-            Text(
-                "当日写入缓存：≥1GB 间隔+5 分钟；≥10GB 再+5；≥20GB 今日停换。手动更换不受限。",
-                style = MaterialTheme.typography.bodySmall,
-                color = textColor.copy(alpha = 0.75f)
-            )
-        }
-        if (powerSave) {
-            Text("电量低于 ${powerTh}% 时休眠，充电忽略，恢复后继续", style = MaterialTheme.typography.bodySmall)
-            ThemeSlider(
-                value = powerTh.toFloat(),
-                onValueChange = { powerTh = it.toInt().coerceIn(5, 50) },
-                valueRange = 5f..50f,
-                steps = 8
-            )
-        }
-
-        }
-
-
-        // —— 场景限制 ——
-        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["bl"] = c.positionInParent().y.toInt() }) { }
-        CollapsibleSection(
-            title = "应用黑名单",
-            expanded = openSection == "bl",
+            title = "环境异常感知",
+            expanded = openSection == "bl" || openSection == "destiny" || openSection == "loc",
             onToggle = { toggleSection("bl") }
         ) {
+        Text("—— 应用黑名单 ——", style = MaterialTheme.typography.titleSmall)
+
         Text(
             "已选 ${settings.blacklistPackages.size} 个 · 前台休眠不换壁纸",
             style = MaterialTheme.typography.bodySmall
@@ -1497,14 +1492,9 @@ fun SettingsScreen(
             onClick = onOpenBlacklist,
             modifier = Modifier.fillMaxWidth()
         ) { Text("管理黑名单（名单在次级页）…") }
-        }
+        
+        Text("—— 命运先机 ——", style = MaterialTheme.typography.titleSmall)
 
-        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["destiny"] = c.positionInParent().y.toInt() }) { }
-        CollapsibleSection(
-            title = "命运先机",
-            expanded = openSection == "destiny",
-            onToggle = { toggleSection("destiny") }
-        ) {
             Text("按星期与时段自动劫持纯度搜索策略。详见应用内说明。", style = MaterialTheme.typography.bodySmall)
             RowSwitch(title = "启用命运先机", checked = settings.destinyEnabled, enabled = !dumpHijack) { on ->
                 if (dumpHijack) return@RowSwitch
@@ -1520,14 +1510,9 @@ fun SettingsScreen(
                     Text("命运先机配置…")
                 }
             }
-        }
+        
+        Text("—— 定位避让 ——", style = MaterialTheme.typography.titleSmall)
 
-        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["loc"] = c.positionInParent().y.toInt() }) { }
-        CollapsibleSection(
-            title = "定位避让",
-            expanded = openSection == "loc",
-            onToggle = { toggleSection("loc") }
-        ) {
         RowSwitch(
             title = "启用定位避让",
             checked = locAvoid,
@@ -1554,16 +1539,20 @@ fun SettingsScreen(
             }
         }
 
+        
         }
 
 
+
         // —— 外观与展示 ——
-        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["ui"] = c.positionInParent().y.toInt() }) { }
+        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["ui"] = c.positionInParent().y.toInt(); sectionOffsets["bg"] = c.positionInParent().y.toInt() }) { }
         CollapsibleSection(
-            title = "界面外观",
-            expanded = openSection == "ui",
+            title = "系统美化",
+            expanded = openSection == "ui" || openSection == "bg",
             onToggle = { toggleSection("ui") }
         ) {
+        Text("—— 界面外观 ——", style = MaterialTheme.typography.titleSmall)
+
         Text("主题遮罩透明度：${"%.0f".format(scrim * 100)}%", style = MaterialTheme.typography.bodySmall)
         ThemeSlider(value = scrim, onValueChange = { scrim = it }, valueRange = 0.15f..0.85f)
         Text("卡片透明度：${"%.0f".format(cardA * 100)}%（越高越实）", style = MaterialTheme.typography.bodySmall)
@@ -1583,14 +1572,9 @@ fun SettingsScreen(
         EnumDropdown("板块美化（全局）", CardStyle.entries, cardStyleOpt) { cardStyleOpt = it }
         Text("颜色可连续调节，不限于预设；保存后全局生效", style = MaterialTheme.typography.bodySmall)
 
-        }
+        
+        Text("—— 软件背景 ——", style = MaterialTheme.typography.titleSmall)
 
-        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["bg"] = c.positionInParent().y.toInt() }) { }
-        CollapsibleSection(
-            title = "软件背景",
-            expanded = openSection == "bg",
-            onToggle = { toggleSection("bg") }
-        ) {
         Text(
             "自动：本地 → API → 系统壁纸 → 莫奈；API：仅 API；本地：仅本地路径；莫奈：仅渐变取色",
             style = MaterialTheme.typography.bodySmall
@@ -1613,15 +1597,19 @@ fun SettingsScreen(
             singleLine = true
         )
 
+        
         }
 
+
         // 前世今生：独立板块；需跃迁 + AI
-        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["pastlife"] = c.positionInParent().y.toInt() }) { }
+        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["pastlife"] = c.positionInParent().y.toInt(); sectionOffsets["ai"] = c.positionInParent().y.toInt(); sectionOffsets["trans"] = c.positionInParent().y.toInt() }) { }
         CollapsibleSection(
-            title = "前世今生",
-            expanded = openSection == "pastlife",
-            onToggle = { toggleSection("pastlife") }
+            title = "超级智能体",
+            expanded = openSection == "pastlife" || openSection == "ai" || openSection == "trans",
+            onToggle = { toggleSection("ai") }
         ) {
+        Text("—— 前世今生 ——", style = MaterialTheme.typography.titleSmall)
+
             val jumpOk = settings.jumpModeEnabled || jumpMode
             val modelOk = com.kers.killove.jhsy.domain.AiRouter.hasAnyConfigured(
                 settings.copy(
@@ -1691,15 +1679,9 @@ fun SettingsScreen(
                     color = MaterialTheme.colorScheme.error
                 )
             }
-        }
+        
+        Text("—— AI 模型 ——", style = MaterialTheme.typography.titleSmall)
 
-        // —— AI 模型（前世今生 / 自然法则 / 智能翻译 共用）——
-        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["ai"] = c.positionInParent().y.toInt() }) { }
-        CollapsibleSection(
-            title = "AI 模型",
-            expanded = openSection == "ai",
-            onToggle = { toggleSection("ai") }
-        ) {
             RowSwitch(
                 title = "启用 AI",
                 checked = aiOn,
@@ -1749,14 +1731,9 @@ fun SettingsScreen(
             } else {
                 LockedField("AI 提供商 / 模型组", onRequestUnlock = { showPinDialog = true })
             }
-        }
+        
+        Text("—— 关键词翻译 ——", style = MaterialTheme.typography.titleSmall)
 
-        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["trans"] = c.positionInParent().y.toInt() }) { }
-        CollapsibleSection(
-            title = "关键词翻译（仅展示/日志）",
-            expanded = openSection == "trans",
-            onToggle = { toggleSection("trans") }
-        ) {
             val draftAiOk = com.kers.killove.jhsy.domain.AiRouter.hasAnyConfigured(settings.copy(aiEnabled = true))
             RowSwitch(
                 title = "AI 智能翻译",
@@ -1806,13 +1783,15 @@ fun SettingsScreen(
                 }
             }
             Text("翻译结果只显示在首页跃迁列表与状态；中文关键词同步会改写本地关键词", style = MaterialTheme.typography.bodySmall)
+        
         }
+
 
 
         // —— 安全与备份 ——
         Box(Modifier.onGloballyPositioned { c -> sectionOffsets["pin"] = c.positionInParent().y.toInt() }) { }
         CollapsibleSection(
-            title = "PIN 锁定",
+            title = "应用锁",
             expanded = openSection == "pin",
             onToggle = { toggleSection("pin") }
         ) {
@@ -1893,12 +1872,14 @@ fun SettingsScreen(
 
         }
 
-        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["backup"] = c.positionInParent().y.toInt() }) { }
+        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["backup"] = c.positionInParent().y.toInt(); sectionOffsets["cache"] = c.positionInParent().y.toInt() }) { }
         CollapsibleSection(
-            title = "云同步",
-            expanded = openSection == "backup",
+            title = "数据与缓存",
+            expanded = openSection == "backup" || openSection == "cache",
             onToggle = { toggleSection("backup") }
         ) {
+        Text("—— 云同步 ——", style = MaterialTheme.typography.titleSmall)
+
             Text(
                 "通过 GitHub 仓库同步配置（可选同步密钥等敏感项）。不再使用本地文件/剪贴板恢复。",
                 style = MaterialTheme.typography.bodySmall
@@ -1913,22 +1894,17 @@ fun SettingsScreen(
                 onClick = onOpenCloudSync,
                 modifier = Modifier.fillMaxWidth()
             ) { Text("打开云同步配置") }
-        }
+        
+        Text("—— 缓存与日志 ——", style = MaterialTheme.typography.titleSmall)
 
-
-        // —— 维护 ——
-        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["cache"] = c.positionInParent().y.toInt() }) { }
-        CollapsibleSection(
-            title = "缓存与日志",
-            expanded = openSection == "cache",
-            onToggle = { toggleSection("cache") }
-        ) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ThemeOutlinedButton(onClick = { cacheConfirm = "cache" }, modifier = Modifier.weight(1f)) { Text("清空缓存文件") }
             ThemeOutlinedButton(onClick = { cacheConfirm = "logs" }, modifier = Modifier.weight(1f)) { Text("清空更换记录") }
         }
 
+        
         }
+
 
         } // scroll Column
 
@@ -2019,20 +1995,29 @@ fun SettingsScreen(
                     )
                     val q = settingsSearch.trim()
                     val catalog = listOf(
-                        "基础" to "basic",
-                        "API Keys" to "keys",
-                        "关键词 / 跃迁" to "kw",
-                        "兜底 / 网络" to "fb",
-                        "代理" to "proxy",
+                        "系统核心" to "basic",
                         "超级服务" to "super",
+                        "纯度 / 类别" to "basic",
+                        "密钥与索引" to "keys",
+                        "API Keys" to "keys",
+                        "关键词" to "kw",
+                        "代理与回退" to "fb",
+                        "兜底" to "fb",
+                        "网络代理" to "proxy",
+                        "环境异常感知" to "bl",
                         "黑名单" to "bl",
                         "命运先机" to "destiny",
                         "定位避让" to "loc",
-                        "外观美化" to "ui",
+                        "系统美化" to "ui",
+                        "外观" to "ui",
                         "背景" to "bg",
+                        "超级智能体" to "ai",
                         "前世今生" to "pastlife",
-                        "翻译 / AI" to "trans",
+                        "AI 模型" to "ai",
+                        "关键词翻译" to "trans",
+                        "应用锁" to "pin",
                         "PIN" to "pin",
+                        "数据与缓存" to "backup",
                         "云同步" to "backup",
                         "缓存与日志" to "cache"
                     )
