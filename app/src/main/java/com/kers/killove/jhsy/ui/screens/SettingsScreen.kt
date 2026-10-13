@@ -1367,7 +1367,11 @@ fun SettingsScreen(
         }
 
 
-        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["super"] = c.positionInParent().y.toInt(ionInParent().y.toInt(); sectionOffsets["destiny"] = c.positionInParent().y.toInt(); sectionOffsets["loc"] = c.positionInParent().y.toInt() }) { }
+        Box(Modifier.onGloballyPositioned { c ->
+            sectionOffsets["bl"] = c.positionInParent().y.toInt()
+            sectionOffsets["destiny"] = c.positionInParent().y.toInt()
+            sectionOffsets["loc"] = c.positionInParent().y.toInt()
+        }) { }
         CollapsibleSection(
             title = "环境异常感知",
             expanded = openSection == "bl" || openSection == "destiny" || openSection == "loc",

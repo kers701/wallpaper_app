@@ -1,5 +1,4 @@
-密钥与兜底 URL 改为次级页面（不推送）
+修复 SettingsScreen 语法错误（不推送）
 
-- 设置页仅显示数量摘要 +「管理…」入口
-- ApiKeysScreen：多输入框密钥、自动注册、保存
-- FallbackUrlsScreen：主 URL + 参数小框、保存
+环境异常感知 sectionOffsets 行被截断：toInt(ionInParent... 导致 Expecting )
+已改为正确的 bl/destiny/loc 定位偏移写入
