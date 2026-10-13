@@ -1,5 +1,13 @@
 package com.kers.killove.jhsy.ui.screens
 
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import com.kers.killove.jhsy.data.local.NextWallpaperStore
+import com.kers.killove.jhsy.data.local.OverviewCacheStore
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.Lifecycle
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.runtime.DisposableEffect
 import com.kers.killove.jhsy.data.local.WallpaperEntity
 import java.io.File
 import android.graphics.BitmapFactory
@@ -385,9 +393,33 @@ fun HomeScreen(
             delay(10_000)
         }
     }
-    // 进入首页时拉一次时钟文件
+    // 核心页：对齐原概览的刷新节奏（时钟 / 服务状态 / 缓存 / 预览）
+    var coreRefreshTick by remember { mutableIntStateOf(0) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val obs = LifecycleEventObserver { _, e ->
+            if (e == Lifecycle.Event.ON_RESUME) {
+                vm.syncChangeClockFromBridge()
+                vm.refreshServiceStatus()
+                vm.refreshCacheSize()
+                coreRefreshTick++
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(obs)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
+    }
     LaunchedEffect(Unit) {
         vm.syncChangeClockFromBridge()
+        vm.refreshServiceStatus()
+        vm.refreshCacheSize()
+        vm.promoteWeeklyHotKeywords()
+        while (true) {
+            kotlinx.coroutines.delay(5_000)
+            vm.syncChangeClockFromBridge()
+            vm.refreshServiceStatus()
+            vm.refreshCacheSize()
+            coreRefreshTick++
+        }
     }
 
     Column(
@@ -511,10 +543,10 @@ fun HomeScreen(
                     style = MaterialTheme.typography.titleSmall
                 )
                 // 预下载状态：随 lastChangeAt / 定时 tick 刷新
-                val prefetchLabel = remember(settings.lastChangeAt, settings.target, settings.isolateHomeLock, remainMin) {
+                val prefetchLabel = remember(settings.lastChangeAt, settings.target, settings.isolateHomeLock, remainMin, coreRefreshTick, bridgeLast) {
                     vm.prefetchStatusLabel()
                 }
-                val prefetchReady = remember(settings.lastChangeAt, settings.target, settings.isolateHomeLock, remainMin) {
+                val prefetchReady = remember(settings.lastChangeAt, settings.target, settings.isolateHomeLock, remainMin, coreRefreshTick, bridgeLast) {
                     vm.isPrefetchReady()
                 }
                 Text(
@@ -636,6 +668,7 @@ fun HomeScreen(
 
         GlassCard {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                val _weekTick = coreRefreshTick // 触发重组以刷新本周统计
                 val weekMs = 7L * 24 * 60 * 60 * 1000
                 val now = System.currentTimeMillis()
                 val weekList = recent.filter { now - it.setAt <= weekMs }
@@ -667,25 +700,55 @@ fun HomeScreen(
             }
         }
 
-        // —— 概览并入：壁纸预览 ——
+        // —— 壁纸预览：优先预下载槽位 → 概览缓存 → 更换记录 ——
         if (settings.showWallpaperPreview) {
             GlassCard {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("壁纸预览", style = MaterialTheme.typography.titleMedium, color = textColor)
-                    var previewTick by remember { mutableStateOf(0) }
-                    LaunchedEffect(Unit) {
-                        while (true) {
-                            kotlinx.coroutines.delay(2_000)
-                            previewTick++
+                    var homeBmp by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+                    var lockBmp by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+                    LaunchedEffect(
+                        settings.lastChangeAt,
+                        settings.changeCount,
+                        settings.showWallpaperPreview,
+                        settings.target,
+                        settings.isolateHomeLock,
+                        coreRefreshTick,
+                        bridgeLast
+                    ) {
+                        val (hPath, lPath) = withContext(Dispatchers.IO) {
+                            val next = NextWallpaperStore(context)
+                            val nextPaths = if (settings.isolateHomeLock &&
+                                settings.target == com.kers.killove.jhsy.domain.WallpaperTarget.Both
+                            ) {
+                                val home = next.get(com.kers.killove.jhsy.domain.WallpaperTarget.Home)
+                                    ?.takeIf { it.isReady() }?.path
+                                val lock = next.get(com.kers.killove.jhsy.domain.WallpaperTarget.Lock)
+                                    ?.takeIf { it.isReady() }?.path
+                                if (home != null && lock != null) home to lock else null
+                            } else {
+                                next.get(settings.target)?.takeIf { it.isReady() }?.path?.let { it to it }
+                            }
+                            val current = OverviewCacheStore.paths(context)
+                            val fromRecent = corePickHomeLockPaths(recent)
+                            when {
+                                nextPaths != null -> nextPaths
+                                !current.first.isNullOrBlank() || !current.second.isNullOrBlank() -> current
+                                else -> fromRecent
+                            }
                         }
+                        homeBmp = withContext(Dispatchers.IO) { coreDecodeFileScaled(hPath) }
+                        lockBmp = withContext(Dispatchers.IO) { coreDecodeFileScaled(lPath) }
                     }
-                    val paths = remember(recent, previewTick) { corePickHomeLockPaths(recent) }
-                    val homeBmp = remember(paths.first, previewTick) { coreDecodeFileScaled(paths.first) }
-                    val lockBmp = remember(paths.second, previewTick) { coreDecodeFileScaled(paths.second) }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         CorePreviewBox("桌面", homeBmp, Modifier.weight(1f))
                         CorePreviewBox("锁屏", lockBmp, Modifier.weight(1f))
                     }
+                    Text(
+                        "优先显示预下载成功的下一张；未预下载时显示当前缓存",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = textColor.copy(alpha = 0.55f)
+                    )
                 }
             }
         }
