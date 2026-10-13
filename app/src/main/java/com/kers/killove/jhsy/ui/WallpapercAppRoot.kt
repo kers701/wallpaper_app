@@ -131,7 +131,12 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
             onDismissRequest = {
                 if (!updateDownloading) updateDialog = null
             },
-            title = { androidx.compose.material3.Text("发现新版本 ${info.tag}") },
+            title = {
+                androidx.compose.material3.Text(
+                    "发现新版本 ${info.tag}",
+                    color = textColor
+                )
+            },
             text = {
                 androidx.compose.foundation.layout.Column(
                     verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
@@ -139,7 +144,8 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
                     androidx.compose.material3.Text(
                         listOf(info.name, info.versionName, "大小 $sizeMb", info.body.take(280))
                             .filter { it.isNotBlank() }
-                            .joinToString("\n")
+                            .joinToString("\n"),
+                        color = textColor.copy(alpha = 0.92f)
                     )
                     if (updateDownloading) {
                         androidx.compose.material3.LinearProgressIndicator(
@@ -148,10 +154,14 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
                         )
                         androidx.compose.material3.Text(
                             if (updateMsg.isNotBlank()) updateMsg
-                            else "下载中 ${(updateProgress * 100).toInt()}%"
+                            else "下载中 ${(updateProgress * 100).toInt()}%",
+                            color = textColor.copy(alpha = 0.9f)
                         )
                     } else if (updateMsg.isNotBlank()) {
-                        androidx.compose.material3.Text(updateMsg)
+                        androidx.compose.material3.Text(
+                            updateMsg,
+                            color = textColor.copy(alpha = 0.9f)
+                        )
                     }
                 }
             },
@@ -192,7 +202,7 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
                         }
                     },
                     enabled = !updateDownloading
-                ) { androidx.compose.material3.Text(if (updateDownloading) "下载中…" else "下载并安装") }
+                ) { androidx.compose.material3.Text(if (updateDownloading) "下载中…" else "下载并安装", color = textColor) }
             },
             dismissButton = {
                 androidx.compose.foundation.layout.Row(
@@ -203,13 +213,18 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
                             com.kers.killove.jhsy.util.AppUpdateChecker.openReleasePage(appContext, info.htmlUrl)
                         },
                         enabled = !updateDownloading
-                    ) { androidx.compose.material3.Text("浏览器") }
+                    ) { androidx.compose.material3.Text("浏览器", color = textColor) }
                     com.kers.killove.jhsy.ui.screens.ThemeOutlinedButton(
                         onClick = { if (!updateDownloading) updateDialog = null },
                         enabled = !updateDownloading
-                    ) { androidx.compose.material3.Text("稍后") }
+                    ) { androidx.compose.material3.Text("稍后", color = textColor) }
                 }
-            }
+            },
+            containerColor = androidx.compose.ui.graphics.Color.Black.copy(
+                alpha = (0.55f + cardAlpha * 0.35f).coerceIn(0.45f, 0.88f)
+            ),
+            titleContentColor = textColor,
+            textContentColor = textColor
         )
     }
 
@@ -399,7 +414,7 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
                                         selected = route == "settings",
                                         onClick = { nav.navigate("settings") { launchSingleTop = true } },
                                         icon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                                        label = { Text("设置") },
+                                        label = { Text("配置") },
                                         colors = colors
                                     )
                                 }

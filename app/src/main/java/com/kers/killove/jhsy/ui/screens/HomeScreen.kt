@@ -487,16 +487,17 @@ fun HomeScreen(
             }
         }
 
-        ThemeOutlinedButton(
-            onClick = { onOpenDestinyDream?.invoke() },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = onOpenDestinyDream != null
-        ) { Text("造化前尘&浮生一梦") }
+        if (settings.jumpModeEnabled && onOpenDestinyDream != null) {
+            ThemeOutlinedButton(
+                onClick = { onOpenDestinyDream.invoke() },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("造化前尘&浮生一梦") }
+        }
 
 
-        // —— 概览并入：上次/下次、刷新 ——
+
         GlassCard {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 val fmt = remember { java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()) }
                 val effectiveLast = maxOf(settings.lastChangeAt, bridgeLast)
                 val lastStr = if (effectiveLast > 0L) fmt.format(java.util.Date(effectiveLast)) else "尚未更换"
@@ -513,12 +514,7 @@ fun HomeScreen(
                     onClick = { vm.refreshOverview() },
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("刷新时间与状态") }
-            }
-        }
 
-
-        GlassCard {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 RowSwitch(
                     title = "自动更换",
                     checked = settings.enabled,
@@ -641,7 +637,58 @@ fun HomeScreen(
             }
         }
 
-
+        // —— 壁纸预览：优先预下载槽位 → 概览缓存 → 更换记录 ——
+        if (settings.showWallpaperPreview) {
+            GlassCard {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("壁纸预览", style = MaterialTheme.typography.titleMedium, color = textColor)
+                    var homeBmp by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+                    var lockBmp by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+                    LaunchedEffect(
+                        settings.lastChangeAt,
+                        settings.changeCount,
+                        settings.showWallpaperPreview,
+                        settings.target,
+                        settings.isolateHomeLock,
+                        coreRefreshTick,
+                        bridgeLast
+                    ) {
+                        val (hPath, lPath) = withContext(Dispatchers.IO) {
+                            val next = NextWallpaperStore(context)
+                            val nextPaths = if (settings.isolateHomeLock &&
+                                settings.target == com.kers.killove.jhsy.domain.WallpaperTarget.Both
+                            ) {
+                                val home = next.get(com.kers.killove.jhsy.domain.WallpaperTarget.Home)
+                                    ?.takeIf { it.isReady() }?.path
+                                val lock = next.get(com.kers.killove.jhsy.domain.WallpaperTarget.Lock)
+                                    ?.takeIf { it.isReady() }?.path
+                                if (home != null && lock != null) home to lock else null
+                            } else {
+                                next.get(settings.target)?.takeIf { it.isReady() }?.path?.let { it to it }
+                            }
+                            val current = OverviewCacheStore.paths(context)
+                            val fromRecent = corePickHomeLockPaths(recent)
+                            when {
+                                nextPaths != null -> nextPaths
+                                !current.first.isNullOrBlank() || !current.second.isNullOrBlank() -> current
+                                else -> fromRecent
+                            }
+                        }
+                        homeBmp = withContext(Dispatchers.IO) { coreDecodeFileScaled(hPath) }
+                        lockBmp = withContext(Dispatchers.IO) { coreDecodeFileScaled(lPath) }
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        CorePreviewBox("桌面", homeBmp, Modifier.weight(1f))
+                        CorePreviewBox("锁屏", lockBmp, Modifier.weight(1f))
+                    }
+                    Text(
+                        "优先显示预下载成功的下一张；未预下载时显示当前缓存",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = textColor.copy(alpha = 0.55f)
+                    )
+                }
+            }
+        }
 
         GlassCard {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -700,60 +747,6 @@ fun HomeScreen(
             }
         }
 
-        // —— 壁纸预览：优先预下载槽位 → 概览缓存 → 更换记录 ——
-        if (settings.showWallpaperPreview) {
-            GlassCard {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("壁纸预览", style = MaterialTheme.typography.titleMedium, color = textColor)
-                    var homeBmp by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
-                    var lockBmp by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
-                    LaunchedEffect(
-                        settings.lastChangeAt,
-                        settings.changeCount,
-                        settings.showWallpaperPreview,
-                        settings.target,
-                        settings.isolateHomeLock,
-                        coreRefreshTick,
-                        bridgeLast
-                    ) {
-                        val (hPath, lPath) = withContext(Dispatchers.IO) {
-                            val next = NextWallpaperStore(context)
-                            val nextPaths = if (settings.isolateHomeLock &&
-                                settings.target == com.kers.killove.jhsy.domain.WallpaperTarget.Both
-                            ) {
-                                val home = next.get(com.kers.killove.jhsy.domain.WallpaperTarget.Home)
-                                    ?.takeIf { it.isReady() }?.path
-                                val lock = next.get(com.kers.killove.jhsy.domain.WallpaperTarget.Lock)
-                                    ?.takeIf { it.isReady() }?.path
-                                if (home != null && lock != null) home to lock else null
-                            } else {
-                                next.get(settings.target)?.takeIf { it.isReady() }?.path?.let { it to it }
-                            }
-                            val current = OverviewCacheStore.paths(context)
-                            val fromRecent = corePickHomeLockPaths(recent)
-                            when {
-                                nextPaths != null -> nextPaths
-                                !current.first.isNullOrBlank() || !current.second.isNullOrBlank() -> current
-                                else -> fromRecent
-                            }
-                        }
-                        homeBmp = withContext(Dispatchers.IO) { coreDecodeFileScaled(hPath) }
-                        lockBmp = withContext(Dispatchers.IO) { coreDecodeFileScaled(lPath) }
-                    }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        CorePreviewBox("桌面", homeBmp, Modifier.weight(1f))
-                        CorePreviewBox("锁屏", lockBmp, Modifier.weight(1f))
-                    }
-                    Text(
-                        "优先显示预下载成功的下一张；未预下载时显示当前缓存",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = textColor.copy(alpha = 0.55f)
-                    )
-                }
-            }
-        }
-
-        // —— 概览并入：缓存 / 极简 / 呆瓜 ——
         GlassCard {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 val mb = cacheBytes / (1024.0 * 1024.0)
@@ -792,9 +785,6 @@ fun HomeScreen(
                 }
             }
         }
-
-
-
 
         GlassCard {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -844,6 +834,7 @@ fun HomeScreen(
         ) {
             Text(if (busy) "更换中…" else "立即更换一张")
         }
+
 
         if (devMode) {
             var runLogOn by remember { mutableStateOf(RunLog.isLogEnabled(context)) }
