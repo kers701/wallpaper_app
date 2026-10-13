@@ -332,7 +332,8 @@ private fun FogCard(
 fun HomeScreen(
     vm: MainViewModel,
     onOpenHelp: (() -> Unit)? = null,
-    onOpenHistory: (() -> Unit)? = null
+    onOpenHistory: (() -> Unit)? = null,
+    onOpenDestinyDream: (() -> Unit)? = null
 ) {
     var confirmClearRunLog by remember { mutableStateOf(false) }
 
@@ -453,6 +454,36 @@ fun HomeScreen(
                 ) { Text("更换记录") }
             }
         }
+
+        ThemeOutlinedButton(
+            onClick = { onOpenDestinyDream?.invoke() },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = onOpenDestinyDream != null
+        ) { Text("造化前尘&浮生一梦") }
+
+
+        // —— 概览并入：上次/下次、刷新 ——
+        GlassCard {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                val fmt = remember { java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()) }
+                val effectiveLast = maxOf(settings.lastChangeAt, bridgeLast)
+                val lastStr = if (effectiveLast > 0L) fmt.format(java.util.Date(effectiveLast)) else "尚未更换"
+                val intervalMs = settings.intervalMinutes.coerceIn(5, 180) * 60_000L
+                val nextAt = if (effectiveLast > 0L) effectiveLast + intervalMs else 0L
+                val nextStr = when {
+                    !settings.enabled -> "自动更换未开启"
+                    nextAt <= 0L -> "—"
+                    else -> fmt.format(java.util.Date(nextAt))
+                }
+                Text("上次更换：$lastStr", color = textColor)
+                Text("下次更换：$nextStr", color = textColor)
+                ThemeOutlinedButton(
+                    onClick = { vm.refreshOverview() },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("刷新时间与状态") }
+            }
+        }
+
 
         GlassCard {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -579,25 +610,60 @@ fun HomeScreen(
         }
 
 
-        // —— 概览并入：上次/下次、刷新 ——
+
         GlassCard {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                val fmt = remember { java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()) }
-                val effectiveLast = maxOf(settings.lastChangeAt, bridgeLast)
-                val lastStr = if (effectiveLast > 0L) fmt.format(java.util.Date(effectiveLast)) else "尚未更换"
-                val intervalMs = settings.intervalMinutes.coerceIn(5, 180) * 60_000L
-                val nextAt = if (effectiveLast > 0L) effectiveLast + intervalMs else 0L
-                val nextStr = when {
-                    !settings.enabled -> "自动更换未开启"
-                    nextAt <= 0L -> "—"
-                    else -> fmt.format(java.util.Date(nextAt))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Column {
+                        Text("已更换", style = MaterialTheme.typography.labelMedium, color = textColor.copy(alpha = 0.7f))
+                        Text("${settings.changeCount} 次", style = MaterialTheme.typography.titleLarge, color = textColor)
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text("缓存占用", style = MaterialTheme.typography.labelMedium, color = textColor.copy(alpha = 0.7f))
+                        Text(
+                            when {
+                                cacheBytes < 1024 -> "$cacheBytes B"
+                                cacheBytes < 1024 * 1024 -> "%.1f KB".format(cacheBytes / 1024.0)
+                                else -> "%.1f MB".format(cacheBytes / (1024.0 * 1024.0))
+                            },
+                            style = MaterialTheme.typography.titleMedium,
+                            color = textColor
+                        )
+                    }
                 }
-                Text("上次更换：$lastStr", color = textColor)
-                Text("下次更换：$nextStr", color = textColor)
-                ThemeOutlinedButton(
-                    onClick = { vm.refreshOverview() },
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text("刷新时间与状态") }
+            }
+        }
+
+        GlassCard {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                val weekMs = 7L * 24 * 60 * 60 * 1000
+                val now = System.currentTimeMillis()
+                val weekList = recent.filter { now - it.setAt <= weekMs }
+                val purityCount = weekList.groupingBy { it.purity.ifBlank { "?" } }.eachCount()
+                val topKw = weekList.map { it.keyword.trim() }.filter { it.isNotEmpty() }
+                    .groupingBy { it }.eachCount().entries.sortedByDescending { it.value }.take(3)
+                val autoCnt = weekList.count { it.triggerType.equals("auto", true) }
+                val manualCnt = weekList.size - autoCnt
+                Text("本周统计", style = MaterialTheme.typography.titleSmall, color = textColor)
+                Text("更换 ${weekList.size} 次 · 累计 ${settings.changeCount} 次", style = MaterialTheme.typography.bodyMedium, color = textColor)
+                Text("自动 $autoCnt · 手动/其他 $manualCnt", style = MaterialTheme.typography.bodySmall, color = textColor.copy(alpha = 0.75f))
+                if (purityCount.isNotEmpty()) {
+                    Text(
+                        "纯度 " + purityCount.entries.joinToString(" · ") { "${it.key} ${it.value}" },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = textColor.copy(alpha = 0.75f)
+                    )
+                }
+                if (topKw.isNotEmpty()) {
+                    Text(
+                        "热词 " + topKw.joinToString(" · ") { "${it.key}×${it.value}" },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = textColor.copy(alpha = 0.75f)
+                    )
+                }
+                if (weekList.isEmpty()) {
+                    Text("近 7 日暂无更换记录", style = MaterialTheme.typography.bodySmall, color = textColor.copy(alpha = 0.55f))
+                }
             }
         }
 
@@ -664,159 +730,6 @@ fun HomeScreen(
             }
         }
 
-        GlassCard {
-            Column(
-                Modifier
-                    .padding(16.dp)
-                    .fillMaxWidth()
-                    .clickable { jumpExpanded = !jumpExpanded },
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    if (settings.naturalLawEnabled) "跃迁关键词•自然法则" else "跃迁关键词",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = textColor
-                )
-                Text(
-                    when {
-                        !settings.jumpModeEnabled -> "跃迁模式：关闭"
-                        jumpList.isEmpty() -> "跃迁模式：开启 · 列表为空"
-                        else -> (if (settings.naturalLawEnabled) {
-                            val retained = natRet.ifEmpty {
-                                if (natRec.isEmpty()) jumpList else emptyList()
-                            }
-                            "跃迁模式：开启 · 跃迁 ${retained.size} 个 · 自然 ${natRec.size} 个"
-                        } else "跃迁模式：开启 · 共 ${jumpList.size} 个") +
-                            if (jumpExpanded) " · 点击收起" else " · 点击展开"
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = textColor.copy(alpha = 0.85f)
-                )
-                if (jumpList.isNotEmpty()) {
-                    val list = jumpList
-                    val idx = jumpIdx
-                    val isolate = settings.isolateHomeLock && settings.target == com.kers.killove.jhsy.domain.WallpaperTarget.Both
-                    val pastLifeState by vm.pastLifeState.collectAsState()
-                    JumpKeywordsTimeline(
-                        list = list,
-                        index = idx,
-                        isolate = isolate,
-                        zhMap = jumpZh,
-                        textColor = textColor,
-                        pastLife = pastLifeState
-                    )
-                    if (jumpExpanded) {
-                        if (settings.naturalLawEnabled) {
-                            val retained = natRet.ifEmpty {
-                                if (natRec.isEmpty()) list else emptyList()
-                            }
-                            val recommended = natRec
-                            fun shown(words: List<String>) = words.joinToString("、") { w ->
-                                val zh = jumpZh[w]
-                                if (zh.isNullOrBlank()) w else "$w($zh)"
-                            }
-                            Text("跃迁：${shown(retained)}", color = textColor)
-                            Text("自然：${shown(recommended)}", color = textColor)
-                        } else {
-                            val shown = list.joinToString("、") { w ->
-                                val zh = jumpZh[w]
-                                if (zh.isNullOrBlank()) w else "$w($zh)"
-                            }
-                            Text(shown, color = textColor)
-                        }
-                    }
-                }
-            }
-        }
-
-        if (settings.jumpModeEnabled && settings.annihilationModeEnabled) {
-            var anniExpanded by remember { mutableStateOf(false) }
-            val anniList = remember(settings.annihilationEpoch, settings.lastChangeAt) {
-                com.kers.killove.jhsy.util.AnnihilationStore.lastRoundBlocked(context)
-            }
-            val anniAscended = remember(settings.annihilationEpoch, settings.lastChangeAt) {
-                com.kers.killove.jhsy.util.AnnihilationStore.lastRoundAllAscended(context)
-            }
-            val anniHasRound = remember(settings.annihilationEpoch, settings.lastChangeAt) {
-                com.kers.killove.jhsy.util.AnnihilationStore.hasLastRound(context)
-            }
-            GlassCard {
-                Column(
-                    Modifier
-                        .padding(16.dp)
-                        .fillMaxWidth()
-                        .clickable(enabled = anniList.isNotEmpty()) { anniExpanded = !anniExpanded },
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text("湮灭关键词", style = MaterialTheme.typography.titleMedium, color = textColor)
-                    Text(
-                        when {
-                            !anniHasRound -> "正在湮灭 · 第 ${settings.annihilationEpoch} 纪元 · 尚无本轮记录"
-                            anniAscended || anniList.isEmpty() ->
-                                "正在湮灭 · 第 ${settings.annihilationEpoch} 纪元 · 本次湮灭全员飞升"
-                            else -> "正在湮灭 · 第 ${settings.annihilationEpoch} 纪元 · 本轮湮灭 ${anniList.size} 个" +
-                                if (anniExpanded) " · 点击收起" else " · 点击展开"
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = textColor.copy(alpha = 0.85f)
-                    )
-                    if (anniList.isNotEmpty() && anniExpanded) {
-                        val shown = anniList.joinToString("、") { w ->
-                            val zh = anniZh[w] ?: jumpZh[w]
-                            if (zh.isNullOrBlank()) w else "$w($zh)"
-                        }
-                        Text(shown, color = textColor)
-                    }
-                }
-            }
-        }
-
-        if (settings.jumpModeEnabled && settings.annihilationModeEnabled && settings.illusionModeEnabled) {
-            var illuExpanded by remember { mutableStateOf(false) }
-            val illuList = remember(settings.lastChangeAt, settings.illusionModeEnabled) {
-                com.kers.killove.jhsy.util.IllusionStore.lastRoundIllusory(context)
-            }
-            val illuHas = remember(settings.lastChangeAt, settings.illusionModeEnabled) {
-                com.kers.killove.jhsy.util.IllusionStore.hasLastRound(context)
-            }
-            val illuNone = remember(settings.lastChangeAt, settings.illusionModeEnabled) {
-                com.kers.killove.jhsy.util.IllusionStore.lastRoundNone(context)
-            }
-            GlassCard {
-                Column(
-                    Modifier
-                        .padding(16.dp)
-                        .fillMaxWidth()
-                        .clickable(enabled = illuHas && !illuNone && illuList.isNotEmpty()) { illuExpanded = !illuExpanded },
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text("虚妄关键词", style = MaterialTheme.typography.titleMedium, color = textColor)
-                    Text(
-                        when {
-                            !illuHas -> "虚妄模式：开启 · 尚无本轮记录"
-                            illuNone || illuList.isEmpty() -> "虚妄模式：开启 · 全员升华"
-                            else -> "虚妄模式：开启 · 本轮虚妄 ${illuList.size} 个" +
-                                if (illuExpanded) " · 点击收起" else " · 点击展开"
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = textColor.copy(alpha = 0.85f)
-                    )
-                    if (illuHas && !illuNone && illuList.isNotEmpty() && illuExpanded) {
-                        val shown = illuList.joinToString("、") { w ->
-                            val zh = illuZh[w] ?: jumpZh[w]
-                            if (zh.isNullOrBlank()) w else "$w（$zh）"
-                        }
-                        Text(shown, color = textColor)
-                    }
-                    Text(
-                        "身前虚妄，身后亦是虚妄",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = textColor.copy(alpha = 0.65f)
-                    )
-                }
-            }
-        }
-        PastLifeSection(vm)
 
 
 

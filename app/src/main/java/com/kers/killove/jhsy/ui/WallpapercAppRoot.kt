@@ -45,6 +45,7 @@ import com.kers.killove.jhsy.ui.screens.HelpGuideScreen
 import com.kers.killove.jhsy.ui.screens.CloudSyncScreen
 import com.kers.killove.jhsy.ui.screens.DestinyScheduleScreen
 import com.kers.killove.jhsy.ui.screens.HomeScreen
+import com.kers.killove.jhsy.ui.screens.DestinyDreamScreen
 import com.kers.killove.jhsy.ui.screens.LocationAvoidListScreen
 import com.kers.killove.jhsy.ui.screens.LocationAvoidScreen
 import com.kers.killove.jhsy.ui.screens.BlacklistSelectedScreen
@@ -276,7 +277,8 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
                             HomeScreen(
                                 vm,
                                 onOpenHelp = { nav.navigate("help") },
-                                onOpenHistory = { nav.navigate("history") }
+                                onOpenHistory = { nav.navigate("history") },
+                                onOpenDestinyDream = { nav.navigate("destiny_dream") }
                             )
                         }
                         // 兼容旧路由 → 同一核心页
@@ -284,14 +286,16 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
                             HomeScreen(
                                 vm,
                                 onOpenHelp = { nav.navigate("help") },
-                                onOpenHistory = { nav.navigate("history") }
+                                onOpenHistory = { nav.navigate("history") },
+                                onOpenDestinyDream = { nav.navigate("destiny_dream") }
                             )
                         }
                         composable("home") {
                             HomeScreen(
                                 vm,
                                 onOpenHelp = { nav.navigate("help") },
-                                onOpenHistory = { nav.navigate("history") }
+                                onOpenHistory = { nav.navigate("history") },
+                                onOpenDestinyDream = { nav.navigate("destiny_dream") }
                             )
                         }
                         composable("settings") {
@@ -309,6 +313,9 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
                             )
                         }
                         composable("history") { HistoryScreen(vm, onBack = { nav.popBackStack() }) }
+                        composable("destiny_dream") {
+                            DestinyDreamScreen(vm, onBack = { nav.popBackStack() })
+                        }
                         composable("blacklist") {
                             BlacklistScreen(
                                 vm,
