@@ -1,5 +1,12 @@
 package com.kers.killove.jhsy.ui.screens
 
+import com.kers.killove.jhsy.data.local.WallpaperEntity
+import java.io.File
+import android.graphics.BitmapFactory
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import android.os.Build
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -322,10 +329,17 @@ private fun FogCard(
 }
 
 @Composable
-fun HomeScreen(vm: MainViewModel, onOpenHelp: (() -> Unit)? = null) {
+fun HomeScreen(
+    vm: MainViewModel,
+    onOpenHelp: (() -> Unit)? = null,
+    onOpenHistory: (() -> Unit)? = null
+) {
     var confirmClearRunLog by remember { mutableStateOf(false) }
 
     val settings by vm.settings.collectAsState()
+    val serviceState by vm.serviceStatus.collectAsState()
+    val cacheBytes by vm.cacheBytes.collectAsState()
+    val recent by vm.recent.collectAsState()
     val status by vm.status.collectAsState()
     val busy by vm.busy.collectAsState()
     val downloadProgress by vm.downloadProgress.collectAsState()
@@ -382,14 +396,23 @@ fun HomeScreen(vm: MainViewModel, onOpenHelp: (() -> Unit)? = null) {
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        val statusColor = when (serviceState) {
+            MainViewModel.ServiceStatus.Running -> Color(0xFF4CAF50)
+            MainViewModel.ServiceStatus.Stopped -> Color(0xFFF44336)
+            MainViewModel.ServiceStatus.Abnormal -> Color(0xFFFFC107)
+        }
+        val statusLabel = when (serviceState) {
+            MainViewModel.ServiceStatus.Running -> "运行中"
+            MainViewModel.ServiceStatus.Stopped -> "已关闭"
+            MainViewModel.ServiceStatus.Abnormal -> "异常"
+        }
         Row(
             Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    "MiroFlweat",
+                    "MiroFlweat · 核心",
                     style = MaterialTheme.typography.headlineMedium,
                     color = textColor,
                     modifier = Modifier.clickable {
@@ -409,10 +432,25 @@ fun HomeScreen(vm: MainViewModel, onOpenHelp: (() -> Unit)? = null) {
                     color = textColor.copy(alpha = 0.8f)
                 )
             }
+            Box(Modifier.size(10.dp).clip(CircleShape).background(statusColor))
+            Spacer(Modifier.size(6.dp))
+            Text(statusLabel, color = statusColor, style = MaterialTheme.typography.bodyMedium)
+        }
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             if (onOpenHelp != null) {
-                ThemeOutlinedButton(onClick = onOpenHelp) {
-                    Text("使用说明")
-                }
+                ThemeOutlinedButton(
+                    onClick = onOpenHelp,
+                    modifier = Modifier.weight(1f)
+                ) { Text("使用说明") }
+            }
+            if (onOpenHistory != null) {
+                ThemeOutlinedButton(
+                    onClick = onOpenHistory,
+                    modifier = Modifier.weight(1f)
+                ) { Text("更换记录") }
             }
         }
 
@@ -536,6 +574,92 @@ fun HomeScreen(vm: MainViewModel, onOpenHelp: (() -> Unit)? = null) {
                 Text("铺满：${settings.fitMode.label}" + if (settings.isolateHomeLock) " · 桌面锁屏隔离" else "", color = textColor, style = MaterialTheme.typography.bodySmall)
                 if (settings.powerSaveEnabled) {
                     Text("省电：低于 ${settings.powerSaveBatteryThreshold}% 休眠（充电忽略）", color = textColor, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+
+
+        // —— 概览并入：上次/下次、刷新 ——
+        GlassCard {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                val fmt = remember { java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()) }
+                val effectiveLast = maxOf(settings.lastChangeAt, bridgeLast)
+                val lastStr = if (effectiveLast > 0L) fmt.format(java.util.Date(effectiveLast)) else "尚未更换"
+                val intervalMs = settings.intervalMinutes.coerceIn(5, 180) * 60_000L
+                val nextAt = if (effectiveLast > 0L) effectiveLast + intervalMs else 0L
+                val nextStr = when {
+                    !settings.enabled -> "自动更换未开启"
+                    nextAt <= 0L -> "—"
+                    else -> fmt.format(java.util.Date(nextAt))
+                }
+                Text("上次更换：$lastStr", color = textColor)
+                Text("下次更换：$nextStr", color = textColor)
+                ThemeOutlinedButton(
+                    onClick = { vm.refreshOverview() },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("刷新时间与状态") }
+            }
+        }
+
+        // —— 概览并入：壁纸预览 ——
+        if (settings.showWallpaperPreview) {
+            GlassCard {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("壁纸预览", style = MaterialTheme.typography.titleMedium, color = textColor)
+                    var previewTick by remember { mutableStateOf(0) }
+                    LaunchedEffect(Unit) {
+                        while (true) {
+                            kotlinx.coroutines.delay(2_000)
+                            previewTick++
+                        }
+                    }
+                    val paths = remember(recent, previewTick) { corePickHomeLockPaths(recent) }
+                    val homeBmp = remember(paths.first, previewTick) { coreDecodeFileScaled(paths.first) }
+                    val lockBmp = remember(paths.second, previewTick) { coreDecodeFileScaled(paths.second) }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        CorePreviewBox("桌面", homeBmp, Modifier.weight(1f))
+                        CorePreviewBox("锁屏", lockBmp, Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+
+        // —— 概览并入：缓存 / 极简 / 呆瓜 ——
+        GlassCard {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                val mb = cacheBytes / (1024.0 * 1024.0)
+                Text("缓存占用：${"%.1f".format(mb)} MB", color = textColor)
+                RowSwitch(
+                    title = "极简模式",
+                    checked = settings.overviewMinimalMode,
+                    onChecked = { on -> vm.setOverviewMinimal(on) }
+                )
+                Text(
+                    if (settings.overviewMinimalMode) "开启后隐藏底部导航，仅保留核心页"
+                    else "关闭 · 显示底部导航",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = textColor.copy(alpha = 0.65f)
+                )
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("呆瓜模式", style = MaterialTheme.typography.titleSmall, color = textColor)
+                        Text(
+                            if (settings.brainDumpMode)
+                                "已开启 · 间隔/排序/缓存/跃迁链/兜底/命运等已接管，关闭后还原"
+                            else
+                                "关闭 · 开启后临时接管多项设置，关闭可还原原配置",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = textColor.copy(alpha = 0.65f)
+                        )
+                    }
+                    ThemeSwitch(
+                        checked = settings.brainDumpMode,
+                        onCheckedChange = { vm.setBrainDumpMode(it) }
+                    )
                 }
             }
         }
@@ -1079,4 +1203,58 @@ fun CollapsibleSection(
 
 
 
+}
+
+
+private fun corePickHomeLockPaths(recent: List<WallpaperEntity>): Pair<String?, String?> {
+    fun match(e: WallpaperEntity, keys: List<String>): Boolean {
+        val p = e.path.lowercase()
+        val id = e.id.lowercase()
+        return keys.any { p.contains(it) || id.endsWith(it.trim('_')) || id.contains(it) }
+    }
+    val home = recent.firstOrNull { match(it, listOf("_home", "_Home", "/home", "home.jpg")) }
+        ?: recent.firstOrNull { match(it, listOf("_both", "both")) }
+        ?: recent.firstOrNull()
+    val lock = recent.firstOrNull { match(it, listOf("_lock", "_Lock", "lock.jpg")) }
+        ?: recent.firstOrNull { match(it, listOf("_both", "both")) }
+        ?: recent.drop(1).firstOrNull()
+        ?: home
+    return home?.path to lock?.path
+}
+
+@Composable
+private fun CorePreviewBox(title: String, bmp: androidx.compose.ui.graphics.ImageBitmap?, modifier: Modifier) {
+    val textColor = LocalUiTextColor.current
+    Column(modifier) {
+        Text(title, style = MaterialTheme.typography.labelSmall, color = textColor.copy(alpha = 0.7f))
+        Spacer(Modifier.height(4.dp))
+        Box(
+            Modifier.fillMaxWidth().aspectRatio(9f / 16f).clip(RoundedCornerShape(12.dp))
+                .background(Color.DarkGray.copy(alpha = 0.5f)),
+            contentAlignment = Alignment.Center
+        ) {
+            if (bmp != null) {
+                Image(bitmap = bmp, contentDescription = title, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            } else {
+                Text("无缓存", color = textColor.copy(alpha = 0.5f), style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+private fun coreDecodeFileScaled(path: String?): androidx.compose.ui.graphics.ImageBitmap? {
+    if (path.isNullOrBlank()) return null
+    return try {
+        val f = File(path)
+        if (!f.exists() || f.length() < 32) return null
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(path, bounds)
+        var sample = 1
+        val maxSide = maxOf(bounds.outWidth, bounds.outHeight).coerceAtLeast(1)
+        while (maxSide / sample > 1280) sample *= 2
+        val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+        BitmapFactory.decodeFile(path, opts)?.asImageBitmap()
+    } catch (_: Exception) {
+        null
+    }
 }

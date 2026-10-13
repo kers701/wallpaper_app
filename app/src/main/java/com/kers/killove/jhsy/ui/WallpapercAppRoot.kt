@@ -71,7 +71,7 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
     }
     val nav = rememberNavController()
     val backStack by nav.currentBackStackEntryAsState()
-    val route = backStack?.destination?.route ?: "overview"
+    val route = backStack?.destination?.route ?: "core"
     val settings by vm.settings.collectAsState()
     val textColor = runCatching {
         if (settings.uiTextColorHex.isNotBlank()) {
@@ -266,14 +266,34 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
                 Box(Modifier.fillMaxSize()) {
                     NavHost(
                         navController = nav,
-                        startDestination = "overview",
+                        startDestination = "core",
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(padding)
-                            .padding(bottom = if (minimal) 0.dp else 88.dp)
+                            .padding(bottom = if (minimal || route !in listOf("core", "home", "overview", "settings")) 0.dp else 88.dp)
                     ) {
-                        composable("overview") { OverviewScreen(vm) }
-                        composable("home") { HomeScreen(vm, onOpenHelp = { nav.navigate("help") }) }
+                        composable("core") {
+                            HomeScreen(
+                                vm,
+                                onOpenHelp = { nav.navigate("help") },
+                                onOpenHistory = { nav.navigate("history") }
+                            )
+                        }
+                        // 兼容旧路由 → 同一核心页
+                        composable("overview") {
+                            HomeScreen(
+                                vm,
+                                onOpenHelp = { nav.navigate("help") },
+                                onOpenHistory = { nav.navigate("history") }
+                            )
+                        }
+                        composable("home") {
+                            HomeScreen(
+                                vm,
+                                onOpenHelp = { nav.navigate("help") },
+                                onOpenHistory = { nav.navigate("history") }
+                            )
+                        }
                         composable("settings") {
                             SettingsScreen(
                                 vm,
@@ -288,7 +308,7 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
                                 onOpenFallbackUrls = { nav.navigate("fallback_urls") }
                             )
                         }
-                        composable("history") { HistoryScreen(vm) }
+                        composable("history") { HistoryScreen(vm, onBack = { nav.popBackStack() }) }
                         composable("blacklist") {
                             BlacklistScreen(
                                 vm,
@@ -340,7 +360,7 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
                     }
 
                     // 悬浮底栏：GlassCard 追随主题美化
-                    if (!minimal) {
+                    if (!minimal && route in listOf("core", "home", "overview", "settings")) {
                         Box(
                             Modifier
                                 .align(Alignment.BottomCenter)
@@ -362,17 +382,10 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
                                         indicatorColor = textColor.copy(alpha = 0.18f)
                                     )
                                     NavigationBarItem(
-                                        selected = route == "overview",
-                                        onClick = { nav.navigate("overview") { launchSingleTop = true } },
-                                        icon = { Icon(Icons.Default.Dashboard, contentDescription = null) },
-                                        label = { Text("概览") },
-                                        colors = colors
-                                    )
-                                    NavigationBarItem(
-                                        selected = route == "home",
-                                        onClick = { nav.navigate("home") { launchSingleTop = true } },
+                                        selected = route == "core" || route == "home" || route == "overview",
+                                        onClick = { nav.navigate("core") { launchSingleTop = true } },
                                         icon = { Icon(Icons.Default.Home, contentDescription = null) },
-                                        label = { Text("首页") },
+                                        label = { Text("核心") },
                                         colors = colors
                                     )
                                     NavigationBarItem(
@@ -380,13 +393,6 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
                                         onClick = { nav.navigate("settings") { launchSingleTop = true } },
                                         icon = { Icon(Icons.Default.Settings, contentDescription = null) },
                                         label = { Text("设置") },
-                                        colors = colors
-                                    )
-                                    NavigationBarItem(
-                                        selected = route == "history",
-                                        onClick = { nav.navigate("history") { launchSingleTop = true } },
-                                        icon = { Icon(Icons.Default.List, contentDescription = null) },
-                                        label = { Text("记录") },
                                         colors = colors
                                     )
                                 }

@@ -45,7 +45,7 @@ import java.util.Date
 import java.util.Locale
 
 @Composable
-fun HistoryScreen(vm: MainViewModel) {
+fun HistoryScreen(vm: MainViewModel, onBack: (() -> Unit)? = null) {
     var confirmAction by remember { mutableStateOf<String?>(null) }
 
     val recent by vm.recent.collectAsState()
@@ -64,7 +64,16 @@ fun HistoryScreen(vm: MainViewModel) {
             .fillMaxSize()
             .padding(16.dp)
     ) {
-        Text("最近记录", style = MaterialTheme.typography.headlineSmall, color = textColor)
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("最近记录", style = MaterialTheme.typography.headlineSmall, color = textColor)
+            if (onBack != null) {
+                TextButton(onClick = onBack) { Text("返回", color = textColor) }
+            }
+        }
         val exportLauncher = rememberLauncherForActivityResult(
             ActivityResultContracts.CreateDocument("text/csv")
         ) { uri ->
