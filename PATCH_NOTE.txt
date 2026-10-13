@@ -1,4 +1,5 @@
-修复 SettingsScreen 语法错误（不推送）
+取消设置页「—— 副标题 ——」装饰（不推送）
 
-环境异常感知 sectionOffsets 行被截断：toInt(ionInParent... 导致 Expecting )
-已改为正确的 bl/destiny/loc 定位偏移写入
+移除密钥与索引、代理与回退等合并板块内的
+「—— API 密钥 ——」「—— 关键词 ——」等 titleSmall 副标题
+板块仅保留 CollapsibleSection 主标题

@@ -476,8 +476,6 @@ fun SettingsScreen(
             expanded = openSection == "basic" || openSection == "super",
             onToggle = { toggleSection("basic") }
         ) {
-        Text("—— 基础设置 ——", style = MaterialTheme.typography.titleSmall)
-
         Text("更换间隔：${interval.toInt()} 分钟" + if (dumpHijack) " · 已被呆瓜模式劫持" else "")
         ThemeSlider(
             value = interval,
@@ -748,10 +746,6 @@ fun SettingsScreen(
                 singleLine = true
             )
         }
-
-        
-        Text("—— 超级服务 ——", style = MaterialTheme.typography.titleSmall)
-
         val superSt = SuperServiceController.status(context)
         Text(superSt.message, style = MaterialTheme.typography.bodySmall)
         Text(
@@ -855,7 +849,6 @@ fun SettingsScreen(
             expanded = openSection == "keys" || openSection == "kw",
             onToggle = { toggleSection("keys") }
         ) {
-        Text("—— API 密钥 ——", style = MaterialTheme.typography.titleSmall)
         if (keysVisible) {
             val n = settings.apiKeys.count { it.isNotBlank() }
             Text(
@@ -869,9 +862,6 @@ fun SettingsScreen(
         } else {
             LockedField("Wallhaven API Keys", onRequestUnlock = { showPinDialog = true })
         }
-        
-        Text("—— 关键词 ——", style = MaterialTheme.typography.titleSmall)
-
         RowSwitch("启用关键词搜索", useKeywords) { useKeywords = it }
         if (useKeywords) {
         RowSwitch(
@@ -1048,8 +1038,6 @@ fun SettingsScreen(
             expanded = openSection == "fb" || openSection == "proxy",
             onToggle = { toggleSection("fb") }
         ) {
-        Text("—— 兜底策略 ——", style = MaterialTheme.typography.titleSmall)
-
         RowSwitch(
             title = "网络兜底（Wallhaven 失败 → 备用 API）",
             checked = netFb,
@@ -1126,10 +1114,6 @@ fun SettingsScreen(
             )
         }
         }
-
-        
-        Text("—— 网络代理 ——", style = MaterialTheme.typography.titleSmall)
-
         if (keysVisible) {
             if (accelOn) {
                 Text(
@@ -1377,8 +1361,6 @@ fun SettingsScreen(
             expanded = openSection == "bl" || openSection == "destiny" || openSection == "loc",
             onToggle = { toggleSection("bl") }
         ) {
-        Text("—— 应用黑名单 ——", style = MaterialTheme.typography.titleSmall)
-
         Text(
             "已选 ${settings.blacklistPackages.size} 个 · 前台休眠不换壁纸",
             style = MaterialTheme.typography.bodySmall
@@ -1387,9 +1369,6 @@ fun SettingsScreen(
             onClick = onOpenBlacklist,
             modifier = Modifier.fillMaxWidth()
         ) { Text("管理黑名单（名单在次级页）…") }
-        
-        Text("—— 命运先机 ——", style = MaterialTheme.typography.titleSmall)
-
             Text("按星期与时段自动劫持纯度搜索策略。详见应用内说明。", style = MaterialTheme.typography.bodySmall)
             RowSwitch(title = "启用命运先机", checked = settings.destinyEnabled, enabled = !dumpHijack) { on ->
                 if (dumpHijack) return@RowSwitch
@@ -1405,9 +1384,6 @@ fun SettingsScreen(
                     Text("命运先机配置…")
                 }
             }
-        
-        Text("—— 定位避让 ——", style = MaterialTheme.typography.titleSmall)
-
         RowSwitch(
             title = "启用定位避让",
             checked = locAvoid,
@@ -1446,8 +1422,6 @@ fun SettingsScreen(
             expanded = openSection == "ui" || openSection == "bg",
             onToggle = { toggleSection("ui") }
         ) {
-        Text("—— 界面外观 ——", style = MaterialTheme.typography.titleSmall)
-
         Text("主题遮罩透明度：${"%.0f".format(scrim * 100)}%", style = MaterialTheme.typography.bodySmall)
         ThemeSlider(value = scrim, onValueChange = { scrim = it }, valueRange = 0.15f..0.85f)
         Text("卡片透明度：${"%.0f".format(cardA * 100)}%（越高越实）", style = MaterialTheme.typography.bodySmall)
@@ -1466,10 +1440,6 @@ fun SettingsScreen(
         )
         EnumDropdown("板块美化（全局）", CardStyle.entries, cardStyleOpt) { cardStyleOpt = it }
         Text("颜色可连续调节，不限于预设；保存后全局生效", style = MaterialTheme.typography.bodySmall)
-
-        
-        Text("—— 软件背景 ——", style = MaterialTheme.typography.titleSmall)
-
         Text(
             "自动：本地 → API → 系统壁纸 → 莫奈；API：仅 API；本地：仅本地路径；莫奈：仅渐变取色",
             style = MaterialTheme.typography.bodySmall
@@ -1503,8 +1473,6 @@ fun SettingsScreen(
             expanded = openSection == "pastlife" || openSection == "ai" || openSection == "trans",
             onToggle = { toggleSection("ai") }
         ) {
-        Text("—— 前世今生 ——", style = MaterialTheme.typography.titleSmall)
-
             val jumpOk = settings.jumpModeEnabled || jumpMode
             val modelOk = com.kers.killove.jhsy.domain.AiRouter.hasAnyConfigured(
                 settings.copy(
@@ -1574,9 +1542,6 @@ fun SettingsScreen(
                     color = MaterialTheme.colorScheme.error
                 )
             }
-        
-        Text("—— AI 模型 ——", style = MaterialTheme.typography.titleSmall)
-
             RowSwitch(
                 title = "启用 AI",
                 checked = aiOn,
@@ -1626,9 +1591,6 @@ fun SettingsScreen(
             } else {
                 LockedField("AI 提供商 / 模型组", onRequestUnlock = { showPinDialog = true })
             }
-        
-        Text("—— 关键词翻译 ——", style = MaterialTheme.typography.titleSmall)
-
             val draftAiOk = com.kers.killove.jhsy.domain.AiRouter.hasAnyConfigured(settings.copy(aiEnabled = true))
             RowSwitch(
                 title = "AI 智能翻译",
@@ -1773,8 +1735,6 @@ fun SettingsScreen(
             expanded = openSection == "backup" || openSection == "cache",
             onToggle = { toggleSection("backup") }
         ) {
-        Text("—— 云同步 ——", style = MaterialTheme.typography.titleSmall)
-
             Text(
                 "通过 GitHub 仓库同步配置（可选同步密钥等敏感项）。不再使用本地文件/剪贴板恢复。",
                 style = MaterialTheme.typography.bodySmall
@@ -1789,9 +1749,6 @@ fun SettingsScreen(
                 onClick = onOpenCloudSync,
                 modifier = Modifier.fillMaxWidth()
             ) { Text("打开云同步配置") }
-        
-        Text("—— 缓存与日志 ——", style = MaterialTheme.typography.titleSmall)
-
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ThemeOutlinedButton(onClick = { cacheConfirm = "cache" }, modifier = Modifier.weight(1f)) { Text("清空缓存文件") }
             ThemeOutlinedButton(onClick = { cacheConfirm = "logs" }, modifier = Modifier.weight(1f)) { Text("清空更换记录") }
