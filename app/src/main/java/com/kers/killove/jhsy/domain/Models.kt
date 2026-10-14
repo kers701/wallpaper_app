@@ -462,6 +462,10 @@ data class AppSettings(
 
     val pinHash: String = "",
     val pinEnabled: Boolean = false,
+    /** 图案锁哈希（点序编码后 SHA-256） */
+    val patternHash: String = "",
+    /** 允许生物识别解锁（指纹/面容，需系统已录入） */
+    val biometricUnlockEnabled: Boolean = false,
 
     /**
      * 加速模式：从内置/配置的中转节点随机选用，仅本应用网络。

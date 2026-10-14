@@ -309,7 +309,9 @@ object ConfigBackup {
 
             // PIN 永不从备份恢复
             pinHash = base.pinHash,
-            pinEnabled = base.pinEnabled
+            pinEnabled = base.pinEnabled,
+            patternHash = base.patternHash,
+            biometricUnlockEnabled = base.biometricUnlockEnabled
         )
     }
 

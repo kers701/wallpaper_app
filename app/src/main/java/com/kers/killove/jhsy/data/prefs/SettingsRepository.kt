@@ -108,6 +108,8 @@ class SettingsRepository(private val context: Context) {
         val LAST_CHANGE_AT = longPreferencesKey("last_change_at")
         val PIN_HASH = stringPreferencesKey("pin_hash")
         val PIN_ENABLED = booleanPreferencesKey("pin_enabled")
+        val PATTERN_HASH = stringPreferencesKey("pattern_hash")
+        val BIOMETRIC_UNLOCK = booleanPreferencesKey("biometric_unlock")
         val ACCEL_MODE = booleanPreferencesKey("accel_mode")
         val ACCEL_PRIVACY = booleanPreferencesKey("accel_privacy")
         val ACCEL_NODES_URL = stringPreferencesKey("accel_nodes_url")
@@ -280,6 +282,8 @@ class SettingsRepository(private val context: Context) {
             lastChangeAt = p[Keys.LAST_CHANGE_AT] ?: 0L,
             pinHash = p[Keys.PIN_HASH] ?: "",
             pinEnabled = p[Keys.PIN_ENABLED] ?: false,
+            patternHash = p[Keys.PATTERN_HASH] ?: "",
+            biometricUnlockEnabled = p[Keys.BIOMETRIC_UNLOCK] ?: false,
             accelModeEnabled = p[Keys.ACCEL_MODE] ?: false,
             accelPrivacyAccepted = p[Keys.ACCEL_PRIVACY] ?: false,
             accelNodesRemoteUrl = p[Keys.ACCEL_NODES_URL] ?: "",
@@ -466,6 +470,8 @@ class SettingsRepository(private val context: Context) {
             p[Keys.LAST_CHANGE_AT] = settings.lastChangeAt
             p[Keys.PIN_HASH] = settings.pinHash
             p[Keys.PIN_ENABLED] = settings.pinEnabled
+            p[Keys.PATTERN_HASH] = settings.patternHash
+            p[Keys.BIOMETRIC_UNLOCK] = settings.biometricUnlockEnabled
             p[Keys.ACCEL_MODE] = settings.accelModeEnabled
             p[Keys.ACCEL_PRIVACY] = settings.accelPrivacyAccepted
             p[Keys.ACCEL_NODES_URL] = settings.accelNodesRemoteUrl
