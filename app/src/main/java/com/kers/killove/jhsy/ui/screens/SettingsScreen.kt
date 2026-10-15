@@ -148,7 +148,6 @@ fun SettingsScreen(
     val unlocked by vm.unlocked.collectAsState()
     val pinMessage by vm.pinMessage.collectAsState()
     val keysVisible = vm.keysVisible(settings)
-    val context = LocalContext.current
 
     var interval by remember(settings.intervalMinutes) {
         mutableFloatStateOf(settings.intervalMinutes.toFloat())
