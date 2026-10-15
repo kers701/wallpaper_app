@@ -2,7 +2,6 @@ package com.kers.killove.jhsy.ui.screens
 
 import androidx.fragment.app.FragmentActivity
 import com.kers.killove.jhsy.util.BiometricUnlock
-import com.kers.killove.jhsy.ui.components.PatternLock
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 
@@ -1670,18 +1669,16 @@ fun SettingsScreen(
 
         if (settings.pinEnabled && !unlocked) {
             val bioPreferred = settings.biometricUnlockEnabled && BiometricUnlock.canAuthenticate(context)
-            // 指纹优先：进入锁定态自动尝试一次生物识别
-            LaunchedEffect(bioPreferred, unlocked) {
-                if (!bioPreferred || unlocked) return@LaunchedEffect
-                val act = context as? FragmentActivity ?: return@LaunchedEffect
-                BiometricUnlock.prompt(
-                    activity = act,
-                    onSuccess = { vm.unlockWithBiometric() },
-                    onError = { },
-                    onCancel = { }
-                )
-            }
             if (bioPreferred) {
+                LaunchedEffect(Unit) {
+                    val act = context as? FragmentActivity ?: return@LaunchedEffect
+                    BiometricUnlock.prompt(
+                        activity = act,
+                        onSuccess = { vm.unlockWithBiometric() },
+                        onError = { },
+                        onCancel = { }
+                    )
+                }
                 Text("优先使用指纹 / 面容解锁", style = MaterialTheme.typography.titleSmall)
                 ThemeButton(
                     onClick = {
@@ -1700,37 +1697,28 @@ fun SettingsScreen(
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("指纹 / 面容解锁") }
-                Text("失败时可使用下方备用方式", style = MaterialTheme.typography.bodySmall)
-            } else {
-                Text("解锁方式", style = MaterialTheme.typography.titleSmall)
             }
-            // PIN 与图案互斥：只显示已启用的那一种
-            when {
-                settings.pinHash.isNotBlank() -> {
-                    OutlinedTextField(
-                        value = pinInput,
-                        onValueChange = { pinInput = it.filter(Char::isDigit).take(8) },
-                        label = { Text(if (bioPreferred) "备用：数字 PIN" else "输入 PIN 解锁") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword)
-                    )
-                    ThemeButton(
-                        onClick = { vm.unlock(pinInput); pinInput = "" },
-                        modifier = Modifier.fillMaxWidth()
-                    ) { Text("PIN 解锁") }
+            if (settings.pinHash.isNotBlank()) {
+                if (bioPreferred) {
+                    Text("备用：数字 PIN", style = MaterialTheme.typography.bodySmall)
+                } else {
+                    Text("数字 PIN 解锁", style = MaterialTheme.typography.titleSmall)
                 }
-                settings.patternHash.isNotBlank() -> {
-                    Text(
-                        if (bioPreferred) "备用：绘制图案" else "绘制解锁图案（至少 4 点）",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    PatternLock(
-                        lineColor = LocalUiTextColor.current,
-                        dotColor = LocalUiTextColor.current.copy(alpha = 0.7f)
-                    ) { cells -> vm.unlockWithPattern(cells) }
-                }
+                OutlinedTextField(
+                    value = pinInput,
+                    onValueChange = { pinInput = it.filter(Char::isDigit).take(8) },
+                    label = { Text("输入 PIN") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword)
+                )
+                ThemeButton(
+                    onClick = { vm.unlock(pinInput); pinInput = "" },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("PIN 解锁") }
+            } else if (!bioPreferred) {
+                Text("请开启指纹后使用生物识别解锁，或先设置 PIN", style = MaterialTheme.typography.bodySmall)
             }
         } else {
             if (settings.pinEnabled) {
@@ -1740,11 +1728,11 @@ fun SettingsScreen(
                 ) { Text("立即锁定") }
             }
 
-            Text("数字 PIN（4～8 位，与图案二选一）", style = MaterialTheme.typography.titleSmall)
+            Text("数字 PIN（可选，4～8 位）", style = MaterialTheme.typography.titleSmall)
             OutlinedTextField(
                 value = newPin,
                 onValueChange = { newPin = it.filter(Char::isDigit).take(8) },
-                label = { Text(if (settings.pinHash.isNotBlank()) "新 PIN" else "设置 PIN") },
+                label = { Text(if (settings.pinHash.isNotBlank()) "新 PIN" else "设置 PIN（可留空，仅用指纹）") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
@@ -1778,51 +1766,18 @@ fun SettingsScreen(
                 }
             }
 
-            Text("图案锁（至少 4 点，与数字 PIN 二选一）", style = MaterialTheme.typography.titleSmall)
-            var patternDraft by remember { mutableStateOf<List<Int>?>(null) }
-            var patternConfirming by remember { mutableStateOf(false) }
-            Text(
-                when {
-                    patternConfirming -> "请再绘制一次以确认"
-                    settings.patternHash.isNotBlank() -> "已设置图案 · 可重新绘制覆盖"
-                    else -> "绘制图案以启用 / 修改"
-                },
-                style = MaterialTheme.typography.bodySmall
-            )
-            PatternLock(
-                lineColor = LocalUiTextColor.current,
-                dotColor = LocalUiTextColor.current.copy(alpha = 0.7f)
-            ) { cells ->
-                if (!patternConfirming) {
-                    patternDraft = cells
-                    patternConfirming = true
-                } else {
-                    val first = patternDraft
-                    patternConfirming = false
-                    patternDraft = null
-                    if (first != null) vm.setPatternWithConfirm(first, cells)
-                }
-            }
-            if (settings.patternHash.isNotBlank()) {
-                ThemeOutlinedButton(
-                    onClick = { vm.setPattern(emptyList(), enable = false) },
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text("清除图案") }
-            }
-
             Text("生物识别", style = MaterialTheme.typography.titleSmall)
             val bioOk = BiometricUnlock.canAuthenticate(context)
             Text("本机状态：${BiometricUnlock.availabilityLabel(context)}", style = MaterialTheme.typography.bodySmall)
             RowSwitch(
                 title = "指纹 / 面容解锁",
                 checked = settings.biometricUnlockEnabled && bioOk,
-                enabled = bioOk && settings.pinEnabled &&
-                    (settings.pinHash.isNotBlank() || settings.patternHash.isNotBlank()),
+                enabled = bioOk,
                 onChecked = { on -> if (bioOk) vm.setBiometricUnlock(on) }
             )
             Text(
                 if (!bioOk) "设备不支持或未录入指纹时不可开启"
-                else "需先设置 PIN 或图案（二选一）；开启后解锁优先指纹",
+                else "可无 PIN 直接开启；开启后解锁优先指纹，有 PIN 时作备用",
                 style = MaterialTheme.typography.bodySmall
             )
             Text("凭证仅存哈希；进程重启后需重新解锁", style = MaterialTheme.typography.bodySmall)
@@ -1907,12 +1862,8 @@ fun SettingsScreen(
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                             modifier = Modifier.fillMaxWidth()
                         )
-                    } else if (settings.patternHash.isNotBlank()) {
-                        Text(if (bioOk) "备用：绘制图案" else "绘制图案", style = MaterialTheme.typography.bodySmall)
-                        PatternLock(
-                            lineColor = LocalUiTextColor.current,
-                            dotColor = LocalUiTextColor.current.copy(alpha = 0.7f)
-                        ) { cells -> vm.unlockWithPattern(cells) }
+                    } else if (!bioOk) {
+                        Text("未设置 PIN，请使用指纹 / 面容解锁", style = MaterialTheme.typography.bodySmall)
                     }
                     pinMessage?.takeIf { it.isNotBlank() }?.let { msg ->
                         Text(msg, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)

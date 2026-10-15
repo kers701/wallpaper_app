@@ -1,1 +1,6 @@
-修复 SettingsScreen 重复 val context 导致编译失败（不推送）
+取消图案锁；支持空 PIN 仅生物识别（不推送）
+
+- 移除图案解锁 UI 与 ViewModel 逻辑
+- 可无 PIN 直接开启指纹/面容（启用应用锁）
+- 有 PIN 时指纹仍优先，PIN 作备用
+- 若本地仍有 PatternLock.kt 可删除（已不再引用）

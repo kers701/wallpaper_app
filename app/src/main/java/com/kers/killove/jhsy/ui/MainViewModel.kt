@@ -394,8 +394,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** 敏感字段是否可见：密钥 / 关键词 / 兜底 API */
     fun keysVisible(s: AppSettings = settings.value): Boolean {
         if (!s.pinEnabled) return true
-        // 启用应用锁后：未解锁则隐藏；需至少配置 PIN 或图案
-        if (s.pinHash.isBlank() && s.patternHash.isBlank()) return true
+        // 启用应用锁（PIN 和/或仅生物识别）后：未解锁则隐藏
         return _unlocked.value
     }
 
@@ -966,7 +965,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         if (s.pinHash.isBlank()) {
-            _pinMessage.value = "未设置数字 PIN，请使用图案或指纹"
+            _pinMessage.value = if (s.biometricUnlockEnabled) "请使用指纹 / 面容解锁" else "未设置 PIN"
             return
         }
         if (PinSecurity.verify(pin, s.pinHash)) {
@@ -975,25 +974,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             setStatus("PIN 解锁成功", popup = true)
         } else {
             _pinMessage.value = "PIN 错误"
-        }
-    }
-
-    fun unlockWithPattern(cells: List<Int>) {
-        val s = settings.value
-        if (!s.pinEnabled) {
-            _unlocked.value = true
-            return
-        }
-        if (s.patternHash.isBlank()) {
-            _pinMessage.value = "未设置图案"
-            return
-        }
-        if (PinSecurity.verifyPattern(cells, s.patternHash)) {
-            _unlocked.value = true
-            _pinMessage.value = "已解锁"
-            setStatus("图案解锁成功", popup = true)
-        } else {
-            _pinMessage.value = "图案错误"
         }
     }
 
@@ -1032,12 +1012,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val next = settings.value.copy(
                     pinEnabled = true,
                     pinHash = PinSecurity.hash(newPin),
-                    patternHash = "" // 数字与图案互斥
+                    patternHash = ""
                 )
                 settingsRepo.save(next)
                 _unlocked.value = true
-                _pinMessage.value = "PIN 已设置（已关闭图案锁）"
-                setStatus("PIN 已启用，图案已关闭", popup = true)
+                _pinMessage.value = "PIN 已设置"
+                setStatus("PIN 已启用", popup = true)
             } else {
                 if (settings.value.pinEnabled && !_unlocked.value) {
                     _pinMessage.value = "请先解锁再关闭应用锁"
@@ -1057,68 +1037,47 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun setPatternWithConfirm(a: List<Int>, b: List<Int>) {
-        if (a != b) {
-            _pinMessage.value = "两次图案不一致"
-            return
-        }
-        setPattern(a, enable = true)
-    }
-
-    fun setPattern(cells: List<Int>, enable: Boolean) {
-        viewModelScope.launch {
-            if (enable) {
-                if (!PinSecurity.isValidPattern(cells)) {
-                    _pinMessage.value = "图案至少连接 4 个点，且不可重复"
-                    return@launch
-                }
-                val next = settings.value.copy(
-                    pinEnabled = true,
-                    patternHash = PinSecurity.hash(PinSecurity.encodePattern(cells)),
-                    pinHash = "" // 数字与图案互斥
-                )
-                settingsRepo.save(next)
-                _unlocked.value = true
-                _pinMessage.value = "图案已设置（已关闭数字 PIN）"
-                setStatus("图案锁已启用，PIN 已关闭", popup = true)
-            } else {
-                if (settings.value.pinEnabled && !_unlocked.value) {
-                    _pinMessage.value = "请先解锁再清除图案"
-                    return@launch
-                }
-                val s = settings.value
-                val next = s.copy(patternHash = "")
-                // 若无 PIN 也无图案则关闭应用锁
-                val still = next.copy(
-                    pinEnabled = next.pinHash.isNotBlank() || next.patternHash.isNotBlank()
-                )
-                settingsRepo.save(still)
-                _pinMessage.value = "图案已清除"
-            }
-        }
-    }
-
+    /** 开启生物识别；允许空 PIN（仅指纹/面容） */
     fun setBiometricUnlock(enabled: Boolean) {
         viewModelScope.launch {
             val s = settings.value
             if (enabled) {
-                if (!s.pinEnabled || (s.pinHash.isBlank() && s.patternHash.isBlank())) {
-                    _pinMessage.value = "请先设置 PIN 或图案，再开启指纹"
+                if (!_unlocked.value && s.pinEnabled) {
+                    _pinMessage.value = "请先解锁再修改生物识别"
                     return@launch
                 }
-                if (!_unlocked.value) {
-                    _pinMessage.value = "请先解锁再开启指纹"
-                    return@launch
+                settingsRepo.save(
+                    s.copy(
+                        pinEnabled = true,
+                        biometricUnlockEnabled = true,
+                        patternHash = ""
+                    )
+                )
+                _unlocked.value = true
+                _pinMessage.value = if (s.pinHash.isBlank()) {
+                    "已开启仅生物识别应用锁（未设 PIN）"
+                } else {
+                    "已开启生物识别解锁"
                 }
-                settingsRepo.save(s.copy(biometricUnlockEnabled = true))
-                _pinMessage.value = "已开启生物识别解锁"
                 setStatus("生物识别解锁已开启", popup = true)
             } else {
-                settingsRepo.save(s.copy(biometricUnlockEnabled = false))
-                _pinMessage.value = "已关闭生物识别解锁"
+                if (s.pinEnabled && !_unlocked.value) {
+                    _pinMessage.value = "请先解锁再关闭生物识别"
+                    return@launch
+                }
+                val stillLock = s.pinHash.isNotBlank()
+                settingsRepo.save(
+                    s.copy(
+                        biometricUnlockEnabled = false,
+                        pinEnabled = stillLock,
+                        patternHash = ""
+                    )
+                )
+                _pinMessage.value = if (stillLock) "已关闭生物识别（仍保留 PIN）" else "已关闭应用锁"
             }
         }
     }
+
 
 
     fun testNetwork() {
