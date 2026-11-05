@@ -89,6 +89,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 加速节点不再进仓库：有 Secret 就注入 assets，没有就跳过（加速模式仅用远程列表）
+      - name: Inject accel nodes (optional)
+        env:
+          ACCEL_NODES_JSON: ${{ secrets.ACCEL_NODES_JSON }}
+        run: |
+          set -euo pipefail
+          if [ -n "${ACCEL_NODES_JSON:-}" ]; then
+            mkdir -p app/src/main/assets
+            printf '%s' "${ACCEL_NODES_JSON}" > app/src/main/assets/accel_nodes.json
+            echo "已从 ACCEL_NODES_JSON 注入加速节点（${#ACCEL_NODES_JSON} 字节）"
+          else
+            echo "未配置 ACCEL_NODES_JSON，跳过注入"
+          fi
+
       - name: Check release secrets
         env:
           HAS_KS: ${{ secrets.RELEASE_KEYSTORE_BASE64 != '' }}
