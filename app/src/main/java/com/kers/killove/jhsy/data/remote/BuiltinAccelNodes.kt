@@ -44,13 +44,18 @@ object BuiltinAccelNodes {
     }
 
     /**
-     * 编译期内置节点：请替换为你自己的中转。
-     * 留空则仅依赖 assets / 远程列表。
+     * 编译期内置节点：**保持为空**。
+     *
+     * 以前这里写死了两个公网 SOCKS5 地址，等于把中转节点随公开仓库一起发布，
+     * 任何人都能拿走、白嫖、审计甚至攻击这条链路。现在节点只能来自：
+     * - `assets/accel_nodes.json`（该文件已从仓库移除并加入 .gitignore，
+     *   正式包由 CI 从 `ACCEL_NODES_JSON` Secret 注入），或
+     * - 设置页里的「远程节点列表 URL」。
+     *
+     * 两者都没有时 `all()` 返回空列表，加速模式会显示 0 个可用节点，
+     * 调用方（ProxyHttp）会回退为直连，不会崩溃。
      */
-    private val compiled: List<Node> = listOf(
-        Node("accel-1", ProxyType.Socks5, "172.245.228.92", 701),
-        Node("accel-2", ProxyType.Socks5, "23.238.28.251", 701),
-    )
+    private val compiled: List<Node> = emptyList()
 
     private val runtimeExtra = AtomicReference<List<Node>>(emptyList())
 

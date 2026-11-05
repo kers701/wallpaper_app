@@ -15,3 +15,6 @@
 keystore.properties
 *.jks
 *.keystore
+
+# 加速节点：本地/CI 注入，不进仓库（见 docs-SECRETS.md）
+app/src/main/assets/accel_nodes.json
