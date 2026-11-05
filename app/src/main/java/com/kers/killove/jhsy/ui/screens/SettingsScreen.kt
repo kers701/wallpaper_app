@@ -90,7 +90,12 @@ import com.kers.killove.jhsy.util.SuperServiceController
 import androidx.compose.ui.platform.LocalContext
 import android.widget.Toast
 import android.graphics.Color as AndroidColor
+import com.kers.killove.jhsy.BuildConfig
+import com.kers.killove.jhsy.util.AppUpdateChecker
 import com.kers.killove.jhsy.util.ProcessBridgePrefs
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import com.kers.killove.jhsy.ui.MainViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -105,7 +110,8 @@ fun SettingsScreen(
     onOpenAiProviders: () -> Unit = {},
     onOpenAiModels: () -> Unit = {},
     onOpenApiKeys: () -> Unit = {},
-    onOpenFallbackUrls: () -> Unit = {}
+    onOpenFallbackUrls: () -> Unit = {},
+    onCheckUpdate: () -> Unit = {}
 ) {
     var cacheConfirm by remember { mutableStateOf<String?>(null) }
     var showPinDialog by remember { mutableStateOf(false) }
@@ -1814,6 +1820,71 @@ fun SettingsScreen(
         }
 
 
+        Box(Modifier.onGloballyPositioned { c -> sectionOffsets["about"] = c.positionInParent().y.toInt() }) { }
+        CollapsibleSection(
+            title = "关于与更新",
+            expanded = openSection == "about",
+            onToggle = { toggleSection("about") }
+        ) {
+            Text(
+                "当前版本 ${BuildConfig.VERSION_NAME.removeSuffix("-debug")}（${BuildConfig.VERSION_CODE}）",
+                style = MaterialTheme.typography.bodySmall
+            )
+            var autoCheck by remember { mutableStateOf(AppUpdateChecker.autoCheckEnabled(context)) }
+            var ignoredTag by remember { mutableStateOf(AppUpdateChecker.ignoredTag(context)) }
+            var lastCheck by remember { mutableStateOf(AppUpdateChecker.lastCheckAt(context)) }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("启动时自动检查更新")
+                    Text(
+                        "最多 6 小时请求一次 GitHub Releases",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                Switch(
+                    checked = autoCheck,
+                    onCheckedChange = {
+                        autoCheck = it
+                        AppUpdateChecker.setAutoCheckEnabled(context, it)
+                    }
+                )
+            }
+            if (lastCheck > 0L) {
+                val fmt = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()) }
+                Text(
+                    "上次检查：${fmt.format(Date(lastCheck))}",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            ThemeOutlinedButton(
+                onClick = {
+                    lastCheck = System.currentTimeMillis()
+                    onCheckUpdate()
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("立即检查更新") }
+            if (ignoredTag.isNotBlank()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "已忽略版本 $ignoredTag",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(onClick = {
+                        AppUpdateChecker.clearIgnoredTag(context)
+                        ignoredTag = ""
+                    }) { Text("恢复提示") }
+                }
+            }
+        }
+
         } // scroll Column
 
     } // root Column
@@ -1953,7 +2024,11 @@ fun SettingsScreen(
                         "PIN" to "pin",
                         "数据与缓存" to "backup",
                         "云同步" to "backup",
-                        "缓存与日志" to "cache"
+                        "缓存与日志" to "cache",
+                        "关于" to "about",
+                        "版本" to "about",
+                        "检查更新" to "about",
+                        "更新" to "about"
                     )
                     catalog.filter { q.isBlank() || it.first.contains(q, ignoreCase = true) }.forEach { (name, key) ->
                         Text(

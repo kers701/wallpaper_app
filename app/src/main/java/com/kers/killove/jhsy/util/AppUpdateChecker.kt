@@ -51,6 +51,54 @@ object AppUpdateChecker {
 
     fun currentVersionCode(): Int = BuildConfig.VERSION_CODE
 
+    // ---------------------------------------------------------------
+    // 自动检查节流 / 忽略版本
+    // 用独立 SharedPreferences 而不是 AppSettings：这两项是纯本机偏好，
+    // 不需要跨进程同步，也不该进配置备份或云同步。
+    // ---------------------------------------------------------------
+
+    private const val PREFS = "app_update_prefs"
+    private const val KEY_LAST_CHECK_AT = "last_check_at"
+    private const val KEY_IGNORED_TAG = "ignored_tag"
+    private const val KEY_AUTO_CHECK = "auto_check_enabled"
+
+    /** 自动检查最小间隔：6 小时，避免每次冷启动都打 GitHub API（未鉴权限额 60 次/小时/IP） */
+    private const val AUTO_CHECK_INTERVAL_MS = 6L * 60L * 60L * 1000L
+
+    private fun prefs(context: Context) =
+        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    /** 启动时是否自动检查，默认开 */
+    fun autoCheckEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_AUTO_CHECK, true)
+
+    fun setAutoCheckEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_AUTO_CHECK, enabled).apply()
+    }
+
+    fun lastCheckAt(context: Context): Long =
+        prefs(context).getLong(KEY_LAST_CHECK_AT, 0L)
+
+    /** 自动检查是否到期（关闭自动检查时恒为 false） */
+    fun shouldAutoCheck(context: Context, now: Long = System.currentTimeMillis()): Boolean =
+        autoCheckEnabled(context) && now - lastCheckAt(context) >= AUTO_CHECK_INTERVAL_MS
+
+    fun markChecked(context: Context, now: Long = System.currentTimeMillis()) {
+        prefs(context).edit().putLong(KEY_LAST_CHECK_AT, now).apply()
+    }
+
+    /** 用户选择「忽略此版本」的 tag，空串表示没有忽略 */
+    fun ignoredTag(context: Context): String =
+        prefs(context).getString(KEY_IGNORED_TAG, "").orEmpty()
+
+    fun setIgnoredTag(context: Context, tag: String) {
+        prefs(context).edit().putString(KEY_IGNORED_TAG, tag).apply()
+    }
+
+    fun clearIgnoredTag(context: Context) {
+        prefs(context).edit().remove(KEY_IGNORED_TAG).apply()
+    }
+
     /**
      * 拉取 GitHub latest release，与本机 versionName 比较。
      * tag 形如 v3.0.29 / 3.0.29。

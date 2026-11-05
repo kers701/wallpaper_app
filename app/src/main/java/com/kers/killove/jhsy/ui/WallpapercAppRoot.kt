@@ -101,14 +101,47 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
     val appScope = rememberCoroutineScope()
     var statusPopup by remember { mutableStateOf<String?>(null) }
 
+    // 手动检查：设置页「关于与更新」里的按钮会调用
+    fun runManualUpdateCheck() {
+        statusPopup = "正在检查更新…"
+        appScope.launch {
+            val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                runCatching { com.kers.killove.jhsy.util.AppUpdateChecker.checkLatest() }.getOrNull()
+            }
+            when (result) {
+                is com.kers.killove.jhsy.util.AppUpdateChecker.CheckResult.UpdateAvailable -> {
+                    com.kers.killove.jhsy.util.AppUpdateChecker.markChecked(appContext)
+                    statusPopup = null
+                    updateDialog = result.info
+                }
+                is com.kers.killove.jhsy.util.AppUpdateChecker.CheckResult.UpToDate -> {
+                    com.kers.killove.jhsy.util.AppUpdateChecker.markChecked(appContext)
+                    statusPopup = "已是最新版本 ${result.latest}"
+                }
+                is com.kers.killove.jhsy.util.AppUpdateChecker.CheckResult.Failed ->
+                    statusPopup = "检查更新失败：${result.message}"
+                null -> statusPopup = "检查更新失败：网络异常"
+            }
+        }
+    }
+
     LaunchedEffect(Unit) {
         if (updateChecked) return@LaunchedEffect
         updateChecked = true
+        // 关闭了自动检查、或距上次检查不足 6 小时 → 不打扰
+        if (!com.kers.killove.jhsy.util.AppUpdateChecker.shouldAutoCheck(appContext)) return@LaunchedEffect
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             runCatching {
                 when (val r = com.kers.killove.jhsy.util.AppUpdateChecker.checkLatest()) {
                     is com.kers.killove.jhsy.util.AppUpdateChecker.CheckResult.UpdateAvailable -> {
-                        updateDialog = r.info
+                        com.kers.killove.jhsy.util.AppUpdateChecker.markChecked(appContext)
+                        // 用户点过「忽略此版」就不再弹
+                        if (r.info.tag != com.kers.killove.jhsy.util.AppUpdateChecker.ignoredTag(appContext)) {
+                            updateDialog = r.info
+                        }
+                    }
+                    is com.kers.killove.jhsy.util.AppUpdateChecker.CheckResult.UpToDate -> {
+                        com.kers.killove.jhsy.util.AppUpdateChecker.markChecked(appContext)
                     }
                     else -> Unit
                 }
@@ -214,6 +247,15 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
                         },
                         enabled = !updateDownloading
                     ) { androidx.compose.material3.Text("浏览器", color = textColor) }
+                    com.kers.killove.jhsy.ui.screens.ThemeOutlinedButton(
+                        onClick = {
+                            if (!updateDownloading) {
+                                com.kers.killove.jhsy.util.AppUpdateChecker.setIgnoredTag(appContext, info.tag)
+                                updateDialog = null
+                            }
+                        },
+                        enabled = !updateDownloading
+                    ) { androidx.compose.material3.Text("忽略此版", color = textColor) }
                     com.kers.killove.jhsy.ui.screens.ThemeOutlinedButton(
                         onClick = { if (!updateDownloading) updateDialog = null },
                         enabled = !updateDownloading
@@ -324,7 +366,8 @@ fun WallpapercAppRoot(vm: MainViewModel = viewModel()) {
                                 onOpenAiProviders = { nav.navigate("ai_providers") },
                                 onOpenAiModels = { nav.navigate("ai_models") },
                                 onOpenApiKeys = { nav.navigate("api_keys") },
-                                onOpenFallbackUrls = { nav.navigate("fallback_urls") }
+                                onOpenFallbackUrls = { nav.navigate("fallback_urls") },
+                                onCheckUpdate = { runManualUpdateCheck() }
                             )
                         }
                         composable("history") { HistoryScreen(vm, onBack = { nav.popBackStack() }) }

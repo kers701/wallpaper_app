@@ -10,7 +10,7 @@
 | 包名 | `com.kers.killove.jhsy`（不变） |
 | 最低系统 | Android 8.0（API 26） |
 | 目标 SDK | 35 |
-| 当前版本 | **4.2.23**（versionCode 4223） |
+| 当前版本 | **5.6.0**（versionCode 5600） |
 | 仓库 | https://github.com/kers701/wallpaper_app |
 
 命名由「镜花水月」相关英译组合而来；包名与内部标识不变。  
